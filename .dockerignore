@@ -1,0 +1,20 @@
+node_modules
+.next
+.git
+.gitignore
+generated
+coverage
+test-results
+npm-debug.log*
+
+# Never let a real .env into an image layer.
+.env
+.env.*
+!.env.example
+
+docs
+README.md
+*.md
+Dockerfile
+.dockerignore
+docker-compose.yml

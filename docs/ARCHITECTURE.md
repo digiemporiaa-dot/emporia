@@ -833,6 +833,16 @@ for paths no real route matched — precisely the old URLs a redirect exists for
 walks the chain from `toPath` and rejects the save if it returns to `fromPath`
 or exceeds a hop limit. A bad redirect never reaches production data.
 
+> **Added in Phase 2.** A `middleware.ts` does now exist, but it does no
+> database work and does not handle redirects — it only checks for a valid
+> session JWT on `/admin` and `/portal`. It was needed for the HTTP status
+> code: `app/loading.tsx` makes Next stream the shell immediately, so a
+> `redirect()` from a layout arrives after the 200 is already on the wire and
+> has to be delivered in-band. A browser follows it either way, but the request
+> reads as a successful 200 to anything that is not a browser. Checking the
+> token on the edge produces a real 307 before rendering starts. The
+> reasoning above still holds for redirects: no Prisma on the edge.
+
 ---
 
 ## 13. Local SEO and `canPublish()`
@@ -988,10 +998,15 @@ runner   → distroless-ish slim, non-root `node` user,
 
 - `next.config.ts` sets `output: "standalone"` so the runner carries only the
   traced dependencies.
-- `prisma/schema.prisma` sets
-  `binaryTargets = ["native", "debian-openssl-3.0.x"]` so the engine in the
-  runner matches bookworm's OpenSSL.
 - Runs as a non-root user, `EXPOSE 3000`, `NODE_ENV=production`.
+
+> **Revised in Phase 2.** This section originally called for
+> `binaryTargets = ["native", "debian-openssl-3.0.x"]`. That is obsolete:
+> Prisma 7 compiles queries in-process and connects through a driver adapter
+> (`@prisma/adapter-pg`), so the image contains **no query-engine binary and no
+> OpenSSL dependency to match**. The generated client is TypeScript, emitted to
+> `generated/` at build time and gitignored. bookworm-slim is still the right
+> base, but now only because `argon2` ships glibc prebuilds.
 - `.dockerignore` excludes `node_modules`, `.next`, `.git`, `.env*`, `docs`,
   test output — both for build speed and so a stray `.env` can never enter an
   image layer.

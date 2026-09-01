@@ -1,0 +1,47 @@
+# Local development stack, and the reference for the Coolify deployment.
+#
+# There is no volume mounted into the app: the application server filesystem is
+# never permanent storage (CLAUDE.md 3). Uploads go to R2 and the container
+# stays disposable.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-emporia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emporia}
+      POSTGRES_DB: ${POSTGRES_DB:-emporia}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-emporia} -d ${POSTGRES_DB:-emporia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://emporia:emporia@db:5432/emporia?schema=public}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  pgdata:

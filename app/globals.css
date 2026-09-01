@@ -1,0 +1,202 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * Everything themeable lives here as a CSS variable (CLAUDE.md 6) — colour,
+ * type, spacing, radius, shadow, motion, containers. Rebranding means editing
+ * this file and nothing else.
+ *
+ * Brand palette is mandatory and closed: red, navy, white, and neutrals derived
+ * from navy. No colour outside this system.
+ */
+
+@theme {
+  /* --- Brand ------------------------------------------------------------ */
+  --color-brand-red: #df1f38;
+  --color-brand-navy: #002a3a;
+  --color-white: #ffffff;
+
+  /* Red is an accent only. These exist for hover/active/subtle states — a
+     section that is mostly red is wrong (CLAUDE.md 6). */
+  --color-red-700: #b4162c;
+  --color-red-600: #c91a32;
+  --color-red-500: #df1f38;
+  --color-red-100: #fbe4e7;
+  --color-red-50: #fdf2f4;
+
+  /* Navy ramp, all derived from --color-brand-navy. */
+  --color-navy-900: #001a24;
+  --color-navy-800: #002a3a;
+  --color-navy-700: #013b50;
+  --color-navy-600: #0a5068;
+  --color-navy-500: #2a6b83;
+  --color-navy-300: #7ba3b4;
+  --color-navy-100: #d6e3e9;
+  --color-navy-50: #eef4f7;
+
+  /* Neutrals */
+  --color-ink: #0b1a22;
+  --color-ink-muted: #4a5c66;
+  --color-ink-subtle: #6f818b;
+  --color-line: #dfe6ea;
+  --color-line-strong: #c3d0d7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f9fa;
+  --color-surface-sunken: #eef2f4;
+
+  /* Feedback. Derived to sit inside the brand system rather than beside it. */
+  --color-success: #0f6f52;
+  --color-success-bg: #e6f4ef;
+  --color-warning: #8a5a00;
+  --color-warning-bg: #fdf3e2;
+  --color-danger: var(--color-brand-red);
+  --color-danger-bg: var(--color-red-50);
+
+  /* --- Type ------------------------------------------------------------- */
+  --font-display: var(--font-display-face), "Segoe UI", system-ui, sans-serif;
+  --font-sans: var(--font-body-face), "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", monospace;
+
+  /* Fluid scale. Hero type is large by design and scales with clamp(). */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: clamp(1.5rem, 1.2rem + 1.1vw, 1.9rem);
+  --text-3xl: clamp(1.9rem, 1.4rem + 2.1vw, 2.6rem);
+  --text-4xl: clamp(2.4rem, 1.6rem + 3.4vw, 3.6rem);
+  --text-5xl: clamp(3rem, 1.7rem + 5.4vw, 5rem);
+  --text-6xl: clamp(3.6rem, 1.8rem + 7.6vw, 6.5rem);
+
+  --tracking-tightest: -0.04em;
+  --tracking-tighter: -0.025em;
+  --tracking-wide: 0.02em;
+  --tracking-widest: 0.14em;
+
+  /* --- Space ------------------------------------------------------------ */
+  --spacing: 0.25rem;
+
+  /* --- Radius ----------------------------------------------------------- */
+  /* Deliberately restrained. "Everything rounded" is on the forbidden list. */
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* --- Shadow ----------------------------------------------------------- */
+  --shadow-xs: 0 1px 2px rgb(0 42 58 / 0.06);
+  --shadow-sm: 0 1px 3px rgb(0 42 58 / 0.08), 0 1px 2px rgb(0 42 58 / 0.04);
+  --shadow-md: 0 4px 12px rgb(0 42 58 / 0.08), 0 1px 3px rgb(0 42 58 / 0.05);
+  --shadow-lg: 0 12px 32px rgb(0 42 58 / 0.12), 0 2px 8px rgb(0 42 58 / 0.06);
+  --shadow-focus: 0 0 0 3px rgb(223 31 56 / 0.28);
+
+  /* --- Motion ----------------------------------------------------------- */
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 400ms;
+  --duration-slower: 700ms;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* --- Layout ----------------------------------------------------------- */
+  --container-prose: 68ch;
+  --container-narrow: 46rem;
+  --container-page: 78rem;
+  --container-wide: 90rem;
+
+  /* Admin chrome */
+  --size-admin-sidebar: 15rem;
+  --size-admin-header: 3.5rem;
+}
+
+/* ---------------------------------------------------------------------- */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: var(--tracking-tighter);
+    line-height: 1.1;
+    margin: 0;
+  }
+
+  /* Visible focus is not optional (CLAUDE.md 12). */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-red);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background: var(--color-brand-navy);
+    color: var(--color-white);
+  }
+
+  /* Respect the user's motion preference everywhere, including Framer Motion
+     transitions that fall through to CSS (CLAUDE.md 6). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Accessible name for icon-only controls. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    padding: 0.75rem 1rem;
+    background: var(--color-brand-navy);
+    color: var(--color-white);
+  }
+  .skip-link:focus {
+    left: 0;
+  }
+}
