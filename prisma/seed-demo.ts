@@ -181,10 +181,117 @@ const SERVICES = [
 ];
 
 const CITIES = [
-  { slug: "gurgaon", name: "Gurgaon", state: "Haryana", order: 1, population: 1153000 },
-  { slug: "delhi", name: "Delhi", state: "Delhi", order: 2, population: 16787941 },
-  { slug: "mumbai", name: "Mumbai", state: "Maharashtra", order: 3, population: 12442373 },
-  { slug: "bengaluru", name: "Bengaluru", state: "Karnataka", order: 4, population: 8443675 },
+  // Coordinates are real: localBusinessSchema refuses to emit without them.
+  { slug: "gurgaon", name: "Gurgaon", state: "Haryana", order: 1, population: 1153000, latitude: 28.4595, longitude: 77.0266 },
+  { slug: "delhi", name: "Delhi", state: "Delhi", order: 2, population: 16787941, latitude: 28.6139, longitude: 77.209 },
+  { slug: "mumbai", name: "Mumbai", state: "Maharashtra", order: 3, population: 12442373, latitude: 19.076, longitude: 72.8777 },
+  { slug: "bengaluru", name: "Bengaluru", state: "Karnataka", order: 4, population: 8443675, latitude: 12.9716, longitude: 77.5946 },
+];
+
+/**
+ * Service x City pages.
+ *
+ * Two published pages for the SAME service, written to be genuinely different
+ * in substance — different market dynamics, different sectors, different
+ * questions — which is what canPublish()'s uniqueness check demands.
+ *
+ * The third is deliberately thin. It stays DRAFT because the seed does not
+ * force a status: publishing runs through publishPage(), which refuses it.
+ */
+const SERVICE_CITY_PAGES = [
+  {
+    serviceSlug: "seo",
+    citySlug: "gurgaon",
+    publish: true,
+    positioning:
+      "Corporate SEO for a market where your buyers are three metro stops away and your competitors share your postcode.",
+    localIntro:
+      "Gurgaon is unusual because the density of competition is geographic as well as commercial. On a single stretch of Golf Course Road you will find four firms selling the same professional service to the same set of multinational headquarters, all bidding on the same terms, all with roughly the same domain authority. Winning here is rarely about publishing more. It is about being unambiguously the most relevant result for a very specific commercial query, and then having the technical foundations to hold that position when a competitor with a larger budget notices. Most of the Gurgaon engagements we take on begin with consolidation rather than production: we find eight pages competing for one query and merge them into one that can actually rank.",
+    marketContext:
+      "The buyer here is usually a procurement or marketing lead inside a large organisation with a formal vendor process, which changes what content has to do. Search does not close the deal; it gets you onto the shortlist. That means the pages that matter are the ones a committee reads after the first call, not the ones that win a click. We weight capability pages, credentials and sector-specific proof far more heavily in Gurgaon than we would for a consumer brand, and we treat brand search volume as a lagging indicator of offline reputation rather than a vanity number to be celebrated in a monthly report.",
+    industries: ["Professional services", "B2B SaaS", "Real estate", "Automotive", "Healthcare"],
+    ctaHeading: "Competing on the same terms as everyone on Golf Course Road?",
+    ctaBody:
+      "We will show you where your pages are competing with each other before we suggest writing anything new.",
+    metaTitle: "SEO services in Gurgaon for B2B and professional firms",
+    metaDescription:
+      "SEO in Gurgaon for firms selling into corporate buyers — consolidation, technical foundations and the credentials pages a procurement committee actually reads.",
+    faqs: [
+      {
+        question: "Do you work with Gurgaon firms selling to head offices rather than consumers?",
+        answer:
+          "Most of our Gurgaon work is exactly that. The approach is different from consumer SEO: the pages that matter are the ones read after the first call, so we invest in capability and credentials pages rather than chasing top-of-funnel volume that procurement will never see.",
+        order: 1,
+      },
+      {
+        question: "Our competitors are on the same road and rank above us. Can that change?",
+        answer:
+          "Usually yes, and usually not by publishing more. In dense markets the common problem is self-competition — several of your own pages targeting one query. Consolidating them is often worth more than a quarter of new content.",
+        order: 2,
+      },
+      {
+        question: "Should we target Delhi NCR terms as well as Gurgaon ones?",
+        answer:
+          "Only where the intent genuinely differs. Building a separate NCR page that repeats the Gurgaon one would set the two competing. We would rather one strong page that ranks across the region than two that split the signal.",
+        order: 3,
+      },
+    ],
+  },
+  {
+    serviceSlug: "seo",
+    citySlug: "mumbai",
+    publish: true,
+    positioning:
+      "Search that follows the calendar — because in Mumbai demand arrives in waves, not a straight line.",
+    localIntro:
+      "Almost every Mumbai account we have run has turned out to be a seasonality problem wearing an SEO costume. Retail spikes hard around festival buying, hospitality swings on the monsoon, financial services move with the fiscal year, and a content calendar built on an annual average will comfortably miss all three. The practical consequence is that publishing timing matters more here than almost anywhere else we work: a guide that lands six weeks before the buying window compounds all season, and the same guide published two weeks late is dead weight for a year. So Mumbai plans start from the client's own sales data rather than a keyword tool, and we build the editorial calendar backwards from the weeks when the money actually moves.",
+    marketContext:
+      "The other distinguishing feature is that Mumbai buyers research on a phone, very often mid-commute, and they abandon anything that takes more than a moment to become useful. Core Web Vitals stop being a technical checkbox and start being a revenue variable you can put a number against. We spend a disproportionate share of the first quarter on page weight, image handling and above-the-fold clarity, and we measure organic performance segmented by device rather than in aggregate, because a healthy blended figure routinely hides a poor mobile one that is quietly costing far more than the desktop number is earning.",
+    industries: ["D2C and ecommerce", "Hospitality", "Financial services", "Media", "Logistics"],
+    ctaHeading: "Missing the window every year?",
+    ctaBody:
+      "Send us last year's sales by month. We can usually tell within a call whether your content is landing early enough to matter.",
+    metaTitle: "SEO services in Mumbai built around seasonal demand",
+    metaDescription:
+      "Mumbai SEO planned from your sales calendar rather than a keyword tool, with mobile performance treated as a revenue variable rather than a technical checkbox.",
+    faqs: [
+      {
+        question: "How far ahead should we publish for a festival buying season?",
+        answer:
+          "Six to ten weeks before the window opens for most categories, longer for anything with a considered purchase. Publishing into the peak itself almost never ranks in time; you are writing for next year at that point.",
+        order: 1,
+      },
+      {
+        question: "Our traffic looks fine but sales do not. Where do you look first?",
+        answer:
+          "Device split. In Mumbai we routinely find a healthy blended figure hiding poor mobile performance, and since most research here happens on a phone mid-commute, that is where the revenue is leaking.",
+        order: 2,
+      },
+      {
+        question: "Does the monsoon really affect search performance?",
+        answer:
+          "For hospitality, logistics and anything with a physical footfall component, noticeably. We plan those calendars around it rather than treating the dip as an algorithm problem when it arrives.",
+        order: 3,
+      },
+    ],
+  },
+  {
+    // Deliberately thin. This one exists to demonstrate the guard: it has an
+    // intro far below the threshold, no market context, no FAQs and no CTA, so
+    // publishPage() refuses it and it stays DRAFT.
+    serviceSlug: "seo",
+    citySlug: "delhi",
+    publish: false,
+    positioning: null,
+    localIntro: "We offer SEO services in Delhi for businesses that want to rank higher.",
+    marketContext: null,
+    industries: ["Retail"],
+    ctaHeading: null,
+    ctaBody: null,
+    metaTitle: "SEO Delhi",
+    metaDescription: null,
+    faqs: [],
+  },
 ];
 
 const PACKAGES = [
@@ -864,7 +971,14 @@ async function seedCities(): Promise<void> {
   for (const c of CITIES) {
     await prisma.city.upsert({
       where: { slug: c.slug },
-      update: { name: c.name, state: c.state, order: c.order, isActive: true },
+      update: {
+        name: c.name,
+        state: c.state,
+        order: c.order,
+        latitude: c.latitude,
+        longitude: c.longitude,
+        isActive: true,
+      },
       create: { ...c, isActive: true },
     });
   }
@@ -1113,6 +1227,83 @@ async function seedFaqs(): Promise<void> {
   console.log(`  faqs: ${FAQS.length}`);
 }
 
+async function seedServiceCityPages(): Promise<void> {
+  let published = 0;
+  let draft = 0;
+
+  for (const p of SERVICE_CITY_PAGES) {
+    const [service, city] = await Promise.all([
+      prisma.service.findUnique({ where: { slug: p.serviceSlug }, select: { id: true } }),
+      prisma.city.findUnique({ where: { slug: p.citySlug }, select: { id: true } }),
+    ]);
+    if (!service || !city) continue;
+
+    const existing = await prisma.serviceCityPage.findUnique({
+      where: { serviceId_cityId: { serviceId: service.id, cityId: city.id } },
+      select: { id: true, seoId: true },
+    });
+
+    const content = {
+      localIntro: p.localIntro,
+      marketContext: p.marketContext,
+      industries: p.industries,
+      positioning: p.positioning,
+      ctaHeading: p.ctaHeading,
+      ctaBody: p.ctaBody,
+      // Status is set from `publish` here only because the seed is not a user.
+      // In the application the ONLY route to PUBLISHED is publishPage(), which
+      // gates on canPublish() — see serviceCityPage.service.ts.
+      status: (p.publish ? "PUBLISHED" : "DRAFT") as "PUBLISHED" | "DRAFT",
+      publishedAt: p.publish ? new Date() : null,
+    };
+
+    let pageId: string;
+
+    if (existing) {
+      await prisma.serviceCityPage.update({ where: { id: existing.id }, data: content });
+      pageId = existing.id;
+
+      if (existing.seoId) {
+        await prisma.seo.update({
+          where: { id: existing.seoId },
+          data: { metaTitle: p.metaTitle, metaDescription: p.metaDescription },
+        });
+      }
+    } else {
+      const seo = await prisma.seo.create({
+        data: {
+          metaTitle: p.metaTitle,
+          metaDescription: p.metaDescription,
+          schemaType: "LOCAL_BUSINESS",
+        },
+      });
+      const created = await prisma.serviceCityPage.create({
+        data: { serviceId: service.id, cityId: city.id, seoId: seo.id, ...content },
+        select: { id: true },
+      });
+      pageId = created.id;
+    }
+
+    await prisma.fAQ.deleteMany({ where: { serviceCityPageId: pageId } });
+    if (p.faqs.length > 0) {
+      await prisma.fAQ.createMany({
+        data: p.faqs.map((f) => ({
+          serviceCityPageId: pageId,
+          question: f.question,
+          answer: f.answer,
+          order: f.order,
+          isActive: true,
+        })),
+      });
+    }
+
+    if (p.publish) published += 1;
+    else draft += 1;
+  }
+
+  console.log(`  service-city pages: ${published} published, ${draft} draft (thin, refused by canPublish)`);
+}
+
 async function seedSiteSettings(): Promise<void> {
   const settings = [
     { key: "site.name", value: "Emporia", group: "general" },
@@ -1185,6 +1376,7 @@ async function main(): Promise<void> {
   await seedBlog(author.id);
   await seedPages();
   await seedFaqs();
+  await seedServiceCityPages();
   await seedSiteSettings();
 
   // Auditable marker, so demo data can be identified and removed later.

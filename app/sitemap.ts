@@ -23,6 +23,7 @@ const STATIC_ROUTES: { path: string; priority: number; changeFrequency: Metadata
   { path: "/services", priority: 0.9, changeFrequency: "weekly" },
   { path: "/packages", priority: 0.9, changeFrequency: "monthly" },
   { path: "/case-studies", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/cities", priority: 0.7, changeFrequency: "monthly" },
   { path: "/blog", priority: 0.8, changeFrequency: "weekly" },
   { path: "/about", priority: 0.6, changeFrequency: "monthly" },
   { path: "/contact", priority: 0.7, changeFrequency: "monthly" },
@@ -41,7 +42,7 @@ const ROUTED_PAGE_SLUGS = new Set([
 ]);
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [services, packages, caseStudies, posts, categories, landingPages] = await Promise.all([
+  const [services, packages, caseStudies, posts, categories, landingPages, cities, localPages] = await Promise.all([
     db.service.findMany({
       where: { status: "PUBLISHED", OR: [{ seo: null }, { seo: { robotsIndex: true } }] },
       select: { slug: true, updatedAt: true },
@@ -65,6 +66,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.page.findMany({
       where: { status: "PUBLISHED", OR: [{ seo: null }, { seo: { robotsIndex: true } }] },
       select: { slug: true, updatedAt: true },
+    }),
+    // A city is only listed once it has a published local page behind it —
+    // an empty city page would be exactly the thin content CLAUDE.md 9 bans.
+    db.city.findMany({
+      where: { isActive: true, servicePages: { some: { status: "PUBLISHED" } } },
+      select: { slug: true, updatedAt: true },
+    }),
+    // Service x City pages. Only PUBLISHED, which publishPage() gates on
+    // canPublish(), so a thin local page cannot reach the sitemap.
+    db.serviceCityPage.findMany({
+      where: {
+        status: "PUBLISHED",
+        service: { status: "PUBLISHED" },
+        city: { isActive: true },
+        OR: [{ seo: null }, { seo: { robotsIndex: true } }],
+      },
+      select: {
+        updatedAt: true,
+        service: { select: { slug: true } },
+        city: { select: { slug: true } },
+      },
     }),
   ]);
 
@@ -119,6 +141,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: category.updatedAt,
       changeFrequency: "weekly",
       priority: 0.5,
+    });
+  }
+
+  for (const city of cities) {
+    entries.push({
+      url: absoluteUrl(`/cities/${city.slug}`),
+      lastModified: city.updatedAt,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    });
+  }
+
+  for (const local of localPages) {
+    entries.push({
+      url: absoluteUrl(`/services/${local.service.slug}/${local.city.slug}`),
+      lastModified: local.updatedAt,
+      changeFrequency: "monthly",
+      priority: 0.7,
     });
   }
 

@@ -249,3 +249,44 @@ export const siteSettings = unstable_cache(
   ["site-settings"],
   { revalidate: ONE_HOUR, tags: [CACHE_TAGS.pages] },
 );
+
+// ---------------------------------------------------------------------------
+// Local SEO
+// ---------------------------------------------------------------------------
+
+export type CitySummary = {
+  id: string;
+  slug: string;
+  name: string;
+  state: string;
+  publishedPageCount: number;
+};
+
+/** Cities that are active AND have at least one publishable local page. */
+export const activeCities = unstable_cache(
+  async (): Promise<CitySummary[]> => {
+    const rows = await db.city.findMany({
+      where: { isActive: true },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        state: true,
+        _count: { select: { servicePages: { where: { status: "PUBLISHED" } } } },
+      },
+    });
+
+    return rows
+      .map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        state: row.state,
+        publishedPageCount: row._count.servicePages,
+      }))
+      .filter((city) => city.publishedPageCount > 0);
+  },
+  ["active-cities"],
+  { revalidate: ONE_HOUR, tags: ["cities", "service-city-pages"] },
+);

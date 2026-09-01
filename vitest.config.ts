@@ -8,6 +8,9 @@ export default defineConfig({
       // `server-only` throws by design outside a React Server Component
       // runtime. Stub it so server modules can be unit tested directly.
       { find: /^server-only$/, replacement: fileURLToPath(new URL("./tests/stubs/server-only.ts", import.meta.url)) },
+      // next/cache needs a Next render context; the stub keeps call sites real
+      // while making the cache a passthrough.
+      { find: /^next\/cache$/, replacement: fileURLToPath(new URL("./tests/stubs/next-cache.ts", import.meta.url)) },
     ],
   },
   test: {

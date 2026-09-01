@@ -18,6 +18,7 @@ const LINKS: readonly { href: Route; label: string }[] = [
   { href: "/services", label: "Services" },
   { href: "/packages", label: "Packages" },
   { href: "/case-studies", label: "Work" },
+  { href: "/cities", label: "Locations" },
   { href: "/blog", label: "Insights" },
   { href: "/about", label: "About" },
 ];
