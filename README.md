@@ -8,10 +8,12 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 2 (foundation) complete.** Schema, auth, RBAC, design tokens, UI
-primitives, admin shell, audit trail and Docker files exist. The public website,
-CRM, sales, projects, portal, media, email, finance, marketing, automation and
-AI phases are not built yet.
+**Status: Phase 3 (public website) complete.** The foundation from Phase 2
+(schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
+Docker) plus the public marketing site: homepage, services, packages, case
+studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
+The SEO engine, local SEO, popups, CRM admin, sales, projects, portal, media,
+email, finance, marketing, automation and AI phases are not built yet.
 
 ---
 
@@ -28,6 +30,7 @@ cp .env.example .env      # then fill in DATABASE_URL and AUTH_SECRET
 npm install
 npm run db:migrate        # apply migrations
 npm run db:seed           # roles, permissions, super admin, lead sources
+npm run db:seed:demo      # optional: demo content so the website has something to render
 npm run dev
 ```
 
@@ -57,8 +60,15 @@ npm run db:migrate       # prisma migrate dev
 npm run db:deploy        # prisma migrate deploy (production)
 npm run db:generate
 npm run db:studio
-npm run db:seed
+npm run db:seed          # configuration: roles, permissions, super admin
+npm run db:seed:demo     # demo website content — never run against production
 ```
+
+`db:seed` and `db:seed:demo` are deliberately separate commands. `db:seed` is
+configuration and is safe anywhere; `db:seed:demo` inserts sample services,
+packages, case studies, blog posts and page content for development. Every demo
+run records `demo.seededAt` in `SiteSetting` so the data can be identified and
+removed later.
 
 > `next start` does **not** work with `output: "standalone"`. To run a
 > production build locally, copy the static assets next to the standalone server
@@ -116,3 +126,14 @@ A few things that will bite you if you assume otherwise:
 - **Authorization is server-side, always.** `middleware.ts` only checks that a
   session token exists so the redirect gets a proper 307; it is not the security
   boundary. Every action, route handler and page re-checks its own permission.
+- **Public routes that read the database are `force-dynamic`, with the data
+  cached.** A static route that queries Postgres gets prerendered at build,
+  which would make the container build need database credentials. The data layer
+  in `lib/content/queries.ts` is wrapped in `unstable_cache` with tags instead,
+  so publishing content can bust the cache immediately.
+- **Cached queries must return serialisable values.** No `Decimal` and no `Date`
+  crosses that boundary — money becomes a fixed 2dp string and dates become ISO
+  strings, which is the rule for reaching a client component anyway.
+- **Do not add a `loading.tsx` above the public routes.** A loading boundary
+  makes Next stream the shell before `notFound()` runs, so dead URLs answer 200
+  with a skeleton instead of a real 404.

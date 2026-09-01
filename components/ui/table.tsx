@@ -10,7 +10,11 @@ import { cn } from "@/lib/utils/cn";
 export function TableWrap({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("w-full overflow-x-auto rounded-lg border border-line bg-white", className)}
+      // `relative` is load-bearing: it makes this the containing block for any
+      // absolutely positioned descendant (an .sr-only label, for instance), so
+      // such elements are clipped by this scroller instead of escaping to the
+      // viewport and widening the whole page.
+      className={cn("relative w-full overflow-x-auto rounded-lg border border-line bg-white", className)}
       {...props}
     />
   );

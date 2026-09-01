@@ -1032,6 +1032,26 @@ Cost: the first hit on a cold path is a dynamic render. For a marketing site
 behind a CDN that is a fair trade, and it is the only option that keeps builds
 reproducible. See §19 D7.
 
+> **Revised in Phase 3.** Avoiding `generateStaticParams` turned out not to be
+> sufficient. A *static* route (`/`, `/about`, `/services`) that reads the
+> database is prerendered at build time regardless, so the first website pages
+> broke the hermetic build immediately — verified by building with no `.env`.
+>
+> The working shape is: public routes that read the database are
+> `export const dynamic = "force-dynamic"`, and the **data** is cached with
+> `unstable_cache` and tags (`lib/content/queries.ts`). The build needs no
+> database, the data layer still caches for an hour, and publishing content can
+> bust a tag immediately instead of waiting out a TTL. Dynamic routes
+> (`[slug]`) keep ordinary ISR.
+>
+> Two constraints follow. Cached queries must return serialisable values — a
+> Prisma `Decimal` would come back as its internal representation, so money is
+> converted to a fixed 2dp string at that boundary and dates to ISO strings.
+> And there must be **no `loading.tsx` above the public routes**: a loading
+> boundary makes Next stream the shell before `notFound()` runs, which answers
+> a dead URL with 200 and a skeleton — a real SEO defect, since Phase 4 depends
+> on correct status codes.
+
 ### 17.3 `docker-compose.yml`
 
 For local development and as the Coolify reference:
