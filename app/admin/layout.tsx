@@ -37,7 +37,7 @@ const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "pending", label: "Projects", icon: "projects", phase: 9 }, permission: "projects.view" },
   { item: { kind: "link", href: "/admin/catalog", label: "Catalog", icon: "content" }, permission: "catalog.view" },
   { item: { kind: "pending", label: "Content", icon: "content" }, permission: "content.view" },
-  { item: { kind: "pending", label: "Marketing", icon: "marketing", phase: 6 }, permission: "campaigns.view" },
+  { item: { kind: "link", href: "/admin/marketing", label: "Marketing", icon: "marketing" }, permission: "popups.view" },
   { item: { kind: "pending", label: "Finance", icon: "finance", phase: 13 }, permission: "invoices.view" },
   { item: { kind: "pending", label: "Media", icon: "media", phase: 11 }, permission: "media.view" },
   { item: { kind: "pending", label: "Analytics", icon: "analytics", phase: 14 }, permission: "analytics.view" },

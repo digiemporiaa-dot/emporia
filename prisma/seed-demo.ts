@@ -1304,6 +1304,106 @@ async function seedServiceCityPages(): Promise<void> {
   console.log(`  service-city pages: ${published} published, ${draft} draft (thin, refused by canPublish)`);
 }
 
+/**
+ * Demo popups.
+ *
+ * One is targeted narrowly at SEO in Gurgaon, which is the Phase 6 exit
+ * criterion: it must fire there and nowhere else.
+ */
+async function seedPopups(): Promise<void> {
+  const [seo, gurgaon] = await Promise.all([
+    prisma.service.findUnique({ where: { slug: "seo" }, select: { id: true } }),
+    prisma.city.findUnique({ where: { slug: "gurgaon" }, select: { id: true } }),
+  ]);
+
+  const definitions = [
+    {
+      name: "SEO Gurgaon — local audit offer",
+      title: "Competing with four firms on the same road?",
+      body: "We will map where your Gurgaon pages compete with each other, free, in one working day.",
+      ctaLabel: "Send me the audit",
+      trigger: "TIME_DELAY" as const,
+      triggerValue: 8,
+      frequency: "ONCE_PER_DAY" as const,
+      priority: 50,
+      isActive: true,
+      targets:
+        seo && gurgaon
+          ? [
+              {
+                type: "SERVICE_CITY" as const,
+                serviceId: seo.id,
+                cityId: gurgaon.id,
+                visitorType: "ANY" as const,
+                device: "ANY" as const,
+              },
+            ]
+          : [],
+    },
+    {
+      name: "Packages — exit intent",
+      title: "Not sure which package fits?",
+      body: "Tell us the number you are trying to move and we will scope it properly.",
+      ctaLabel: "Talk it through",
+      trigger: "EXIT_INTENT" as const,
+      triggerValue: null,
+      frequency: "ONCE_PER_WEEK" as const,
+      priority: 10,
+      isActive: true,
+      targets: [
+        {
+          type: "PAGE" as const,
+          path: "/packages/*",
+          visitorType: "ANY" as const,
+          device: "ANY" as const,
+        },
+      ],
+    },
+  ];
+
+  for (const def of definitions) {
+    const existing = await prisma.popup.findFirst({
+      where: { name: def.name },
+      select: { id: true },
+    });
+
+    const data = {
+      title: def.title,
+      body: def.body,
+      ctaLabel: def.ctaLabel,
+      trigger: def.trigger,
+      triggerValue: def.triggerValue,
+      frequency: def.frequency,
+      priority: def.priority,
+      isActive: def.isActive,
+    };
+
+    const popup = existing
+      ? await prisma.popup.update({ where: { id: existing.id }, data, select: { id: true } })
+      : await prisma.popup.create({
+          data: { name: def.name, ...data },
+          select: { id: true },
+        });
+
+    await prisma.popupTarget.deleteMany({ where: { popupId: popup.id } });
+    for (const target of def.targets) {
+      await prisma.popupTarget.create({
+        data: {
+          popupId: popup.id,
+          type: target.type,
+          path: "path" in target ? target.path : null,
+          serviceId: "serviceId" in target ? target.serviceId : null,
+          cityId: "cityId" in target ? target.cityId : null,
+          visitorType: target.visitorType,
+          device: target.device,
+        },
+      });
+    }
+  }
+
+  console.log(`  popups: ${definitions.length}`);
+}
+
 async function seedSiteSettings(): Promise<void> {
   const settings = [
     { key: "site.name", value: "Emporia", group: "general" },
@@ -1377,6 +1477,7 @@ async function main(): Promise<void> {
   await seedPages();
   await seedFaqs();
   await seedServiceCityPages();
+  await seedPopups();
   await seedSiteSettings();
 
   // Auditable marker, so demo data can be identified and removed later.

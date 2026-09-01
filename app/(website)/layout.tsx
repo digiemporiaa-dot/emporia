@@ -1,5 +1,6 @@
 import { SiteHeader } from "@/components/website/site-header";
 import { SiteFooter } from "@/components/website/site-footer";
+import { PopupHost } from "@/components/website/popup-host";
 
 /**
  * Public website shell.
@@ -16,6 +17,8 @@ export default function WebsiteLayout({ children }: { children: React.ReactNode 
         {children}
       </main>
       <SiteFooter />
+      {/* Asks the server what to show for this path; renders at most one. */}
+      <PopupHost />
     </div>
   );
 }

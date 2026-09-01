@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 5 (local SEO) complete.** The foundation from Phase 2
+**Status: Phase 6 (packages and popups) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -20,7 +20,11 @@ Plus local SEO: the City and Service x City CMS in admin, `/cities/[city]` and
 `/services/[service]/[city]` routes, LocalBusiness schema, and a `canPublish()`
 guard that refuses to publish a thin or templated local page.
 
-Popups, CRM admin, sales, projects, portal, media, email, finance, marketing,
+Plus the package CMS with a package-to-proposal handoff, and a popup engine
+whose targeting is resolved server-side, with submissions creating real CRM
+leads carrying full UTM attribution.
+
+CRM admin, sales, projects, portal, media, email, finance, campaign reporting,
 automation and AI phases are not built yet.
 
 ---
@@ -159,3 +163,13 @@ A few things that will bite you if you assume otherwise:
 - **Demo local content must actually pass `canPublish()`.** The seed writes
   `status` directly because it is not a user; if the seeded copy drifts below a
   threshold you get published content that the product would refuse.
+- **Popup targeting is resolved on the server and the response carries at most
+  one popup.** The client sends only its path; device, new-versus-returning,
+  frequency state, schedule, rules and priority are all decided server-side. A
+  client-side filter would leak every campaign and its targeting to anyone
+  reading the network tab.
+- **Frequency state lives in an httpOnly cookie**, not localStorage, so a
+  visitor cannot clear a key to replay a once-per-user popup.
+- **Attribution is never accepted from a request body.** UTM, referrer, device,
+  service and city are derived from cookies, headers and the path. The capture
+  schemas deliberately have no attribution fields at all.

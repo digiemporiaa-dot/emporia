@@ -11,11 +11,13 @@ export default async function CatalogPage() {
   const actor = await requireActorPage("/admin/catalog");
   requirePermission(actor, "catalog.view");
 
-  const [cities, activeCities, pages, publishedPages] = await Promise.all([
+  const [cities, activeCities, pages, publishedPages, packages, livePackages] = await Promise.all([
     db.city.count(),
     db.city.count({ where: { isActive: true } }),
     db.serviceCityPage.count(),
     db.serviceCityPage.count({ where: { status: "PUBLISHED" } }),
+    db.servicePackage.count(),
+    db.servicePackage.count({ where: { status: "PUBLISHED" } }),
   ]);
 
   const sections = [
@@ -31,6 +33,13 @@ export default async function CatalogPage() {
       detail: `${publishedPages} published of ${pages}`,
       description:
         "Local pages. A page only publishes once it has genuine local content — thin pages stay in draft.",
+    },
+    {
+      href: "/admin/catalog/packages" as const,
+      title: "Packages",
+      detail: `${livePackages} published of ${packages}`,
+      description:
+        "Pricing, features and tax. Prices stay Decimal from this form to the invoice.",
     },
   ];
 

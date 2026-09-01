@@ -5,6 +5,8 @@ import { requireActor } from "@/lib/actor";
 import { citySchema, serviceCityPageSchema, localFaqSchema } from "@/lib/validation/local";
 import * as cityService from "@/lib/services/city.service";
 import * as pageService from "@/lib/services/serviceCityPage.service";
+import * as packageService from "@/lib/services/package.service";
+import { packageSchema } from "@/lib/validation/package";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -188,4 +190,69 @@ export async function deleteLocalFaqAction(id: string, pageId: string): Promise<
   const actor = await requireActor();
   await pageService.deleteLocalFaq(actor, id);
   revalidatePath(`/admin/catalog/service-cities/${pageId}`);
+}
+
+
+export type PackageActionState = ActionResult<{ id: string }> | null;
+
+/** Features arrive as JSON from the client editor, so they are parsed then validated. */
+function parseFeatures(value: FormDataEntryValue | null): unknown {
+  if (typeof value !== "string" || !value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is { label: string; detail?: string; isIncluded?: boolean } =>
+          typeof item === "object" && item !== null && typeof (item as { label?: unknown }).label === "string",
+      )
+      .filter((item) => item.label.trim().length > 0)
+      .map((item) => ({
+        label: item.label,
+        detail: item.detail ? item.detail : null,
+        isIncluded: item.isIncluded !== false,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export async function savePackageAction(
+  _prev: PackageActionState,
+  formData: FormData,
+): Promise<PackageActionState> {
+  try {
+    const actor = await requireActor();
+    const raw = fields(formData);
+
+    const parsed = packageSchema.safeParse({
+      ...raw,
+      isRecommended: raw["isRecommended"] === "on" || raw["isRecommended"] === "true",
+      tagline: raw["tagline"] || null,
+      serviceId: raw["serviceId"] || null,
+      metaTitle: raw["metaTitle"] || null,
+      metaDescription: raw["metaDescription"] || null,
+      features: parseFeatures(formData.get("features")),
+    });
+
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the form.",
+        details: parsed.error.flatten().fieldErrors,
+      };
+    }
+
+    const id = typeof raw["id"] === "string" && raw["id"] ? raw["id"] : null;
+    const pkg = id
+      ? await packageService.updatePackage(actor, id, parsed.data)
+      : await packageService.createPackage(actor, parsed.data);
+
+    revalidatePath("/admin/catalog/packages");
+    return { ok: true, data: { id: pkg.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "savePackage failed");
+    return toActionFailure(error);
+  }
 }
