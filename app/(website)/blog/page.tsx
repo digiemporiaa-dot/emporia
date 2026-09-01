@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
 import { publishedPosts } from "@/lib/content/queries";
 import { Container, Eyebrow } from "@/components/website/primitives";
@@ -12,10 +13,16 @@ import { HeroReveal, Stagger, StaggerItem } from "@/components/website/motion";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Insights",
-  description: "Writing on SEO, paid media, content and marketing measurement.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: "/blog",
+    fallback: {
+      title: "Insights",
+      description:
+        "Writing on SEO, paid media, content and marketing measurement.",
+    },
+  });
+}
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",

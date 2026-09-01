@@ -5,6 +5,11 @@ import { Check, Minus } from "lucide-react";
 import { db } from "@/lib/db";
 import { formatMoney, lineTotals } from "@/lib/money";
 import { Container, CtaButton, Eyebrow } from "@/components/website/primitives";
+import { Breadcrumbs } from "@/components/website/breadcrumbs";
+import { JsonLd } from "@/components/website/json-ld";
+import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
+import { seoSelect } from "@/lib/seo/select";
+import { faqSchema, offerSchema } from "@/lib/seo/schema";
 import { HeroReveal, Reveal } from "@/components/website/motion";
 
 export const revalidate = 3600;
@@ -22,7 +27,7 @@ async function getPackage(slug: string) {
       taxRate: true,
       billingType: true,
       isRecommended: true,
-      seo: { select: { metaTitle: true, metaDescription: true } },
+      seo: { select: seoSelect },
       service: { select: { slug: true, name: true } },
       features: { orderBy: { order: "asc" }, select: { id: true, label: true, detail: true, isIncluded: true } },
       faqs: {
@@ -41,12 +46,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { packageSlug } = await params;
   const pkg = await getPackage(packageSlug);
-  if (!pkg) return { title: "Not found" };
+  if (!pkg) return privateMetadata("Not found");
 
-  return {
-    title: pkg.seo?.metaTitle ?? `${pkg.name} package`,
-    description: pkg.seo?.metaDescription ?? pkg.tagline ?? undefined,
-  };
+  return buildMetadata({
+    path: `/packages/${pkg.slug}`,
+    seo: pkg.seo,
+    fallback: { title: `${pkg.name} package`, description: pkg.tagline },
+  });
 }
 
 export default async function PackageDetailPage({
@@ -66,6 +72,17 @@ export default async function PackageDetailPage({
     taxRate: pkg.taxRate.toString(),
   });
 
+  const schema = [
+    await offerSchema({
+      name: pkg.name,
+      description: pkg.tagline,
+      price: pkg.price.toString(),
+      currency: pkg.currency,
+      path: `/packages/${pkg.slug}`,
+    }),
+    faqSchema(pkg.faqs),
+  ];
+
   const others = await db.servicePackage.findMany({
     where: { status: "PUBLISHED", id: { not: pkg.id } },
     orderBy: { order: "asc" },
@@ -74,16 +91,18 @@ export default async function PackageDetailPage({
 
   return (
     <>
+      <JsonLd schema={schema} />
+
       <section className="border-b border-line">
         <Container className="pt-10 pb-12 lg:pt-14 lg:pb-16">
           <HeroReveal>
-            <nav aria-label="Breadcrumb" className="text-xs text-ink-subtle">
-              <Link href="/packages" className="hover:text-navy-800">
-                Packages
-              </Link>
-              <span aria-hidden="true"> / </span>
-              <span className="text-navy-700">{pkg.name}</span>
-            </nav>
+            <Breadcrumbs
+              crumbs={[
+                { name: "Home", path: "/" },
+                { name: "Packages", path: "/packages" },
+                { name: pkg.name, path: `/packages/${pkg.slug}` },
+              ]}
+            />
 
             <div className="mt-8 grid gap-10 lg:grid-cols-12">
               <div className="lg:col-span-7">

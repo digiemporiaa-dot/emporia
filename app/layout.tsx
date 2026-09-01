@@ -21,13 +21,18 @@ const body = Inter({
   display: "swap",
 });
 
+/**
+ * Root metadata is a floor, not a policy. It carries no robots directive: the
+ * public site sets its own per page through lib/seo, and the private surfaces
+ * (admin, portal, auth) set noindex in their own layouts. A blanket noindex
+ * here would silently deindex the marketing site.
+ */
 export const metadata: Metadata = {
   title: {
     default: "Emporia",
     template: "%s · Emporia",
   },
   description: "Digital marketing agency operating system.",
-  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

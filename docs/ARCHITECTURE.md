@@ -843,6 +843,16 @@ or exceeds a hop limit. A bad redirect never reaches production data.
 > token on the edge produces a real 307 before rendering starts. The
 > reasoning above still holds for redirects: no Prisma on the edge.
 
+> **Noted in Phase 4.** The redirect table stores 301/302/307/308 as the spec
+> asks, but Next's `redirect()` and `permanentRedirect()` emit only **307 and
+> 308** and cannot be made to emit 301 or 302. A redirect saved as 301 is
+> therefore served as 308, and 302 as 307 — the method-preserving equivalents,
+> which search engines treat identically (permanent vs temporary). Serving an
+> exact 301 would require resolving redirects in middleware, which cannot reach
+> Prisma on the edge. `resolveRedirect` returns both `intendedStatus` and
+> `servedStatus` so the difference is visible rather than silent, and an admin
+> UI should present the choice as permanent vs temporary.
+
 ---
 
 ## 13. Local SEO and `canPublish()`

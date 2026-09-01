@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { currentActor } from "@/lib/actor";
+import { privateMetadata } from "@/lib/seo/metadata";
 import { LoginForm } from "./login-form";
 
-export const metadata: Metadata = {
-  title: "Sign in",
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata("Sign in");
 
 export default async function LoginPage({
   searchParams,

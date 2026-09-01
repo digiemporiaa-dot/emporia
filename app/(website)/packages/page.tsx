@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
 import { publishedPackages } from "@/lib/content/queries";
@@ -14,11 +15,16 @@ import { HeroReveal, Reveal } from "@/components/website/motion";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Packages",
-  description:
-    "Indicative monthly packages for SEO, paid media and full-funnel programmes. Prices in INR, excluding tax.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: "/packages",
+    fallback: {
+      title: "Packages",
+      description:
+        "Indicative monthly packages for SEO, paid media and full-funnel programmes. Prices in INR, excluding tax.",
+    },
+  });
+}
 
 const BILLING_LABEL: Record<string, string> = {
   ONE_TIME: "one-time",

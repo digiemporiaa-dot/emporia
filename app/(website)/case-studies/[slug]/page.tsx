@@ -4,6 +4,9 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Container, CtaButton, Eyebrow } from "@/components/website/primitives";
+import { Breadcrumbs } from "@/components/website/breadcrumbs";
+import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
+import { seoSelect } from "@/lib/seo/select";
 import { HeroReveal, Reveal } from "@/components/website/motion";
 
 export const revalidate = 3600;
@@ -24,7 +27,7 @@ async function getStudy(slug: string) {
       clientName: true,
       summary: true,
       body: true,
-      seo: { select: { metaTitle: true, metaDescription: true } },
+      seo: { select: seoSelect },
       service: { select: { slug: true, name: true } },
       city: { select: { slug: true, name: true } },
       metrics: { orderBy: { order: "asc" }, select: { id: true, label: true, value: true, unit: true } },
@@ -39,12 +42,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const study = await getStudy(slug);
-  if (!study) return { title: "Not found" };
+  if (!study) return privateMetadata("Not found");
 
-  return {
-    title: study.seo?.metaTitle ?? study.title,
-    description: study.seo?.metaDescription ?? study.summary,
-  };
+  return buildMetadata({
+    path: `/case-studies/${study.slug}`,
+    seo: study.seo,
+    fallback: { title: study.title, description: study.summary },
+  });
 }
 
 export default async function CaseStudyPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -77,13 +81,14 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
       <section className="bg-navy-800 text-white">
         <Container className="pt-10 pb-12 lg:pt-14 lg:pb-16">
           <HeroReveal>
-            <nav aria-label="Breadcrumb" className="text-xs text-navy-300">
-              <Link href="/case-studies" className="hover:text-white">
-                Work
-              </Link>
-              <span aria-hidden="true"> / </span>
-              <span className="text-navy-100">{study.clientName}</span>
-            </nav>
+            <Breadcrumbs
+              tone="light"
+              crumbs={[
+                { name: "Home", path: "/" },
+                { name: "Work", path: "/case-studies" },
+                { name: study.clientName, path: `/case-studies/${study.slug}` },
+              ]}
+            />
 
             <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-brand-red">
               {study.clientName}

@@ -8,12 +8,16 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 3 (public website) complete.** The foundation from Phase 2
+**Status: Phase 4 (SEO engine) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
-The SEO engine, local SEO, popups, CRM admin, sales, projects, portal, media,
-email, finance, marketing, automation and AI phases are not built yet.
+Plus the SEO engine: one metadata builder with the fallback chains, derived
+canonicals, OG and Twitter cards, dynamic sitemap, robots, breadcrumbs and
+JSON-LD, and DB-managed redirects with loop detection.
+
+Local SEO, popups, CRM admin, sales, projects, portal, media, email, finance,
+marketing, automation and AI phases are not built yet.
 
 ---
 
@@ -137,3 +141,9 @@ A few things that will bite you if you assume otherwise:
 - **Do not add a `loading.tsx` above the public routes.** A loading boundary
   makes Next stream the shell before `notFound()` runs, so dead URLs answer 200
   with a skeleton instead of a real 404.
+- **All page metadata goes through `lib/seo/metadata.ts`.** The title,
+  description, canonical and OG image fallback chains live there once; a
+  template that builds its own metadata object is a bug.
+- **Redirects are served as 307/308, not 301/302.** Next's redirect primitives
+  emit only the method-preserving equivalents. The stored intent is kept and
+  exposed as `intendedStatus`; see `lib/services/redirect.service.ts`.

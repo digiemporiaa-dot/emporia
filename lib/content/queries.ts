@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { toMoneyString } from "@/lib/money";
 import { parseSections, type ParsedSection } from "@/lib/content/sections";
+import { seoSelect, type EntitySeo } from "@/lib/seo/select";
 
 /**
  * Shared read queries for the public website.
@@ -37,7 +38,7 @@ const ONE_HOUR = 3600;
 export type PublishedPage = {
   title: string;
   sections: ParsedSection[];
-  seo: { metaTitle: string | null; metaDescription: string | null } | null;
+  seo: EntitySeo | null;
 };
 
 /** Sections of a published CMS page, validated and ordered. */
@@ -47,7 +48,7 @@ export const publishedPageSections = unstable_cache(
       where: { slug, status: "PUBLISHED" },
       select: {
         title: true,
-        seo: { select: { metaTitle: true, metaDescription: true } },
+        seo: { select: seoSelect },
         sections: {
           orderBy: { order: "asc" },
           select: { id: true, type: true, order: true, content: true },

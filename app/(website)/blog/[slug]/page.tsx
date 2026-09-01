@@ -4,6 +4,11 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Container, CtaButton, Eyebrow } from "@/components/website/primitives";
+import { Breadcrumbs } from "@/components/website/breadcrumbs";
+import { JsonLd } from "@/components/website/json-ld";
+import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
+import { seoSelect } from "@/lib/seo/select";
+import { articleSchema } from "@/lib/seo/schema";
 import { HeroReveal, Reveal } from "@/components/website/motion";
 
 export const revalidate = 3600;
@@ -29,8 +34,9 @@ async function getPost(slug: string) {
       excerpt: true,
       body: true,
       publishedAt: true,
+      updatedAt: true,
       readingMinutes: true,
-      seo: { select: { metaTitle: true, metaDescription: true } },
+      seo: { select: seoSelect },
       author: { select: { name: true } },
       category: { select: { slug: true, name: true } },
       tags: { select: { tag: { select: { slug: true, name: true } } } },
@@ -45,12 +51,16 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const post = await getPost(slug);
-  if (!post) return { title: "Not found" };
+  if (!post) return privateMetadata("Not found");
 
-  return {
-    title: post.seo?.metaTitle ?? post.title,
-    description: post.seo?.metaDescription ?? post.excerpt ?? undefined,
-  };
+  return buildMetadata({
+    path: `/blog/${post.slug}`,
+    seo: post.seo,
+    fallback: { title: post.title, description: post.excerpt },
+    type: "article",
+    publishedTime: post.publishedAt,
+    modifiedTime: post.updatedAt,
+  });
 }
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -60,6 +70,18 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   const parsed = postBody.safeParse(post.body);
   const body = parsed.success ? parsed.data : {};
+
+  // articleSchema returns null for a post with no publication date, so an
+  // incomplete Article node is never emitted.
+  const schema = await articleSchema({
+    title: post.title,
+    description: post.excerpt,
+    path: `/blog/${post.slug}`,
+    authorName: post.author.name,
+    publishedAt: post.publishedAt?.toISOString() ?? null,
+    modifiedAt: post.updatedAt.toISOString(),
+    imageUrl: post.seo?.ogImage?.url ?? null,
+  });
 
   const related = await db.blogPost.findMany({
     where: {
@@ -74,17 +96,22 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   return (
     <>
+      <JsonLd schema={schema} />
+
       <article>
         <section className="border-b border-line">
           <Container width="narrow" className="pt-10 pb-10 lg:pt-14">
             <HeroReveal>
-              <nav aria-label="Breadcrumb" className="text-xs text-ink-subtle">
-                <Link href="/blog" className="hover:text-navy-800">
-                  Insights
-                </Link>
-                <span aria-hidden="true"> / </span>
-                <span className="text-navy-700">{post.category?.name ?? "Article"}</span>
-              </nav>
+              <Breadcrumbs
+                crumbs={[
+                  { name: "Home", path: "/" },
+                  { name: "Insights", path: "/blog" },
+                  ...(post.category
+                    ? [{ name: post.category.name, path: `/blog/category/${post.category.slug}` }]
+                    : []),
+                  { name: post.title, path: `/blog/${post.slug}` },
+                ]}
+              />
 
               <h1 className="mt-7 text-4xl text-navy-800">{post.title}</h1>
 

@@ -5,6 +5,11 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { ArrowLink, Container, CtaButton, Eyebrow, IndexNumber } from "@/components/website/primitives";
+import { Breadcrumbs } from "@/components/website/breadcrumbs";
+import { JsonLd } from "@/components/website/json-ld";
+import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
+import { seoSelect } from "@/lib/seo/select";
+import { faqSchema, serviceSchema } from "@/lib/seo/schema";
 import { HeroReveal, Reveal, Stagger, StaggerItem } from "@/components/website/motion";
 
 export const revalidate = 3600;
@@ -25,7 +30,7 @@ async function getService(slug: string) {
       name: true,
       shortDescription: true,
       body: true,
-      seo: { select: { metaTitle: true, metaDescription: true } },
+      seo: { select: seoSelect },
       faqs: {
         where: { isActive: true },
         orderBy: { order: "asc" },
@@ -64,12 +69,16 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { serviceSlug } = await params;
   const service = await getService(serviceSlug);
-  if (!service) return { title: "Not found" };
+  if (!service) return privateMetadata("Not found");
 
-  return {
-    title: service.seo?.metaTitle ?? service.name,
-    description: service.seo?.metaDescription ?? service.shortDescription,
-  };
+  return buildMetadata({
+    path: `/services/${service.slug}`,
+    seo: service.seo,
+    fallback: {
+      title: `${service.name} services`,
+      description: service.shortDescription,
+    },
+  });
 }
 
 export default async function ServiceDetailPage({
@@ -85,6 +94,16 @@ export default async function ServiceDetailPage({
   const body = parsedBody.success ? parsedBody.data : {};
 
   // Contextual internal links, derived from relationships rather than a dump.
+  // FAQPage is emitted only when the page actually renders questions.
+  const schema = [
+    await serviceSchema({
+      name: service.name,
+      description: service.shortDescription,
+      path: `/services/${service.slug}`,
+    }),
+    faqSchema(service.faqs),
+  ];
+
   const relatedServices = await db.service.findMany({
     where: { status: "PUBLISHED", id: { not: service.id } },
     orderBy: { order: "asc" },
@@ -94,16 +113,18 @@ export default async function ServiceDetailPage({
 
   return (
     <>
+      <JsonLd schema={schema} />
+
       <section className="border-b border-line">
         <Container className="pt-10 pb-12 lg:pt-14 lg:pb-16">
           <HeroReveal>
-            <nav aria-label="Breadcrumb" className="text-xs text-ink-subtle">
-              <Link href="/services" className="hover:text-navy-800">
-                Services
-              </Link>
-              <span aria-hidden="true"> / </span>
-              <span className="text-navy-700">{service.name}</span>
-            </nav>
+            <Breadcrumbs
+              crumbs={[
+                { name: "Home", path: "/" },
+                { name: "Services", path: "/services" },
+                { name: service.name, path: `/services/${service.slug}` },
+              ]}
+            />
 
             <div className="mt-8 grid gap-8 lg:grid-cols-12">
               <div className="lg:col-span-7">

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 import { publishedServices, siteSettings } from "@/lib/content/queries";
 import { Container, Eyebrow } from "@/components/website/primitives";
 import { HeroReveal } from "@/components/website/motion";
@@ -12,10 +13,16 @@ import { ContactForm } from "./contact-form";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Contact",
-  description: "Tell us what you are trying to move. We reply within one working day.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: "/contact",
+    fallback: {
+      title: "Contact",
+      description:
+        "Tell us what you are trying to move. We reply within one working day.",
+    },
+  });
+}
 
 export default async function ContactPage() {
   const [services, details] = await Promise.all([

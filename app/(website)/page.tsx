@@ -10,6 +10,11 @@ import {
   publishedTestimonials,
 } from "@/lib/content/queries";
 import { findSection } from "@/lib/content/sections";
+import { buildMetadata } from "@/lib/seo/metadata";
+import { siteDefaults } from "@/lib/seo/defaults";
+import { organizationSchema, webSiteSchema } from "@/lib/seo/schema";
+import { siteSettings } from "@/lib/content/queries";
+import { JsonLd } from "@/components/website/json-ld";
 import { formatMoney } from "@/lib/money";
 import { ArrowLink, Container, CtaButton, Eyebrow, IndexNumber } from "@/components/website/primitives";
 import { HeroReveal, Reveal, Stagger, StaggerItem } from "@/components/website/motion";
@@ -35,11 +40,13 @@ import { Counter } from "@/components/website/counter";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const page = await publishedPageSections("home");
-  return {
-    title: page?.seo?.metaTitle ?? "Emporia",
-    description: page?.seo?.metaDescription ?? undefined,
-  };
+  const [page, defaults] = await Promise.all([publishedPageSections("home"), siteDefaults()]);
+
+  return buildMetadata({
+    path: "/",
+    seo: page?.seo ?? null,
+    fallback: { title: defaults.defaultTitle, description: defaults.defaultDescription },
+  });
 }
 
 /** Splits a metric like "+312" / "2.4" into a number to count and its affixes. */
@@ -57,12 +64,23 @@ export default async function HomePage() {
   const page = await publishedPageSections("home");
   if (!page) notFound();
 
-  const [services, caseStudies, packages, testimonials, posts] = await Promise.all([
+  const [services, caseStudies, packages, testimonials, posts, contact] = await Promise.all([
     publishedServices(),
     publishedCaseStudies(3),
     publishedPackages(),
     publishedTestimonials(2),
     publishedPosts(3),
+    siteSettings(["site.email", "site.phone", "site.address"]),
+  ]);
+
+  // Organization and WebSite are emitted once, on the home page only.
+  const schema = await Promise.all([
+    organizationSchema({
+      email: contact["site.email"] ?? null,
+      phone: contact["site.phone"] ?? null,
+      address: contact["site.address"] ?? null,
+    }),
+    webSiteSchema(),
   ]);
 
   const hero = findSection(page.sections, "hero");
@@ -78,6 +96,8 @@ export default async function HomePage() {
 
   return (
     <>
+      <JsonLd schema={schema} />
+
       {/* ── Hero: type-led and asymmetric, not a centred banner ───────────── */}
       {hero ? (
         <section className="border-b border-line">

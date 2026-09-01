@@ -1130,6 +1130,23 @@ async function seedSiteSettings(): Promise<void> {
       value: "Sector 44, Gurgaon, Haryana 122003, India",
       group: "contact",
     },
+
+    // SEO defaults — the last link in every fallback chain (lib/seo/defaults).
+    {
+      key: "seo.defaultMetaTitle",
+      value: "Emporia — digital marketing that reports on pipeline",
+      group: "seo",
+    },
+    {
+      key: "seo.defaultMetaDescription",
+      value:
+        "An independent digital marketing agency running SEO, paid media, content and analytics as one measured programme.",
+      group: "seo",
+    },
+    { key: "seo.titleTemplate", value: "%s · Emporia", group: "seo" },
+    { key: "seo.locale", value: "en_IN", group: "seo" },
+    // No seo.ogImageUrl: there is no media library until Phase 11, and an
+    // invented image URL would be worse than none.
   ];
 
   for (const s of settings) {

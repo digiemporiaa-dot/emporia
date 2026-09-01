@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
 import { publishedServices } from "@/lib/content/queries";
 import { Container, Eyebrow, IndexNumber } from "@/components/website/primitives";
@@ -12,11 +13,16 @@ import { HeroReveal, Stagger, StaggerItem } from "@/components/website/motion";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Services",
-  description:
-    "SEO, paid media, social, content, web development and marketing analytics — run as one programme.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: "/services",
+    fallback: {
+      title: "Services",
+      description:
+        "SEO, paid media, social, content, web development and marketing analytics — run as one programme.",
+    },
+  });
+}
 
 export default async function ServicesPage() {
   const services = await publishedServices();

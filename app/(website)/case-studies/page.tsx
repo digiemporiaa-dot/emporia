@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
 import { publishedCaseStudies } from "@/lib/content/queries";
 import { Container, Eyebrow, IndexNumber } from "@/components/website/primitives";
@@ -12,10 +13,16 @@ import { HeroReveal, Stagger, StaggerItem } from "@/components/website/motion";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Case studies",
-  description: "Engagements we can show the numbers for, across SEO, paid media and local search.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: "/case-studies",
+    fallback: {
+      title: "Case studies",
+      description:
+        "Engagements we can show the numbers for, across SEO, paid media and local search.",
+    },
+  });
+}
 
 export default async function CaseStudiesPage() {
   const studies = await publishedCaseStudies();

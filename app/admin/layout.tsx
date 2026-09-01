@@ -10,7 +10,9 @@ import type { Permission } from "@/lib/auth/permissions";
 
 export const metadata: Metadata = {
   title: { default: "Admin", template: "%s · Emporia admin" },
-  robots: { index: false, follow: false },
+  // Never indexed, and reinforced by robots.txt and the sitemap, which exclude
+  // /admin by construction.
+  robots: { index: false, follow: false, googleBot: { index: false, follow: false } },
 };
 
 /**
