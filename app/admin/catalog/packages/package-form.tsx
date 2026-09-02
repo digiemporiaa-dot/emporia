@@ -172,7 +172,7 @@ export function PackageForm({
                   setFeatures((f) => f.map((x, i) => (i === index ? { ...x, label: e.target.value } : x)))
                 }
                 placeholder="Feature"
-                className="h-9 flex-1 rounded-md border border-line-strong px-3 text-sm focus:border-brand-red focus:outline-none"
+                className="h-9 flex-1 rounded-md border border-line-strong px-3 text-sm focus:border-brand-red"
               />
               <input
                 aria-label={`Feature ${index + 1} detail`}
@@ -181,7 +181,7 @@ export function PackageForm({
                   setFeatures((f) => f.map((x, i) => (i === index ? { ...x, detail: e.target.value } : x)))
                 }
                 placeholder="Detail (optional)"
-                className="h-9 flex-1 rounded-md border border-line-strong px-3 text-sm focus:border-brand-red focus:outline-none"
+                className="h-9 flex-1 rounded-md border border-line-strong px-3 text-sm focus:border-brand-red"
               />
               <label className="flex h-9 items-center gap-1.5 whitespace-nowrap text-xs text-ink-muted">
                 <input

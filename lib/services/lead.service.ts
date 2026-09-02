@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { log } from "@/lib/logger";
 import { ValidationError } from "@/lib/errors";
 import { persistTouches, type VisitorContext } from "@/lib/attribution/server";
+import { assignOnCapture, pickAssignee, scoreOnCapture, scoringConfig } from "@/lib/services/crm.service";
 import type { DeviceType } from "@/generated/prisma/enums";
 import type { ContactFormInput } from "@/lib/validation/lead";
 
@@ -60,6 +61,16 @@ export async function captureContactLead(
     serviceId = service?.id ?? null;
   }
 
+  // Resolved before the transaction so the scoring config and the assignee
+  // lookup do not hold the write open.
+  const [config, assigneeId, serviceSlug] = await Promise.all([
+    scoringConfig(),
+    pickAssignee(),
+    serviceId
+      ? db.service.findUnique({ where: { id: serviceId }, select: { slug: true } }).then((s) => s?.slug ?? null)
+      : Promise.resolve(null),
+  ]);
+
   const lead = await db.$transaction(async (tx) => {
     const created = await tx.lead.create({
       data: {
@@ -92,10 +103,25 @@ export async function captureContactLead(
       },
     });
 
+    await scoreOnCapture(
+      tx,
+      created.id,
+      {
+        sourceSlug: WEBSITE_FORM_SOURCE,
+        serviceSlug,
+        phone: input.phone,
+        company: input.company,
+        message: input.message,
+      },
+      config,
+    );
+
+    if (assigneeId) await assignOnCapture(tx, created.id, assigneeId);
+
     return created;
   });
 
-  leadLog.info({ leadId: lead.id, serviceId }, "lead captured from contact form");
+  leadLog.info({ leadId: lead.id, serviceId, assigneeId }, "lead captured from contact form");
 
   return { leadId: lead.id };
 }
@@ -163,6 +189,20 @@ export async function capturePopupLead(
     throw new ValidationError("That form is no longer available.");
   }
 
+  const [config, assigneeId, slugs] = await Promise.all([
+    scoringConfig(),
+    pickAssignee(),
+    Promise.all([
+      context.serviceId
+        ? db.service.findUnique({ where: { id: context.serviceId }, select: { slug: true } }).then((s) => s?.slug ?? null)
+        : Promise.resolve(null),
+      context.cityId
+        ? db.city.findUnique({ where: { id: context.cityId }, select: { slug: true } }).then((c) => c?.slug ?? null)
+        : Promise.resolve(null),
+    ]),
+  ]);
+  const [serviceSlug, citySlug] = slugs;
+
   return db.$transaction(async (tx) => {
     const touches = await persistTouches(tx, context.visitor, context.path);
 
@@ -224,8 +264,31 @@ export async function capturePopupLead(
       });
     }
 
+    await scoreOnCapture(
+      tx,
+      lead.id,
+      {
+        sourceSlug: POPUP_SOURCE,
+        serviceSlug,
+        citySlug,
+        phone: input.phone,
+        company: input.company,
+        message: input.message,
+        packageId: context.packageId,
+      },
+      config,
+    );
+
+    if (assigneeId) await assignOnCapture(tx, lead.id, assigneeId);
+
     leadLog.info(
-      { leadId: lead.id, popupId: popup.id, serviceId: context.serviceId, cityId: context.cityId },
+      {
+        leadId: lead.id,
+        popupId: popup.id,
+        serviceId: context.serviceId,
+        cityId: context.cityId,
+        assigneeId,
+      },
       "lead captured from popup",
     );
 

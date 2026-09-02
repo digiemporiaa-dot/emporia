@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 6 (packages and popups) complete.** The foundation from Phase 2
+**Status: Phase 7 (CRM) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -24,8 +24,12 @@ Plus the package CMS with a package-to-proposal handoff, and a popup engine
 whose targeting is resolved server-side, with submissions creating real CRM
 leads carrying full UTM attribution.
 
-CRM admin, sales, projects, portal, media, email, finance, campaign reporting,
-automation and AI phases are not built yet.
+Plus the CRM: lead list with server-side search, filters, sorting and
+pagination, a kanban pipeline, configurable scoring, assignment with history,
+and a complete activity timeline.
+
+Sales, projects, portal, media, email, finance, campaign reporting, automation
+and AI phases are not built yet.
 
 ---
 
@@ -173,3 +177,15 @@ A few things that will bite you if you assume otherwise:
 - **Attribution is never accepted from a request body.** UTM, referrer, device,
   service and city are derived from cookies, headers and the path. The capture
   schemas deliberately have no attribution fields at all.
+- **Lead visibility is one function.** `visibilityFilter()` in
+  `lib/services/crm.service.ts` returns a Prisma filter, and every lead read and
+  write composes it. `leads.view` shows a user their own leads; `leads.view.team`
+  shows everyone's. Never write a lead query that does not include it — a filter
+  the caller supplies cannot widen it, and a foreign lead must stay
+  indistinguishable from one that does not exist.
+- **There is no `loading.tsx` above `/admin` or the public routes.** A loading
+  boundary streams the shell before `notFound()` runs, so an unauthorised record
+  would answer 200. No data leaks either way, but the status code matters.
+- **Do not use `focus:outline-none` without an explicit `focus:ring`.** It
+  suppresses the global `:focus-visible` outline and leaves only a border tint,
+  which is not an adequate focus indicator.
