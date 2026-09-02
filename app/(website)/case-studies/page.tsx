@@ -53,7 +53,7 @@ export default async function CaseStudiesPage() {
               {studies.map((study, index) => (
                 <StaggerItem key={study.id}>
                   <Link
-                    href={{ pathname: "/case-studies/[slug]", query: { slug: study.slug } }}
+                    href={`/case-studies/${study.slug}`}
                     className="group grid gap-6 border-b border-line py-9 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:gap-8 lg:px-2"
                   >
                     <div className="lg:col-span-7">

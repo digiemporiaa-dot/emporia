@@ -58,10 +58,7 @@ export default async function ServiceCitiesAdminPage() {
                 <TR key={page.id}>
                   <TD>
                     <Link
-                      href={{
-                        pathname: "/admin/catalog/service-cities/[pageId]",
-                        query: { pageId: page.id },
-                      }}
+                      href={`/admin/catalog/service-cities/${page.id}`}
                       className="font-medium text-navy-800 hover:text-brand-red"
                     >
                       {page.service.name}

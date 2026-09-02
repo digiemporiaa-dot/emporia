@@ -220,7 +220,7 @@ export default async function HomePage() {
               {services.map((service, index) => (
                 <StaggerItem key={service.id}>
                   <Link
-                    href={{ pathname: "/services/[serviceSlug]", query: { serviceSlug: service.slug } }}
+                    href={`/services/${service.slug}`}
                     className="group grid items-baseline gap-2 border-b border-line py-6 transition-colors duration-(--duration-fast) hover:bg-surface-muted lg:grid-cols-12 lg:gap-6 lg:px-2"
                   >
                     <div className="flex items-baseline gap-4 lg:col-span-5">
@@ -289,7 +289,7 @@ export default async function HomePage() {
 
             <Reveal delay={0.06}>
               <Link
-                href={{ pathname: "/case-studies/[slug]", query: { slug: featured.slug } }}
+                href={`/case-studies/${featured.slug}`}
                 className="group mt-8 block border-t-2 border-navy-800 pt-8"
               >
                 <div className="grid gap-6 lg:grid-cols-12 lg:gap-10">
@@ -325,7 +325,7 @@ export default async function HomePage() {
                 {secondary.map((study) => (
                   <StaggerItem key={study.id} className="bg-white">
                     <Link
-                      href={{ pathname: "/case-studies/[slug]", query: { slug: study.slug } }}
+                      href={`/case-studies/${study.slug}`}
                       className="group flex h-full flex-col p-6 transition-colors hover:bg-surface-muted sm:p-7"
                     >
                       <p className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
@@ -442,7 +442,7 @@ export default async function HomePage() {
               {packages.map((pkg) => (
                 <StaggerItem key={pkg.id} className="min-w-0 bg-white">
                   <Link
-                    href={{ pathname: "/packages/[packageSlug]", query: { packageSlug: pkg.slug } }}
+                    href={`/packages/${pkg.slug}`}
                     className="group flex h-full flex-col p-7 transition-colors hover:bg-surface-muted"
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -523,7 +523,7 @@ export default async function HomePage() {
               {posts.map((post) => (
                 <StaggerItem key={post.id}>
                   <Link
-                    href={{ pathname: "/blog/[slug]", query: { slug: post.slug } }}
+                    href={`/blog/${post.slug}`}
                     className="group grid gap-1.5 border-b border-line py-5 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:items-baseline lg:gap-6 lg:px-2"
                   >
                     <p className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle lg:col-span-2">

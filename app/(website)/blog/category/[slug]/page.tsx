@@ -97,7 +97,7 @@ export default async function BlogCategoryPage({
               <StaggerItem key={post.id}>
                 <article>
                   <Link
-                    href={{ pathname: "/blog/[slug]", query: { slug: post.slug } }}
+                    href={`/blog/${post.slug}`}
                     className="group grid gap-2 border-b border-line py-6 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:gap-8 lg:px-2"
                   >
                     <div className="lg:col-span-2">

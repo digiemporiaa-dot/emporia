@@ -146,7 +146,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
               {related.map((item) => (
                 <Link
                   key={item.id}
-                  href={{ pathname: "/case-studies/[slug]", query: { slug: item.slug } }}
+                  href={`/case-studies/${item.slug}`}
                   className="group bg-white p-6 transition-colors hover:bg-surface-muted"
                 >
                   <p className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">

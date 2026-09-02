@@ -105,7 +105,7 @@ export default async function PackagesPage() {
                       Request a proposal
                     </CtaButton>
                     <Link
-                      href={{ pathname: "/packages/[packageSlug]", query: { packageSlug: pkg.slug } }}
+                      href={`/packages/${pkg.slug}`}
                       className="inline-flex h-10 items-center px-2 text-sm font-medium text-navy-700 underline underline-offset-4 hover:text-brand-red"
                     >
                       Details

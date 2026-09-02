@@ -195,7 +195,7 @@ export default async function ServiceDetailPage({
               {service.caseStudies.map((study) => (
                 <StaggerItem key={study.id} className="bg-white">
                   <Link
-                    href={{ pathname: "/case-studies/[slug]", query: { slug: study.slug } }}
+                    href={`/case-studies/${study.slug}`}
                     className="group flex h-full flex-col p-6 transition-colors hover:bg-surface-muted"
                   >
                     <p className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
@@ -282,7 +282,7 @@ export default async function ServiceDetailPage({
               {service.packages.map((pkg) => (
                 <Link
                   key={pkg.id}
-                  href={{ pathname: "/packages/[packageSlug]", query: { packageSlug: pkg.slug } }}
+                  href={`/packages/${pkg.slug}`}
                   className="group bg-white p-6 transition-colors hover:bg-surface-muted"
                 >
                   <h3 className="font-display text-lg text-navy-800 group-hover:text-brand-red">
@@ -310,7 +310,7 @@ export default async function ServiceDetailPage({
               {relatedServices.map((related, index) => (
                 <li key={related.id}>
                   <Link
-                    href={{ pathname: "/services/[serviceSlug]", query: { serviceSlug: related.slug } }}
+                    href={`/services/${related.slug}`}
                     className="group grid gap-1.5 border-b border-line py-4 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:items-baseline lg:gap-6 lg:px-2"
                   >
                     <div className="flex items-baseline gap-3 lg:col-span-4">

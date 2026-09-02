@@ -171,7 +171,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
               {related.map((item) => (
                 <li key={item.id}>
                   <Link
-                    href={{ pathname: "/blog/[slug]", query: { slug: item.slug } }}
+                    href={`/blog/${item.slug}`}
                     className="group flex items-baseline justify-between gap-6 border-b border-line py-4"
                   >
                     <span className="font-display text-lg text-navy-800 group-hover:text-brand-red">

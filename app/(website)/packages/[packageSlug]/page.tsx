@@ -121,7 +121,7 @@ export default async function PackageDetailPage({
                   <p className="mt-5 text-sm text-ink-subtle">
                     Built around{" "}
                     <Link
-                      href={{ pathname: "/services/[serviceSlug]", query: { serviceSlug: pkg.service.slug } }}
+                      href={`/services/${pkg.service.slug}`}
                       className="text-brand-red underline underline-offset-4"
                     >
                       {pkg.service.name}
@@ -220,7 +220,7 @@ export default async function PackageDetailPage({
               {others.map((other) => (
                 <Link
                   key={other.id}
-                  href={{ pathname: "/packages/[packageSlug]", query: { packageSlug: other.slug } }}
+                  href={`/packages/${other.slug}`}
                   className="group bg-white p-6 transition-colors hover:bg-surface-muted"
                 >
                   <h3 className="font-display text-lg text-navy-800 group-hover:text-brand-red">

@@ -32,8 +32,8 @@ export const metadata: Metadata = {
 const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "link", href: "/admin", label: "Dashboard", icon: "dashboard" }, permission: "leads.view" },
   { item: { kind: "link", href: "/admin/leads", label: "Leads", icon: "leads" }, permission: "leads.view" },
-  { item: { kind: "pending", label: "Sales", icon: "sales", phase: 8 }, permission: "proposals.view" },
-  { item: { kind: "pending", label: "Clients", icon: "clients", phase: 8 }, permission: "clients.view" },
+  { item: { kind: "link", href: "/admin/sales", label: "Sales", icon: "sales" }, permission: "proposals.view" },
+  { item: { kind: "link", href: "/admin/clients", label: "Clients", icon: "clients" }, permission: "clients.view" },
   { item: { kind: "pending", label: "Projects", icon: "projects", phase: 9 }, permission: "projects.view" },
   { item: { kind: "link", href: "/admin/catalog", label: "Catalog", icon: "content" }, permission: "catalog.view" },
   { item: { kind: "pending", label: "Content", icon: "content" }, permission: "content.view" },

@@ -928,6 +928,93 @@ const FAQS: { serviceSlug: string; question: string; answer: string; order: numb
 // Seeding
 // ---------------------------------------------------------------------------
 
+/**
+ * Quoting catalog. Prices are strings so they reach Prisma's Decimal without
+ * ever being a JS number, and tax is the Indian GST rate on services.
+ */
+const CATALOG: {
+  name: string;
+  description: string;
+  unit: string;
+  unitPrice: string;
+  taxRate: string;
+  serviceSlug: string | null;
+  order: number;
+}[] = [
+  {
+    name: "SEO retainer — growth",
+    description: "Technical fixes, content plan, digital PR and monthly reporting.",
+    unit: "month",
+    unitPrice: "85000.00",
+    taxRate: "18",
+    serviceSlug: "seo",
+    order: 1,
+  },
+  {
+    name: "Local SEO — per city",
+    description: "Google Business Profile, citations, review programme and local landing pages.",
+    unit: "city / month",
+    unitPrice: "28000.00",
+    taxRate: "18",
+    serviceSlug: "seo",
+    order: 2,
+  },
+  {
+    name: "Paid media management",
+    description: "Search, shopping and performance max management. Media spend billed separately.",
+    unit: "month",
+    unitPrice: "70000.00",
+    taxRate: "18",
+    serviceSlug: "paid-media",
+    order: 3,
+  },
+  {
+    name: "Social media management",
+    description: "Twelve posts, four reels, community management and monthly analytics.",
+    unit: "month",
+    unitPrice: "55000.00",
+    taxRate: "18",
+    serviceSlug: "social-media",
+    order: 4,
+  },
+  {
+    name: "Content — long form article",
+    description: "Researched 1,500-word article, briefed, written, edited and optimised.",
+    unit: "article",
+    unitPrice: "12000.00",
+    taxRate: "18",
+    serviceSlug: "content-marketing",
+    order: 5,
+  },
+  {
+    name: "Landing page build",
+    description: "Conversion-focused page: copy, design, build, tracking and A/B variant.",
+    unit: "page",
+    unitPrice: "45000.00",
+    taxRate: "18",
+    serviceSlug: "web-design-development",
+    order: 6,
+  },
+  {
+    name: "Analytics implementation",
+    description: "GA4, server-side tagging, conversion mapping and a reporting dashboard.",
+    unit: "project",
+    unitPrice: "120000.00",
+    taxRate: "18",
+    serviceSlug: "marketing-analytics",
+    order: 7,
+  },
+  {
+    name: "Strategy workshop",
+    description: "Half-day session with the strategy lead, plus a written plan.",
+    unit: "session",
+    unitPrice: "35000.00",
+    taxRate: "18",
+    serviceSlug: null,
+    order: 8,
+  },
+];
+
 async function seedServices(): Promise<void> {
   for (const s of SERVICES) {
     await upsertWithSeo(
@@ -1450,6 +1537,36 @@ async function seedSiteSettings(): Promise<void> {
   console.log(`  site settings: ${settings.length}`);
 }
 
+async function seedCatalog(): Promise<void> {
+  for (const item of CATALOG) {
+    const service = item.serviceSlug
+      ? await prisma.service.findUnique({ where: { slug: item.serviceSlug }, select: { id: true } })
+      : null;
+
+    // CatalogItem has no natural key, so match on the name to stay idempotent.
+    const existing = await prisma.catalogItem.findFirst({
+      where: { name: item.name },
+      select: { id: true },
+    });
+
+    const data = {
+      name: item.name,
+      description: item.description,
+      unit: item.unit,
+      unitPrice: item.unitPrice,
+      taxRate: item.taxRate,
+      currency: "INR" as const,
+      serviceId: service?.id ?? null,
+      isActive: true,
+      order: item.order,
+    };
+
+    if (existing) await prisma.catalogItem.update({ where: { id: existing.id }, data });
+    else await prisma.catalogItem.create({ data });
+  }
+  console.log(`  catalog items: ${CATALOG.length}`);
+}
+
 async function main(): Promise<void> {
   console.log("Seeding DEMO content (npm run db:seed:demo).");
   console.log("This is sample data for development. Do not run it against production.\n");
@@ -1471,6 +1588,7 @@ async function main(): Promise<void> {
   await seedServices();
   await seedCities();
   await seedPackages();
+  await seedCatalog();
   await seedCaseStudies();
   await seedTestimonials();
   await seedBlog(author.id);

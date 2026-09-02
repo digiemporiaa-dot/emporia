@@ -141,10 +141,7 @@ export default async function CityPage({ params }: { params: Promise<{ citySlug:
             {city.servicePages.map((page, index) => (
               <StaggerItem key={page.id}>
                 <Link
-                  href={{
-                    pathname: "/services/[serviceSlug]/[citySlug]",
-                    query: { serviceSlug: page.service.slug, citySlug: city.slug },
-                  }}
+                  href={`/services/${page.service.slug}/${city.slug}`}
                   className="group grid gap-2 border-b border-line py-6 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:gap-6 lg:px-2"
                 >
                   <div className="flex items-baseline gap-4 lg:col-span-5">
@@ -172,7 +169,7 @@ export default async function CityPage({ params }: { params: Promise<{ citySlug:
               {city.caseStudies.map((study) => (
                 <Link
                   key={study.id}
-                  href={{ pathname: "/case-studies/[slug]", query: { slug: study.slug } }}
+                  href={`/case-studies/${study.slug}`}
                   className="group bg-white p-6 transition-colors hover:bg-surface-muted"
                 >
                   <p className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
@@ -226,7 +223,7 @@ export default async function CityPage({ params }: { params: Promise<{ citySlug:
               {nearby.map((other) => (
                 <li key={other.id}>
                   <Link
-                    href={{ pathname: "/cities/[citySlug]", query: { citySlug: other.slug } }}
+                    href={`/cities/${other.slug}`}
                     className="inline-flex rounded-sm border border-line-strong px-3 py-1.5 text-sm text-navy-700 transition-colors hover:border-brand-red hover:text-brand-red"
                   >
                     {other.name}

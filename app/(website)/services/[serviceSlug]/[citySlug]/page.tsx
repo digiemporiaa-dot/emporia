@@ -276,7 +276,7 @@ export default async function ServiceCityPage({
               {localCaseStudies.map((study) => (
                 <Link
                   key={study.id}
-                  href={{ pathname: "/case-studies/[slug]", query: { slug: study.slug } }}
+                  href={`/case-studies/${study.slug}`}
                   className="group bg-white p-6 transition-colors hover:bg-surface-muted"
                 >
                   <p className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
@@ -366,10 +366,7 @@ export default async function ServiceCityPage({
                     {siblingCities.map((sibling, index) => (
                       <StaggerItem key={sibling.id}>
                         <Link
-                          href={{
-                            pathname: "/services/[serviceSlug]/[citySlug]",
-                            query: { serviceSlug: page.service.slug, citySlug: sibling.city.slug },
-                          }}
+                          href={`/services/${page.service.slug}/${sibling.city.slug}`}
                           className="group flex items-baseline gap-3 border-b border-line py-3 text-sm"
                         >
                           <IndexNumber value={index + 1} />
@@ -390,10 +387,7 @@ export default async function ServiceCityPage({
                     {otherServices.map((other, index) => (
                       <StaggerItem key={other.id}>
                         <Link
-                          href={{
-                            pathname: "/services/[serviceSlug]/[citySlug]",
-                            query: { serviceSlug: other.service.slug, citySlug: page.city.slug },
-                          }}
+                          href={`/services/${other.service.slug}/${page.city.slug}`}
                           className="group flex items-baseline gap-3 border-b border-line py-3 text-sm"
                         >
                           <IndexNumber value={index + 1} />

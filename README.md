@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 7 (CRM) complete.** The foundation from Phase 2
+**Status: Phase 8 (Sales) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -28,8 +28,12 @@ Plus the CRM: lead list with server-side search, filters, sorting and
 pagination, a kanban pipeline, configurable scoring, assignment with history,
 and a complete activity timeline.
 
-Sales, projects, portal, media, email, finance, campaign reporting, automation
-and AI phases are not built yet.
+Plus sales: a reusable quoting catalog, opportunities, proposals with line
+items, revisions and Decimal totals, the full proposal lifecycle, contracts with
+numbering and renewal dates, and lead-to-client conversion on acceptance.
+
+Projects, portal, media, email, finance, campaign reporting, automation and AI
+phases are not built yet.
 
 ---
 
@@ -150,6 +154,11 @@ A few things that will bite you if you assume otherwise:
 - **Cached queries must return serialisable values.** No `Decimal` and no `Date`
   crosses that boundary — money becomes a fixed 2dp string and dates become ISO
   strings, which is the rule for reaching a client component anyway.
+- **Never give `Link` an object `href` with `typedRoutes`.** In the App Router
+  an object href is formatted literally, so
+  `{ pathname: "/services/[serviceSlug]", query: { serviceSlug } }` renders
+  `/services/[serviceSlug]?serviceSlug=seo` — a link to a page that does not
+  exist. Use a template literal: `` href={`/services/${slug}`} ``.
 - **Do not add a `loading.tsx` above the public routes.** A loading boundary
   makes Next stream the shell before `notFound()` runs, so dead URLs answer 200
   with a skeleton instead of a real 404.
@@ -167,6 +176,11 @@ A few things that will bite you if you assume otherwise:
 - **Demo local content must actually pass `canPublish()`.** The seed writes
   `status` directly because it is not a user; if the seeded copy drifts below a
   threshold you get published content that the product would refuse.
+- **Money is priced once and stored, never recomputed on read.** A proposal
+  keeps its own line totals, subtotal, discount, tax and total. Editing the
+  catalog or the tax logic later must not move a figure a client has already
+  been quoted, so `lib/money` computes at write time and the stored values are
+  what is displayed.
 - **Popup targeting is resolved on the server and the response carries at most
   one popup.** The client sends only its path; device, new-versus-returning,
   frequency state, schedule, rules and priority are all decided server-side. A

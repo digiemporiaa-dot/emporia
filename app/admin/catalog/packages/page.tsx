@@ -54,10 +54,7 @@ export default async function PackagesAdminPage() {
                 <TR key={pkg.id}>
                   <TD>
                     <Link
-                      href={{
-                        pathname: "/admin/catalog/packages/[packageId]",
-                        query: { packageId: pkg.id },
-                      }}
+                      href={`/admin/catalog/packages/${pkg.id}`}
                       className="font-medium text-navy-800 hover:text-brand-red"
                     >
                       {pkg.name}

@@ -56,7 +56,7 @@ export default async function PopupsAdminPage() {
                 <TR key={popup.id}>
                   <TD>
                     <Link
-                      href={{ pathname: "/admin/marketing/popups/[popupId]", query: { popupId: popup.id } }}
+                      href={`/admin/marketing/popups/${popup.id}`}
                       className="font-medium text-navy-800 hover:text-brand-red"
                     >
                       {popup.name}

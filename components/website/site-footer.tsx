@@ -47,7 +47,7 @@ export async function SiteFooter() {
               {services.map((service) => (
                 <li key={service.slug}>
                   <Link
-                    href={{ pathname: "/services/[serviceSlug]", query: { serviceSlug: service.slug } }}
+                    href={`/services/${service.slug}`}
                     className="text-sm text-navy-100 transition-colors hover:text-white"
                   >
                     {service.name}

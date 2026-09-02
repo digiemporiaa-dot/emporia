@@ -105,7 +105,7 @@ export default async function LeadsPage({
                   <TR key={lead.id}>
                     <TD>
                       <Link
-                        href={{ pathname: "/admin/leads/[leadId]", query: { leadId: lead.id } }}
+                        href={`/admin/leads/${lead.id}`}
                         className="font-medium text-navy-800 hover:text-brand-red"
                       >
                         {lead.name}

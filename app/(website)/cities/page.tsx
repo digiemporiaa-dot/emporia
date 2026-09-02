@@ -51,7 +51,7 @@ export default async function CitiesPage() {
               {cities.map((city, index) => (
                 <StaggerItem key={city.id}>
                   <Link
-                    href={{ pathname: "/cities/[citySlug]", query: { citySlug: city.slug } }}
+                    href={`/cities/${city.slug}`}
                     className="group grid gap-2 border-b border-line py-6 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:items-baseline lg:gap-6 lg:px-2"
                   >
                     <div className="flex items-baseline gap-4 lg:col-span-5">

@@ -55,7 +55,7 @@ export default async function ServicesPage() {
               {services.map((service, index) => (
                 <StaggerItem key={service.id}>
                   <Link
-                    href={{ pathname: "/services/[serviceSlug]", query: { serviceSlug: service.slug } }}
+                    href={`/services/${service.slug}`}
                     className="group grid gap-3 border-b border-line py-8 transition-colors duration-(--duration-fast) hover:bg-surface-muted lg:grid-cols-12 lg:gap-8 lg:px-2"
                   >
                     <div className="flex items-baseline gap-4 lg:col-span-5">

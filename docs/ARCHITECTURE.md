@@ -526,6 +526,17 @@ a deploy while credentials stay server-side (CLAUDE.md §2 rule 6).
 /[...landingPage]                     CMS landing pages + redirect fallback
 ```
 
+> **Noted in Phase 8.** Internal links to any of these dynamic routes must be
+> written as template literals — `` href={`/services/${slug}`} ``. `next/link`
+> given an object href formats it literally under the App Router, so
+> `{ pathname: "/services/[serviceSlug]", query: { serviceSlug: slug } }`
+> renders `/services/[serviceSlug]?serviceSlug=seo`. Phases 3 to 7 used the
+> object form throughout; every internal link to a dynamic page was therefore
+> pointing at a URL that does not exist, and internal linking — a stated SEO
+> requirement — was silently broken until Phase 8 converted them all. Crawling
+> the site by following its own links, rather than visiting known URLs, is what
+> caught it.
+
 `[...landingPage]` is the last-resort match and does double duty: it resolves a
 CMS landing page, and failing that consults the `Redirect` table before
 returning 404. See §12.4 — this is why no Prisma call is needed in middleware.

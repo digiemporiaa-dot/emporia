@@ -59,7 +59,7 @@ export default async function CitiesAdminPage() {
                   <TD>
                     {canEdit ? (
                       <Link
-                        href={{ pathname: "/admin/catalog/cities/[cityId]", query: { cityId: city.id } }}
+                        href={`/admin/catalog/cities/${city.id}`}
                         className="font-medium text-navy-800 hover:text-brand-red"
                       >
                         {city.name}
