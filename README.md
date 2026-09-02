@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 8 (Sales) complete.** The foundation from Phase 2
+**Status: Phase 9 (Projects) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -32,8 +32,13 @@ Plus sales: a reusable quoting catalog, opportunities, proposals with line
 items, revisions and Decimal totals, the full proposal lifecycle, contracts with
 numbering and renewal dates, and lead-to-client conversion on acceptance.
 
-Projects, portal, media, email, finance, campaign reporting, automation and AI
-phases are not built yet.
+Plus delivery: projects with derived health, tasks with subtasks and
+dependencies, milestones, comments, time tracking, a task board, a content
+calendar across seven channels with the full workflow, and creative approvals
+with version history.
+
+Portal, media, email, finance, campaign reporting, automation and AI phases are
+not built yet.
 
 ---
 
@@ -176,6 +181,17 @@ A few things that will bite you if you assume otherwise:
 - **Demo local content must actually pass `canPublish()`.** The seed writes
   `status` directly because it is not a user; if the seeded copy drifts below a
   threshold you get published content that the product would refuse.
+- **Project health is derived, never typed in.** `lib/projects/health.ts`
+  computes it from the project's own tasks, milestones and dates, and
+  `recomputeHealth` runs after every change that could move it. A manager
+  marking a late project "on track" would make the column worthless.
+- **Time is entered in hours and stored in whole minutes.** The conversion goes
+  through Decimal, not JS floats: `4.1 * 60` is `245.99999999999997`, and
+  flooring that loses a minute from every entry. See `lib/projects/hours.ts`.
+- **A content item takes its `clientId` from its project, never from the
+  caller.** That denormalised column is what portal isolation filters on in
+  phase 10, so it must not depend on a join being written correctly at every
+  call site.
 - **Money is priced once and stored, never recomputed on read.** A proposal
   keeps its own line totals, subtotal, discount, tax and total. Editing the
   catalog or the tax logic later must not move a figure a client has already
