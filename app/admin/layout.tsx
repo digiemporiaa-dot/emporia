@@ -40,7 +40,7 @@ const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "link", href: "/admin/approvals", label: "Approvals", icon: "approvals" }, permission: "approvals.view" },
   { item: { kind: "link", href: "/admin/marketing", label: "Marketing", icon: "marketing" }, permission: "popups.view" },
   { item: { kind: "pending", label: "Finance", icon: "finance", phase: 13 }, permission: "invoices.view" },
-  { item: { kind: "pending", label: "Media", icon: "media", phase: 11 }, permission: "media.view" },
+  { item: { kind: "link", href: "/admin/media", label: "Media", icon: "media" }, permission: "media.view" },
   { item: { kind: "pending", label: "Analytics", icon: "analytics", phase: 14 }, permission: "analytics.view" },
   { item: { kind: "pending", label: "Settings", icon: "settings" }, permission: "settings.view" },
 ];

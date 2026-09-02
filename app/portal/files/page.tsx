@@ -32,9 +32,9 @@ export default async function PortalFilesPage() {
           <CardBody>
             <p className="text-sm text-ink-subtle">No files yet.</p>
             <p className="mt-2 text-xs text-ink-subtle">
-              File storage is built in phase 11. This list is real — it reads the files attached to
-              your own records — but nothing has been attached yet, and uploading from here is not
-              available.
+              Files appear here as they are attached to your contracts, approvals and content.
+              Uploading from this side is not available — send anything you need to share through
+              Messages.
             </p>
           </CardBody>
         </Card>

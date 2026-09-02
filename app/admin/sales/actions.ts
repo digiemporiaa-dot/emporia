@@ -214,6 +214,7 @@ export async function saveContractAction(
       endsAt: raw["endsAt"] === "" ? null : raw["endsAt"],
       renewalAt: raw["renewalAt"] === "" ? null : raw["renewalAt"],
       terms: raw["terms"] || null,
+      documentId: raw["documentId"] || null,
     });
 
     if (!parsed.success) {

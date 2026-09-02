@@ -278,6 +278,7 @@ export async function saveContentItemAction(
       brief: raw["brief"] || null,
       ownerId: raw["ownerId"] || null,
       scheduledFor: raw["scheduledFor"] === "" ? null : raw["scheduledFor"],
+      mediaId: raw["mediaId"] || null,
     });
 
     if (!parsed.success) return invalid(parsed.error);
@@ -329,6 +330,7 @@ export async function requestApprovalAction(
       projectId: raw["projectId"] || null,
       contentItemId: raw["contentItemId"] || null,
       notes: raw["notes"] || null,
+      mediaId: raw["mediaId"] || null,
     });
 
     if (!parsed.success) return invalid(parsed.error);
@@ -352,6 +354,7 @@ export async function addApprovalVersionAction(
     const parsed = approvalVersionSchema.safeParse({
       approvalId: formData.get("approvalId"),
       notes: formData.get("notes") || null,
+      mediaId: formData.get("mediaId") || null,
     });
 
     if (!parsed.success) return invalid(parsed.error);
@@ -360,6 +363,7 @@ export async function addApprovalVersionAction(
       actor,
       parsed.data.approvalId,
       parsed.data.notes ?? null,
+      parsed.data.mediaId ?? null,
     );
 
     revalidatePath("/admin/approvals");

@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertCircle } from "lucide-react";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { MediaPicker } from "@/components/admin/media-picker";
 import { saveContractAction, type SalesActionState } from "../actions";
 
 type Option = { id: string; name: string };
@@ -117,6 +118,13 @@ export function ContractForm({
       <Field id="terms" label="Terms" hint="Plain text, stored with the contract" error={err("terms")}>
         {(aria) => <Textarea {...aria} name="terms" rows={6} />}
       </Field>
+
+      <MediaPicker
+        name="documentId"
+        label="Signed agreement"
+        accept="DOCUMENT"
+        hint="The client sees this under Documents in their portal"
+      />
 
       <Submit />
     </form>

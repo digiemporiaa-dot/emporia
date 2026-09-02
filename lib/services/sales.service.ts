@@ -861,6 +861,7 @@ export async function createContract(actor: Actor, input: ContractInput) {
           endsAt: input.endsAt ?? null,
           renewalAt: input.renewalAt ?? null,
           terms: input.terms ?? null,
+          documentId: input.documentId || null,
         },
       });
     },
@@ -905,6 +906,7 @@ export async function contractFromProposal(actor: Actor, proposalId: string, sta
     endsAt: null,
     renewalAt: null,
     terms: null,
+    documentId: null,
   });
 }
 

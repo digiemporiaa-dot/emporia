@@ -126,6 +126,30 @@ export default async function ApprovalPage({
                     <p className="mt-1.5 whitespace-pre-wrap text-xs text-ink">{version.notes}</p>
                   ) : null}
 
+                  {version.media ? (
+                    <figure className="mt-2">
+                      {version.media.type === "IMAGE" ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- arbitrary uploads on a third-party origin
+                        <img
+                          src={version.media.url}
+                          alt={version.media.alt ?? version.media.filename}
+                          className="max-h-72 rounded-md border border-line bg-surface-muted object-contain"
+                        />
+                      ) : null}
+                      <figcaption className="mt-1">
+                        <a
+                          href={version.media.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="text-2xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
+                        >
+                          {version.media.filename}
+                        </a>
+                      </figcaption>
+                    </figure>
+                  ) : null}
+
+
                   {version.feedback ? (
                     <p className="mt-1.5 whitespace-pre-wrap rounded-md border border-warning/30 bg-warning-bg px-2.5 py-2 text-xs text-warning">
                       {version.feedback}
@@ -136,8 +160,8 @@ export default async function ApprovalPage({
             </ol>
 
             <p className="mt-4 border-t border-line pt-3 text-2xs text-ink-subtle">
-              Attaching creative files to a version needs the media library, which is built in phase
-              11. Until then a version records the notes and the decision, not the artwork.
+              Each version keeps its own creative, so approving one does not silently approve a file
+              that was swapped afterwards.
             </p>
           </CardBody>
         </Card>

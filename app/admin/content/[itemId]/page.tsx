@@ -105,6 +105,29 @@ export default async function ContentItemPage({
               ) : (
                 <p className="text-xs text-ink-subtle">No brief written.</p>
               )}
+
+              {item.media ? (
+                <figure className="mt-4 border-t border-line pt-4">
+                  {item.media.type === "IMAGE" ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- arbitrary uploads on a third-party origin
+                    <img
+                      src={item.media.url}
+                      alt={item.media.alt ?? item.media.filename}
+                      className="max-h-96 rounded-md border border-line bg-surface-muted object-contain"
+                    />
+                  ) : null}
+                  <figcaption className="mt-1.5">
+                    <a
+                      href={item.media.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="text-2xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
+                    >
+                      {item.media.filename}
+                    </a>
+                  </figcaption>
+                </figure>
+              ) : null}
             </CardBody>
           </Card>
 
@@ -128,6 +151,7 @@ export default async function ContentItemPage({
                     brief: item.brief,
                     ownerId: item.ownerId,
                     scheduledFor: item.scheduledFor,
+                    media: item.media,
                   }}
                 />
               </CardBody>

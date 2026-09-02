@@ -45,6 +45,12 @@ const envSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET_NAME: z.string().optional(),
   R2_PUBLIC_URL: z.string().url().optional(),
+  /**
+   * Overrides the S3 endpoint derived from the account id. Needed for R2's
+   * jurisdiction-specific endpoints, and for pointing at a local
+   * S3-compatible server.
+   */
+  R2_ENDPOINT: z.string().url().optional(),
 
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
@@ -136,6 +142,7 @@ export function r2Config() {
     secretAccessKey: e.R2_SECRET_ACCESS_KEY,
     bucket: e.R2_BUCKET_NAME,
     publicUrl: e.R2_PUBLIC_URL,
+    endpoint: e.R2_ENDPOINT ?? null,
   };
 }
 

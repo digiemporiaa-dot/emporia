@@ -212,6 +212,8 @@ export async function getApproval(actor: PortalActor, id: string) {
           status: true,
           feedback: true,
           createdAt: true,
+          // The creative itself. Only the file, never who uploaded it.
+          media: { select: { id: true, url: true, filename: true, type: true, alt: true } },
         },
       },
     },
@@ -489,7 +491,9 @@ export async function listFiles(actor: PortalActor) {
 
   const [contracts, approvalVersions, contentItems] = await Promise.all([
     db.contract.findMany({
-      where: { clientId, documentId: { not: null } },
+      // The same visibility rule as listContracts: a draft contract is not the
+      // client's business, and neither is the document attached to it.
+      where: { clientId, documentId: { not: null }, status: { not: "DRAFT" } },
       select: {
         number: true,
         title: true,

@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertCircle } from "lucide-react";
 import { Button, Field, Select, Textarea } from "@/components/ui";
+import { MediaPicker } from "@/components/admin/media-picker";
 import {
   addApprovalVersionAction,
   decideApprovalAction,
@@ -101,6 +102,13 @@ export function NewVersionForm({ approvalId }: { approvalId: string }) {
       <Field id="version-notes" label="What changed">
         {(aria) => <Textarea {...aria} name="notes" rows={3} />}
       </Field>
+
+      <MediaPicker
+        name="mediaId"
+        label="Creative"
+        accept="ANY"
+        hint="The artwork this version is asking approval for"
+      />
 
       {state && !state.ok ? <Problem message={state.message} /> : null}
       <Submit label="Submit a new version" />

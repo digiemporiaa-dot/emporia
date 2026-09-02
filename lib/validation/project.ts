@@ -149,6 +149,7 @@ export const contentItemSchema = z.object({
   brief: z.string().trim().max(5000).nullable().optional(),
   ownerId: optionalId,
   scheduledFor: z.coerce.date().nullable().optional(),
+  mediaId: optionalId,
 });
 
 export type ContentItemInput = z.infer<typeof contentItemSchema>;
@@ -171,6 +172,8 @@ export const approvalSchema = z.object({
   projectId: optionalId,
   contentItemId: optionalId,
   notes: z.string().trim().max(5000).nullable().optional(),
+  /** The creative being approved, from the media library. */
+  mediaId: optionalId,
 });
 
 export type ApprovalInput = z.infer<typeof approvalSchema>;
@@ -178,6 +181,7 @@ export type ApprovalInput = z.infer<typeof approvalSchema>;
 export const approvalVersionSchema = z.object({
   approvalId: id,
   notes: z.string().trim().max(5000).nullable().optional(),
+  mediaId: optionalId,
 });
 
 export const approvalDecisionSchema = z.object({

@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 10 (Client portal) complete.** The foundation from Phase 2
+**Status: Phase 11 (Media) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -42,8 +42,11 @@ flow, where a client sees their projects, content, approvals, documents,
 invoices, campaigns, files and a message thread — every query scoped by the
 session's own client, proved by an isolation suite.
 
-Media, email, finance, campaign reporting, automation and AI phases are not
-built yet.
+Plus the media library: presigned uploads straight from the browser to
+Cloudflare R2, server-side content sniffing that refuses a spoofed extension,
+folders, versioning, and a picker wired into approvals, content and contracts.
+
+Email, finance, campaign reporting, automation and AI phases are not built yet.
 
 ---
 
@@ -186,6 +189,23 @@ A few things that will bite you if you assume otherwise:
 - **Demo local content must actually pass `canPublish()`.** The seed writes
   `status` directly because it is not a user; if the seeded copy drifts below a
   threshold you get published content that the product would refuse.
+- **Uploaded files are identified by their bytes, never their name.** The
+  browser's `Content-Type` and the filename are claims; `lib/media/sniff.ts`
+  checks the leading bytes of the object that actually landed, and a mismatch
+  deletes it from the bucket and refuses. SVGs are additionally refused if they
+  carry script or external references — an SVG is a document the browser
+  executes.
+- **Object keys are generated, never derived from a filename.** Random, date
+  partitioned, and given the extension of the *verified* type — so
+  `invoice.pdf.exe` cannot produce an `.exe` key, and a public URL leaks nothing
+  about who uploaded what.
+- **The upload intent is signed, not stored.** Between presign and confirm the
+  server remembers the key, type, exact size and user by HMAC-ing them into an
+  opaque id (`lib/media/intent.ts`), so confirm cannot be driven by a
+  caller-supplied key and there is no pending-row table to sweep.
+- **Browser uploads need CORS on the bucket.** R2 must allow PUT from the site's
+  origin, or the presigned URL is refused by the browser before it reaches
+  Cloudflare. Nothing in the app can detect that for you.
 - **The portal never accepts a client id.** Every function in
   `lib/services/portal.service.ts` takes a `PortalActor` — whose `clientId` is
   non-nullable — and scopes on that. A record id from the browser is resolved

@@ -104,6 +104,8 @@ export async function getContentItem(actor: Actor, id: string) {
       createdAt: true,
       projectId: true,
       ownerId: true,
+      mediaId: true,
+      media: { select: { id: true, url: true, filename: true, type: true, alt: true } },
       owner: { select: { id: true, name: true } },
       client: { select: { id: true, name: true } },
       project: { select: { id: true, code: true, name: true } },
@@ -150,6 +152,7 @@ export async function saveContentItem(actor: Actor, id: string | null, input: Co
         brief: input.brief ?? null,
         ownerId: input.ownerId || null,
         scheduledFor: input.scheduledFor ?? null,
+        mediaId: input.mediaId || null,
       };
 
       return id
@@ -277,6 +280,7 @@ export async function getApproval(actor: Actor, id: string) {
           feedback: true,
           createdAt: true,
           createdBy: { select: { id: true, name: true } },
+          media: { select: { id: true, url: true, filename: true, type: true, alt: true } },
         },
       },
     },
@@ -343,6 +347,7 @@ export async function requestApproval(actor: Actor, input: ApprovalInput) {
           approvalId: approval.id,
           version: 1,
           notes: input.notes ?? null,
+          mediaId: input.mediaId || null,
           status: "PENDING",
           createdById: actor.userId,
         },
@@ -359,7 +364,12 @@ export async function requestApproval(actor: Actor, input: ApprovalInput) {
  * Versions are append-only. Editing the version a client already commented on
  * would rewrite the thing they responded to.
  */
-export async function addApprovalVersion(actor: Actor, approvalId: string, notes: string | null) {
+export async function addApprovalVersion(
+  actor: Actor,
+  approvalId: string,
+  notes: string | null,
+  mediaId: string | null = null,
+) {
   requirePermission(actor, "approvals.request");
 
   const approval = await db.approval.findFirst({
@@ -398,6 +408,7 @@ export async function addApprovalVersion(actor: Actor, approvalId: string, notes
           approvalId,
           version,
           notes,
+          mediaId,
           status: "PENDING",
           createdById: actor.userId,
         },

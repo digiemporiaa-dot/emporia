@@ -80,6 +80,8 @@ export const contractSchema = z.object({
   endsAt: z.coerce.date().nullable().optional(),
   renewalAt: z.coerce.date().nullable().optional(),
   terms: z.string().trim().max(20000).nullable().optional(),
+  /** The signed agreement itself, from the media library. */
+  documentId: z.string().trim().max(40).nullable().optional(),
 });
 
 export type ContractInput = z.infer<typeof contractSchema>;

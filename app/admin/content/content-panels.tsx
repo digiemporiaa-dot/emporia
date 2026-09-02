@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertCircle, Plus } from "lucide-react";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { MediaPicker } from "@/components/admin/media-picker";
 import {
   CONTENT_CHANNEL_LABEL,
   CONTENT_STAGES,
@@ -159,6 +160,7 @@ export function ContentItemForm({
     brief: string | null;
     ownerId: string | null;
     scheduledFor: Date | null;
+    media?: { id: string; url: string; filename: string; type: string } | null;
   };
 }) {
   const [state, formAction] = useActionState<DeliveryActionState, FormData>(
@@ -246,6 +248,14 @@ export function ContentItemForm({
         </Field>
       </div>
 
+      <MediaPicker
+        name="mediaId"
+        label="Asset"
+        accept="ANY"
+        {...(item?.media ? { value: item.media } : {})}
+        hint="What will be published"
+      />
+
       {state && !state.ok ? <Problem message={state.message} /> : null}
       {state?.ok ? (
         <p role="status" className="text-xs text-success">
@@ -330,6 +340,8 @@ export function RequestApprovalForm({ contentItemId }: { contentItemId: string }
       <Field id="approval-notes" label="Notes">
         {(aria) => <Textarea {...aria} name="notes" rows={2} />}
       </Field>
+
+      <MediaPicker name="mediaId" label="Creative" accept="ANY" />
 
       {state && !state.ok ? <Problem message={state.message} /> : null}
       {state?.ok ? (
