@@ -142,6 +142,14 @@ export const ROLE_NAMES = [
   "CONTENT_MANAGER",
   "PROJECT_MANAGER",
   "STAFF",
+  /**
+   * Portal accounts. Deliberately holds no permission at all: the portal is not
+   * gated by the staff catalogue, it is gated by `type === "CLIENT"` plus the
+   * session's own `clientId` (CLAUDE.md 2 rule 3). The role exists because
+   * every User needs one, and because a portal account with zero admin
+   * permissions can never reach /admin even if it somehow got there.
+   */
+  "CLIENT_USER",
 ] as const;
 
 export type RoleNameLiteral = (typeof ROLE_NAMES)[number];
@@ -155,6 +163,7 @@ export const ROLE_LABELS: Record<RoleNameLiteral, string> = {
   CONTENT_MANAGER: "Content manager",
   PROJECT_MANAGER: "Project manager",
   STAFF: "Staff",
+  CLIENT_USER: "Client portal user",
 };
 
 const READ_ONLY_BASELINE: Permission[] = [
@@ -174,6 +183,9 @@ const READ_ONLY_BASELINE: Permission[] = [
  * narrower than the catalogue.
  */
 export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, Permission[]> = {
+  // Empty by design — see ROLE_NAMES above.
+  CLIENT_USER: [],
+
   ADMIN: PERMISSIONS.filter(
     (p) => p !== "roles.edit" && p !== "users.delete",
   ) as Permission[],

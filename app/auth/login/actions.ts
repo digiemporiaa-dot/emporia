@@ -40,7 +40,9 @@ export async function loginAction(
     await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
-      redirectTo: parsed.data.redirectTo ?? "/admin",
+      // Staff and clients share this form, so the destination is decided
+      // once the session exists — see /auth/continue.
+      redirectTo: parsed.data.redirectTo ?? "/auth/continue",
     });
   } catch (error) {
     // signIn throws a redirect on success; that must propagate.

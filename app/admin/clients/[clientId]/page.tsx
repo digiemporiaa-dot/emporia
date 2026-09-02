@@ -2,11 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
+import { can } from "@/lib/auth/rbac";
+import { db } from "@/lib/db";
 import { getClient } from "@/lib/services/sales.service";
+import { listPortalUsers } from "@/lib/services/portal-access.service";
+import { listMessages } from "@/lib/services/client-messages.service";
 import { isAppError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
 import { STATUS_LABEL } from "@/lib/sales/lifecycle";
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
+import { ClientThread, PortalAccessPanel } from "./client-panels";
 import type { ClientStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Client" };
@@ -37,6 +42,16 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
     if (isAppError(error) && error.code === "NOT_FOUND") notFound();
     throw error;
   }
+
+  const [portalUsers, thread, projects] = await Promise.all([
+    listPortalUsers(actor, client.id),
+    listMessages(actor, client.id),
+    db.project.findMany({
+      where: { clientId: client.id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <>
@@ -129,6 +144,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
           </Card>
         </div>
 
+        <div className="space-y-5">
         <Card>
           <CardHeader>
             <CardTitle>Contacts</CardTitle>
@@ -179,7 +195,36 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
             ) : null}
           </CardBody>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Portal access</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <PortalAccessPanel
+              clientId={client.id}
+              users={portalUsers}
+              canInvite={can(actor, "users.create")}
+              canRevoke={can(actor, "users.edit")}
+            />
+          </CardBody>
+        </Card>
+        </div>
       </div>
+
+      <Card className="mt-5">
+        <CardHeader>
+          <CardTitle>Messages</CardTitle>
+        </CardHeader>
+        <CardBody>
+          <ClientThread
+            clientId={client.id}
+            messages={thread}
+            projects={projects}
+            canReply={can(actor, "clients.edit")}
+          />
+        </CardBody>
+      </Card>
     </>
   );
 }

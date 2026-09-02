@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 9 (Projects) complete.** The foundation from Phase 2
+**Status: Phase 10 (Client portal) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -37,8 +37,13 @@ dependencies, milestones, comments, time tracking, a task board, a content
 calendar across seven channels with the full workflow, and creative approvals
 with version history.
 
-Portal, media, email, finance, campaign reporting, automation and AI phases are
-not built yet.
+Plus the client portal: a separate `/portal` surface with its own invitation
+flow, where a client sees their projects, content, approvals, documents,
+invoices, campaigns, files and a message thread — every query scoped by the
+session's own client, proved by an isolation suite.
+
+Media, email, finance, campaign reporting, automation and AI phases are not
+built yet.
 
 ---
 
@@ -181,6 +186,16 @@ A few things that will bite you if you assume otherwise:
 - **Demo local content must actually pass `canPublish()`.** The seed writes
   `status` directly because it is not a user; if the seeded copy drifts below a
   threshold you get published content that the product would refuse.
+- **The portal never accepts a client id.** Every function in
+  `lib/services/portal.service.ts` takes a `PortalActor` — whose `clientId` is
+  non-nullable — and scopes on that. A record id from the browser is resolved
+  together with the scope, so another client's row is a 404, not a 403 that
+  confirms it exists. A staff actor cannot be passed in at all: the type is
+  rejected at compile time.
+- **Portal invitations are links, not emails.** There is no mail service until
+  phase 12, so `invitePortalUser` returns a single-use link for a staff member
+  to send. The token is cleared in the same update that sets the password, so a
+  leaked link cannot be replayed.
 - **Project health is derived, never typed in.** `lib/projects/health.ts`
   computes it from the project's own tasks, milestones and dates, and
   `recomputeHealth` runs after every change that could move it. A manager

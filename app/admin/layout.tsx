@@ -50,20 +50,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   if (!actor) redirect("/auth/login?redirectTo=/admin");
 
-  // A portal user has no business in admin. Once the client portal exists
-  // (Phase 10) this becomes redirect("/portal"); until then it is a terminal
-  // message rather than a redirect to a route that does not exist, which would
-  // either 404 or loop back through the login page.
-  if (actor.type === "CLIENT") {
-    return (
-      <main id="main" className="mx-auto flex min-h-dvh max-w-(--container-narrow) flex-col justify-center px-6">
-        <h1 className="text-2xl text-navy-800">This area is for staff</h1>
-        <p className="mt-3 max-w-prose text-ink-muted">
-          Your account is a client account. The client portal is not available yet.
-        </p>
-      </main>
-    );
-  }
+  // A portal user has no business in admin, and every page below re-checks a
+  // permission a CLIENT_USER does not hold anyway. Sending them to their own
+  // area beats an error page.
+  if (actor.type === "CLIENT") redirect("/portal");
 
   const items = NAV.filter(({ permission }) => can(actor, permission)).map(({ item }) => item);
 

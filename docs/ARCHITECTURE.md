@@ -728,6 +728,19 @@ gets structural enforcement rather than careful coding.
 Phase 10's exit criterion is a test suite that walks every portal route with a
 second client's ids and asserts 404/403 on all of them.
 
+> **Built in Phase 10.** All five rules hold as written, and
+> `tests/portal-isolation.test.ts` builds two complete client accounts and calls
+> every portal read with the other client's ids. Two things were decided while
+> building it. First, the portal deliberately shows less than it could: a
+> project's budget, its time entries, its internal comments and its assignees
+> are not in the portal payload at all, and content below `CLIENT_REVIEW` and
+> proposals still in `DRAFT` are filtered out — isolation is about other
+> clients, but a client should also not see the agency's own workings. Second,
+> portal accounts get a `CLIENT_USER` role holding **zero** permissions: the
+> portal is gated by `type === "CLIENT"` plus the session's `clientId`, never by
+> the staff permission catalogue, so a portal account cannot reach an admin
+> route even if it somehow arrived at one.
+
 ---
 
 ## 11. CMS and CRM data flow

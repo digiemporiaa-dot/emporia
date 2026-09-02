@@ -42,6 +42,9 @@ enum RoleName {
   CONTENT_MANAGER
   PROJECT_MANAGER
   STAFF
+  /// Portal accounts. Holds no admin permission at all — see
+  /// lib/auth/permissions.ts.
+  CLIENT_USER
 }
 
 enum Currency {
@@ -458,6 +461,7 @@ model User {
   proposalRevisions  ProposalRevision[]
   ownedClients       Client[]              @relation("ClientOwner")
   clientContact      ClientContact[]
+  clientMessages     ClientMessage[]       @relation("ClientMessageAuthor")
   managedProjects    Project[]
   assignedTasks      ProjectTask[]         @relation("ProjectTaskAssignee")
   projectComments    ProjectComment[]
@@ -1271,11 +1275,44 @@ model Client {
   retainers     Retainer[]
   contentItems  ContentCalendarItem[]
   approvals     Approval[]
+  messages      ClientMessage[]
 
   @@index([deletedAt])
   @@index([ownerId])
   @@index([status])
   @@index([logoId])
+}
+
+/**
+ * A message between a client and the agency.
+ *
+ * Scoped by clientId, which is what the portal filters on. `fromClient` records
+ * which side wrote it at the time of writing, rather than being re-derived from
+ * the author's account type later.
+ */
+model ClientMessage {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  authorId String
+  author   User   @relation("ClientMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  fromClient Boolean
+  body       String
+
+  /// Set when the other side has read it, so both ends can show an unread count.
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([projectId])
+  @@index([authorId])
+  @@index([clientId, fromClient, readAt])
 }
 
 model ClientContact {
@@ -1337,6 +1374,7 @@ model Project {
   contentItems ContentCalendarItem[]
   approvals    Approval[]
   invoices     Invoice[]
+  messages     ClientMessage[]
 
   @@index([clientId, status])
   @@index([managerId])
