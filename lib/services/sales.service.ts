@@ -4,7 +4,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { alertProposalAccepted, emailProposal } from "@/lib/services/alerts.service";
-import { documentTotals, lineTotals, toMoneyString } from "@/lib/money";
+import { priceDocument } from "@/lib/money";
 import { isEditable, transitionError } from "@/lib/sales/lifecycle";
 import { nextContractNumber, nextProposalNumber, uniqueClientSlug } from "@/lib/sales/numbering";
 import type { Actor } from "@/lib/actor/types";
@@ -44,25 +44,16 @@ type PricedLine = {
  * printed lines always add up to the printed total.
  */
 export function priceLines(items: readonly PricedLine[]) {
-  const lines = items.map((item) => ({
-    quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    discountRate: item.discountRate,
-    taxRate: item.taxRate,
-  }));
-
-  const totals = documentTotals(lines);
-  const perLine = lines.map((line) => lineTotals(line));
-
-  return {
-    totals: {
-      subtotal: toMoneyString(totals.subtotal),
-      discountTotal: toMoneyString(totals.discountTotal),
-      taxTotal: toMoneyString(totals.taxTotal),
-      total: toMoneyString(totals.total),
-    },
-    lineTotals: perLine.map((line) => toMoneyString(line.total)),
-  };
+  // The shared pricing, so a proposal and the invoice raised from it compose
+  // discount and tax identically (lib/money).
+  return priceDocument(
+    items.map((item) => ({
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discountRate: item.discountRate,
+      taxRate: item.taxRate,
+    })),
+  );
 }
 
 // ---------------------------------------------------------------------------

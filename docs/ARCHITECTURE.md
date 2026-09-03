@@ -466,6 +466,22 @@ enforced by the database, not by application logic that could race.
 transaction, so overdue queries are a plain indexed scan rather than an
 aggregate over `Payment`.
 
+Three implementation rules that are easy to get wrong and are pinned by tests:
+
+- **Numbering** (`lib/finance/numbering.ts`). `INV-YYYY-NNNN`, allocated inside
+  the transaction that writes the row. The next value is the **numeric** max of
+  the year's counters, taken with `split_part`. Sorting the numbers as strings
+  agrees with numeric order only while the counter has four digits: once
+  `INV-YYYY-10000` exists, `…-9999` still sorts highest and every later invoice
+  collides on the unique constraint forever.
+- **Crediting.** Only `handleWebhook` and `recordManualPayment` move
+  `paidTotal`. `/api/payments/verify` checks the browser's checkout signature so
+  the page can say something true, and deliberately credits nothing — a callback
+  can be forged, and a genuine one is lost when the payer closes the tab.
+- **Cancellation reasons** go to the audit log, not to `Invoice.notes`. Notes
+  are printed on the client's invoice, so writing a reason there would destroy
+  what someone wrote.
+
 ### 6.8 Platform
 
 ```

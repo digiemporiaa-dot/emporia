@@ -150,6 +150,38 @@ export function documentTotals(lines: readonly LineInput[]): DocumentTotals {
   };
 }
 
+export type PricedDocument = {
+  totals: {
+    subtotal: string;
+    discountTotal: string;
+    taxTotal: string;
+    total: string;
+  };
+  /** One rounded total per line, in the order given. */
+  lineTotals: string[];
+};
+
+/**
+ * Price a document's lines and its totals together, as strings.
+ *
+ * The one place both proposals and invoices go through, so a quote and the
+ * bill for it cannot disagree about how discount and tax compose (CLAUDE.md 4,
+ * shared logic lives in exactly one place).
+ */
+export function priceDocument(lines: readonly LineInput[]): PricedDocument {
+  const totals = documentTotals(lines);
+
+  return {
+    totals: {
+      subtotal: toMoneyString(totals.subtotal),
+      discountTotal: toMoneyString(totals.discountTotal),
+      taxTotal: toMoneyString(totals.taxTotal),
+      total: toMoneyString(totals.total),
+    },
+    lineTotals: lines.map((line) => toMoneyString(lineTotals(line).total)),
+  };
+}
+
 /** Amount still owed on an invoice, never negative. */
 export function amountDue(total: MoneyInput, paid: MoneyInput): Decimal {
   const due = sub(money(total), money(paid));

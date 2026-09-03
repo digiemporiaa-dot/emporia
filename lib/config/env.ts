@@ -55,6 +55,8 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  /** Overrides the API base. Used to point at a local double during testing. */
+  RAZORPAY_API_URL: z.string().url().optional(),
 
   SHIPROCKET_EMAIL: z.string().optional(),
   SHIPROCKET_PASSWORD: z.string().optional(),
@@ -155,6 +157,7 @@ export function razorpayConfig() {
     keyId: e.RAZORPAY_KEY_ID,
     keySecret: e.RAZORPAY_KEY_SECRET,
     webhookSecret: e.RAZORPAY_WEBHOOK_SECRET,
+    endpoint: e.RAZORPAY_API_URL ?? null,
   };
 }
 

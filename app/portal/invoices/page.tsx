@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { requirePortalActorPage } from "@/lib/actor/portal";
 import { listInvoices, listPayments } from "@/lib/services/portal.service";
+import { isPaymentsConfigured } from "@/lib/payments";
 import { formatMoney } from "@/lib/money";
+import { INVOICE_STATUS_LABEL, isOutstanding } from "@/lib/finance/invoice";
+import { siteDefaults } from "@/lib/seo/defaults";
 import {
   Badge,
   Card,
@@ -17,6 +20,7 @@ import {
   THead,
   TR,
 } from "@/components/ui";
+import { PayInvoiceButton } from "./pay-button";
 import type { InvoiceStatus, PaymentStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Invoices" };
@@ -33,15 +37,6 @@ const INVOICE_TONE: Record<InvoiceStatus, "neutral" | "navy" | "warning" | "succ
   CANCELLED: "neutral",
 };
 
-const INVOICE_LABEL: Record<InvoiceStatus, string> = {
-  DRAFT: "Draft",
-  SENT: "Sent",
-  PARTIALLY_PAID: "Part paid",
-  PAID: "Paid",
-  OVERDUE: "Overdue",
-  CANCELLED: "Cancelled",
-};
-
 const PAYMENT_LABEL: Record<PaymentStatus, string> = {
   PENDING: "Pending",
   CAPTURED: "Received",
@@ -53,6 +48,17 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 export default async function PortalInvoicesPage() {
   const actor = await requirePortalActorPage();
   const [invoices, payments] = await Promise.all([listInvoices(actor), listPayments(actor)]);
+
+  // Whether the deployment can take card and UPI payments at all. With no
+  // gateway configured the column is not rendered rather than showing a button
+  // that cannot work.
+  const canPayOnline = isPaymentsConfigured();
+
+  // The business name checkout shows the payer, taken from site settings so it
+  // is not hard-coded in a client component.
+  const { siteName } = canPayOnline
+    ? await siteDefaults()
+    : { siteName: "" };
 
   return (
     <>
@@ -74,12 +80,17 @@ export default async function PortalInvoicesPage() {
               <TH className="text-right">Paid</TH>
               <TH className="text-right">Outstanding</TH>
               <TH>Status</TH>
+              {canPayOnline ? (
+                <TH className="text-right">
+                  <span className="sr-only">Pay</span>
+                </TH>
+              ) : null}
             </TR>
           </THead>
           <TBody>
             {invoices.length === 0 ? (
               <TableEmpty
-                colSpan={7}
+                colSpan={canPayOnline ? 8 : 7}
                 title="No invoices yet"
                 description="Invoices appear here as soon as they are issued."
               />
@@ -100,9 +111,20 @@ export default async function PortalInvoicesPage() {
                   </TD>
                   <TD>
                     <Badge tone={INVOICE_TONE[invoice.status]}>
-                      {INVOICE_LABEL[invoice.status]}
+                      {INVOICE_STATUS_LABEL[invoice.status]}
                     </Badge>
                   </TD>
+                  {canPayOnline ? (
+                    <TD className="text-right">
+                      {isOutstanding(invoice.status) ? (
+                        <PayInvoiceButton
+                          invoiceId={invoice.id}
+                          invoiceNumber={invoice.number}
+                          businessName={siteName}
+                        />
+                      ) : null}
+                    </TD>
+                  ) : null}
                 </TR>
               ))
             )}
@@ -146,8 +168,9 @@ export default async function PortalInvoicesPage() {
       </Card>
 
       <p className="mt-4 text-2xs text-ink-subtle">
-        Paying online is not available yet — the payment gateway is wired up in phase 13. Until
-        then, pay by the method on your invoice and we will record it here.
+        {canPayOnline
+          ? "An online payment shows here once the gateway confirms it, usually within a minute of you paying. Bank transfers and cheques are recorded by us when they clear."
+          : "Online payment is not available on this account. Pay by the method printed on your invoice and it will be recorded here once it clears."}
       </p>
     </>
   );

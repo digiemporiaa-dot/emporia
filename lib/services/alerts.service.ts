@@ -216,6 +216,143 @@ export async function alertProposalAccepted(proposalId: string, clientId: string
 }
 
 /**
+ * An invoice has been issued.
+ *
+ * Sent to the client's primary contact. If there is no address, nothing is sent
+ * and the reason is logged — better than mailing a placeholder.
+ */
+export async function emailInvoice(invoiceId: string): Promise<void> {
+  try {
+    const invoice = await db.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true,
+        number: true,
+        total: true,
+        currency: true,
+        dueAt: true,
+        client: {
+          select: {
+            name: true,
+            contacts: { where: { isPrimary: true }, select: { name: true, email: true }, take: 1 },
+          },
+        },
+      },
+    });
+    if (!invoice) return;
+
+    const contact = invoice.client.contacts[0];
+    if (!contact?.email) {
+      alertLog.info({ invoiceId }, "no address to send the invoice to");
+      return;
+    }
+
+    await sendTemplate("INVOICE_SENT", {
+      to: contact.email,
+      variables: {
+        clientName: contact.name || invoice.client.name,
+        invoiceNumber: invoice.number,
+        total: formatMoney(invoice.total.toString(), invoice.currency),
+        dueDate: DATE.format(invoice.dueAt),
+        invoiceUrl: `${siteUrl()}/portal/invoices`,
+      },
+      entity: { type: "Invoice", id: invoice.id },
+    });
+  } catch (error) {
+    alertLog.warn({ err: error, invoiceId }, "invoice email failed");
+  }
+}
+
+/** Money has arrived against an invoice. */
+export async function emailPaymentReceived(paymentId: string): Promise<void> {
+  try {
+    const payment = await db.payment.findUnique({
+      where: { id: paymentId },
+      select: {
+        id: true,
+        amount: true,
+        currency: true,
+        invoice: {
+          select: {
+            id: true,
+            number: true,
+            dueTotal: true,
+            currency: true,
+            client: {
+              select: {
+                name: true,
+                contacts: { where: { isPrimary: true }, select: { name: true, email: true }, take: 1 },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!payment) return;
+
+    const contact = payment.invoice.client.contacts[0];
+    if (!contact?.email) {
+      alertLog.info({ paymentId }, "no address to confirm the payment to");
+      return;
+    }
+
+    await sendTemplate("PAYMENT_RECEIVED", {
+      to: contact.email,
+      variables: {
+        clientName: contact.name || payment.invoice.client.name,
+        invoiceNumber: payment.invoice.number,
+        amount: formatMoney(payment.amount.toString(), payment.currency),
+        outstanding: formatMoney(payment.invoice.dueTotal.toString(), payment.invoice.currency),
+        invoiceUrl: `${siteUrl()}/portal/invoices`,
+      },
+      entity: { type: "Payment", id: payment.id },
+    });
+  } catch (error) {
+    alertLog.warn({ err: error, paymentId }, "payment confirmation failed");
+  }
+}
+
+/** An invoice is coming due, or has passed its date. */
+export async function emailPaymentReminder(invoiceId: string): Promise<void> {
+  try {
+    const invoice = await db.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true,
+        number: true,
+        dueTotal: true,
+        currency: true,
+        dueAt: true,
+        client: {
+          select: {
+            name: true,
+            contacts: { where: { isPrimary: true }, select: { name: true, email: true }, take: 1 },
+          },
+        },
+      },
+    });
+    if (!invoice) return;
+
+    const contact = invoice.client.contacts[0];
+    if (!contact?.email) return;
+
+    await sendTemplate("PAYMENT_REMINDER", {
+      to: contact.email,
+      variables: {
+        clientName: contact.name || invoice.client.name,
+        invoiceNumber: invoice.number,
+        outstanding: formatMoney(invoice.dueTotal.toString(), invoice.currency),
+        dueDate: DATE.format(invoice.dueAt),
+        invoiceUrl: `${siteUrl()}/portal/invoices`,
+      },
+      entity: { type: "Invoice", id: invoice.id },
+    });
+  } catch (error) {
+    alertLog.warn({ err: error, invoiceId }, "payment reminder failed");
+  }
+}
+
+/**
  * A portal invitation.
  *
  * Unlike the alerts above this one is not best-effort silent: the caller shows
