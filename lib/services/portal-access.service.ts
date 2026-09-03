@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { hashPassword } from "@/lib/auth/password";
 import { env } from "@/lib/config/env";
+import { emailPortalInvite } from "@/lib/services/alerts.service";
 import type { Actor } from "@/lib/actor/types";
 import type { InvitePortalUserInput } from "@/lib/validation/portal";
 
@@ -13,10 +14,10 @@ import type { InvitePortalUserInput } from "@/lib/validation/portal";
  * Portal access: staff invite a client's people, and those people activate
  * their own accounts.
  *
- * The invitation email is **not sent from here**. There is no SMTP service
- * until phase 12, so `invitePortalUser` returns a real, single-use link for a
- * staff member to pass on, rather than pretending a mail went out
- * (CLAUDE.md 15 rule 5).
+ * The invitation is emailed to the invitee, and the outcome of that send is
+ * returned alongside the link. If mail is not configured — or the send fails —
+ * the caller still has a real, single-use link to pass on by hand, and the
+ * failure is visible in the email log rather than swallowed.
  */
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -117,8 +118,19 @@ export async function invitePortalUser(actor: Actor, input: InvitePortalUserInpu
           }),
   );
 
-  // The caller shows this link; nothing emails it yet (phase 12).
-  return { ...user, inviteUrl: inviteUrl(token), expiresAt: expires };
+  const url = inviteUrl(token);
+
+  const email = await emailPortalInvite({
+    to: input.email,
+    name: input.name,
+    invitedBy: actor.name || "Your account manager",
+    inviteUrl: url,
+    expiresAt: expires,
+  });
+
+  // The link is returned either way: a staff member who sees that the mail
+  // failed can still send it themselves.
+  return { ...user, inviteUrl: url, expiresAt: expires, email };
 }
 
 export async function revokePortalUser(actor: Actor, userId: string) {

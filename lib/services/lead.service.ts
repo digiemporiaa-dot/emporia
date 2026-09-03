@@ -4,6 +4,7 @@ import { log } from "@/lib/logger";
 import { ValidationError } from "@/lib/errors";
 import { persistTouches, type VisitorContext } from "@/lib/attribution/server";
 import { assignOnCapture, pickAssignee, scoreOnCapture, scoringConfig } from "@/lib/services/crm.service";
+import { alertNewLead } from "@/lib/services/alerts.service";
 import type { DeviceType } from "@/generated/prisma/enums";
 import type { ContactFormInput } from "@/lib/validation/lead";
 
@@ -123,6 +124,11 @@ export async function captureContactLead(
 
   leadLog.info({ leadId: lead.id, serviceId, assigneeId }, "lead captured from contact form");
 
+  // After the transaction, and deliberately not awaited into it: a lead is
+  // captured whether or not the alert goes out, and the send is logged either
+  // way (lib/services/email.service.ts).
+  await alertNewLead(lead.id);
+
   return { leadId: lead.id };
 }
 
@@ -203,7 +209,7 @@ export async function capturePopupLead(
   ]);
   const [serviceSlug, citySlug] = slugs;
 
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const touches = await persistTouches(tx, context.visitor, context.path);
 
     const lead = await tx.lead.create({
@@ -298,4 +304,9 @@ export async function capturePopupLead(
       campaignId: touches.campaignId,
     };
   });
+
+  // Outside the transaction, for the same reason as the contact form.
+  await alertNewLead(result.leadId);
+
+  return result;
 }

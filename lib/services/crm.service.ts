@@ -5,6 +5,7 @@ import { can, requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { mergeScoringConfig, scoreLead, type ScoringConfig } from "@/lib/crm/scoring";
 import { transitionError } from "@/lib/crm/pipeline";
+import { alertLeadAssigned } from "@/lib/services/alerts.service";
 import type { Actor } from "@/lib/actor/types";
 import type { LeadStatus, Priority, TaskStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -388,7 +389,7 @@ export async function assignLead(
     if (!target) throw new ValidationError("That person cannot be assigned leads.");
   }
 
-  return withAudit(
+  const assigned = await withAudit(
     { actor, action: "ASSIGN", entityType: "Lead", entityId: id, before },
     async (tx) => {
       const updated = await tx.lead.update({
@@ -423,6 +424,12 @@ export async function assignLead(
       return updated;
     },
   );
+
+  // The new owner is told after the handoff is committed. Best-effort: an alert
+  // that fails is logged, and never undoes the assignment.
+  if (toUserId) await alertLeadAssigned(id, toUserId, actor.name || "Someone");
+
+  return assigned;
 }
 
 export async function setPriority(actor: Actor, id: string, priority: Priority) {

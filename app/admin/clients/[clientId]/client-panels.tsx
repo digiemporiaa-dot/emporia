@@ -143,10 +143,17 @@ export function PortalAccessPanel({
           {state && !state.ok ? <Problem message={state.message} /> : null}
 
           {state?.ok ? (
-            <div className="space-y-1.5 rounded-md border border-success/30 bg-success-bg p-2.5">
+            <div
+              className={`space-y-1.5 rounded-md border p-2.5 ${
+                state.data.emailed
+                  ? "border-success/30 bg-success-bg"
+                  : "border-warning/30 bg-warning-bg"
+              }`}
+            >
               <p className="text-2xs text-success">
-                Invitation created. Email is not wired up until phase 12 — send this link yourself.
-                It expires {DATE.format(new Date(state.data.expiresAt))}.
+                {state.data.emailed
+                  ? `Invitation emailed. It expires ${DATE.format(new Date(state.data.expiresAt))}.`
+                  : `Invitation created, but the email did not go out (${state.data.emailError}). Send this link yourself — it expires ${DATE.format(new Date(state.data.expiresAt))}.`}
               </p>
               <div className="flex items-center gap-1.5">
                 <input

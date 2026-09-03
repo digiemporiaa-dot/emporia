@@ -42,7 +42,7 @@ const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "pending", label: "Finance", icon: "finance", phase: 13 }, permission: "invoices.view" },
   { item: { kind: "link", href: "/admin/media", label: "Media", icon: "media" }, permission: "media.view" },
   { item: { kind: "pending", label: "Analytics", icon: "analytics", phase: 14 }, permission: "analytics.view" },
-  { item: { kind: "pending", label: "Settings", icon: "settings" }, permission: "settings.view" },
+  { item: { kind: "link", href: "/admin/settings/email", label: "Settings", icon: "settings" }, permission: "emails.view" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

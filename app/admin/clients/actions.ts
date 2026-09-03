@@ -11,15 +11,20 @@ import { log } from "@/lib/logger";
 
 const actionLog = log("portal-access");
 
-export type InviteActionState = ActionResult<{ inviteUrl: string; expiresAt: string }> | null;
+export type InviteActionState = ActionResult<{
+  inviteUrl: string;
+  expiresAt: string;
+  emailed: boolean;
+  emailError: string | null;
+}> | null;
 export type ReplyActionState = ActionResult<{ id: string }> | null;
 
 /**
  * Invite one of a client's people to the portal.
  *
- * The link is returned to the staff member rather than emailed: there is no
- * mail service until phase 12, and pretending an email went out would be a fake
- * (CLAUDE.md 2 rule 5).
+ * The invitation is emailed, and the link is returned as well — so a staff
+ * member can see whether the mail went and pass it on by hand if it did not.
+ * Nothing here claims a send that did not happen (CLAUDE.md 2 rule 5).
  */
 export async function invitePortalUserAction(
   _prev: InviteActionState,
@@ -47,7 +52,12 @@ export async function invitePortalUserAction(
     revalidatePath(`/admin/clients/${parsed.data.clientId}`);
     return {
       ok: true,
-      data: { inviteUrl: result.inviteUrl, expiresAt: result.expiresAt.toISOString() },
+      data: {
+        inviteUrl: result.inviteUrl,
+        expiresAt: result.expiresAt.toISOString(),
+        emailed: result.email.ok,
+        emailError: result.email.ok ? null : result.email.error,
+      },
     };
   } catch (error) {
     actionLog.warn({ err: error }, "portal invite refused");

@@ -10,6 +10,7 @@ import {
   splitPermission,
   type RoleNameLiteral,
 } from "../lib/auth/permissions.js";
+import { DEFAULT_TEMPLATES } from "../lib/email/templates.js";
 
 /**
  * Seed: roles, permissions and the initial super admin.
@@ -175,6 +176,46 @@ async function seedSiteSettings(): Promise<void> {
   console.log(`  site settings: ${settings.length}`);
 }
 
+/**
+ * Email templates.
+ *
+ * Seeded from the defaults, then owned by admin: an existing template is left
+ * alone so a re-seed never overwrites someone's edit. Only the declared
+ * variable list is refreshed, because that is code, not content.
+ */
+async function seedEmailTemplates(): Promise<void> {
+  let created = 0;
+
+  for (const template of DEFAULT_TEMPLATES) {
+    const existing = await prisma.emailTemplate.findUnique({
+      where: { key: template.key },
+      select: { key: true },
+    });
+
+    if (existing) {
+      await prisma.emailTemplate.update({
+        where: { key: template.key },
+        data: { variables: template.variables },
+      });
+      continue;
+    }
+
+    await prisma.emailTemplate.create({
+      data: {
+        key: template.key,
+        name: template.name,
+        subject: template.subject,
+        html: template.html,
+        text: template.text,
+        variables: template.variables,
+      },
+    });
+    created++;
+  }
+
+  console.log(`  email templates: ${DEFAULT_TEMPLATES.length} (${created} new)`);
+}
+
 async function main(): Promise<void> {
   console.log("Seeding:");
   const permissionIds = await seedPermissions();
@@ -182,6 +223,7 @@ async function main(): Promise<void> {
   await seedSuperAdmin();
   await seedLeadSources();
   await seedSiteSettings();
+  await seedEmailTemplates();
   console.log("Done.");
 }
 

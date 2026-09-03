@@ -1989,6 +1989,10 @@ model EmailLog {
   error             String?
   providerMessageId String?
 
+  /// The values the template was rendered with, so a retry sends the same mail
+  /// rather than one full of unfilled placeholders.
+  variables Json?
+
   entityType String?
   entityId   String?
 

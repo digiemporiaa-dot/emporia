@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 11 (Media) complete.** The foundation from Phase 2
+**Status: Phase 12 (Email) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -46,7 +46,11 @@ Plus the media library: presigned uploads straight from the browser to
 Cloudflare R2, server-side content sniffing that refuses a spoofed extension,
 folders, versioning, and a picker wired into approvals, content and contracts.
 
-Email, finance, campaign reporting, automation and AI phases are not built yet.
+Plus email: one SMTP service, eleven editable templates, in-app notifications,
+and a send log where every attempt — including every failure — is recorded and
+retryable.
+
+Finance, campaign reporting, automation and AI phases are not built yet.
 
 ---
 
@@ -189,6 +193,21 @@ A few things that will bite you if you assume otherwise:
 - **Demo local content must actually pass `canPublish()`.** The seed writes
   `status` directly because it is not a user; if the seeded copy drifts below a
   threshold you get published content that the product would refuse.
+- **Every email attempt is logged, and a failed send never fails the work.**
+  `sendTemplate` writes an EmailLog row before touching SMTP and updates it with
+  the outcome; it returns a result rather than throwing, so capturing a lead or
+  sending a proposal succeeds on its own terms. Failures are visible under
+  Settings → Email, not swallowed.
+- **Template values are HTML-escaped.** Templates are filled with data from the
+  public internet — a lead's own message — so an unescaped substitution would
+  put a stranger's markup in mail sent from our domain. The plain-text part is
+  deliberately not escaped; markup is not interpreted there.
+- **A template edit that uses an unknown variable is refused**, because it would
+  otherwise send with `{{placeholder}}` still in it. The log keeps the values a
+  message was rendered with, so a retry sends what was meant.
+- **WhatsApp, SMS and push are refused, not stubbed.** `assertChannelAvailable`
+  throws for them, so nobody builds a workflow on a channel that does not
+  deliver.
 - **Uploaded files are identified by their bytes, never their name.** The
   browser's `Content-Type` and the filename are claims; `lib/media/sniff.ts`
   checks the leading bytes of the object that actually landed, and a mismatch

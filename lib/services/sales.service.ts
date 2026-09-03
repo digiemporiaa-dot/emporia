@@ -3,6 +3,7 @@ import { db, type DbClient } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
+import { alertProposalAccepted, emailProposal } from "@/lib/services/alerts.service";
 import { documentTotals, lineTotals, toMoneyString } from "@/lib/money";
 import { isEditable, transitionError } from "@/lib/sales/lifecycle";
 import { nextContractNumber, nextProposalNumber, uniqueClientSlug } from "@/lib/sales/numbering";
@@ -549,7 +550,7 @@ export async function sendProposal(actor: Actor, id: string) {
     throw new ValidationError("A proposal with no lines cannot be sent.");
   }
 
-  return withAudit(
+  const sent = await withAudit(
     { actor, action: "SEND", entityType: "Proposal", entityId: id, before },
     async (tx) => {
       await snapshot(tx, id, actor.userId);
@@ -574,6 +575,13 @@ export async function sendProposal(actor: Actor, id: string) {
       return updated;
     },
   );
+
+  // The document goes to the client after the status is committed, so a mail
+  // failure cannot leave a proposal that was never marked sent. The attempt is
+  // logged either way (lib/services/email.service.ts).
+  await emailProposal(id);
+
+  return sent;
 }
 
 /** Move a sent proposal back to draft, bumping the version for the next send. */
@@ -678,7 +686,7 @@ export async function acceptProposal(
     );
   }
 
-  return withAudit(
+  const result = await withAudit(
     { actor, action: "STATUS_CHANGE", entityType: "Proposal", entityId: id, before: proposal },
     async (tx) => {
       let clientId = proposal.clientId;
@@ -778,6 +786,12 @@ export async function acceptProposal(
       };
     },
   );
+
+  // Told after the conversion is committed, so the alert can never be the
+  // reason a client fails to exist.
+  await alertProposalAccepted(result.proposalId, result.clientId);
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
