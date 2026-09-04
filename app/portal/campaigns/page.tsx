@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requirePortalActorPage } from "@/lib/actor/portal";
-import { listCampaigns } from "@/lib/services/portal.service";
+import { campaignReport, listCampaigns } from "@/lib/services/portal.service";
+import { resolveRange } from "@/lib/analytics/range";
 import { formatMoney } from "@/lib/money";
 import { Badge, Card, CardBody } from "@/components/ui";
 import type { CampaignStatus } from "@/generated/prisma/enums";
@@ -19,7 +20,14 @@ const TONE: Record<CampaignStatus, "neutral" | "navy" | "warning" | "success"> =
 
 export default async function PortalCampaignsPage() {
   const actor = await requirePortalActorPage();
-  const campaigns = await listCampaigns(actor);
+
+  // All-time, because a client wants the campaign's whole story, not a window.
+  const range = resolveRange("all");
+  const [campaigns, report] = await Promise.all([
+    listCampaigns(actor),
+    campaignReport(actor, range),
+  ]);
+  const performance = new Map(report.map((row) => [row.id, row]));
 
   return (
     <>
@@ -66,12 +74,38 @@ export default async function PortalCampaignsPage() {
                     </span>
                   </div>
 
-                  <p className="mt-2 border-t border-line pt-2 text-2xs text-ink-subtle">
-                    {campaign._count.metrics > 0
-                      ? `${campaign._count.metrics} data point${campaign._count.metrics === 1 ? "" : "s"} recorded.`
-                      : "No performance data recorded yet."}{" "}
-                    Reporting charts arrive with phase 14; nothing here is estimated or modelled.
-                  </p>
+                  {(() => {
+                    const stats = performance.get(campaign.id);
+                    if (!stats || stats.days === 0) {
+                      return (
+                        <p className="mt-2 border-t border-line pt-2 text-2xs text-ink-subtle">
+                          No performance data has been recorded for this campaign yet. Nothing here
+                          is estimated or modelled — figures appear once they are measured.
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="mt-2 border-t border-line pt-2.5">
+                        <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                          <Metric label="Impressions" value={stats.impressions.toLocaleString("en-IN")} />
+                          <Metric label="Clicks" value={stats.clicks.toLocaleString("en-IN")} />
+                          <Metric label="CTR" value={stats.ctr ? `${stats.ctr}%` : "—"} />
+                          <Metric
+                            label="Spend"
+                            value={formatMoney(stats.spend, campaign.currency)}
+                          />
+                        </dl>
+                        <p className="mt-2 text-2xs text-ink-subtle">
+                          From {stats.days} day{stats.days === 1 ? "" : "s"} of recorded data
+                          {stats.revenue
+                            ? `. Revenue attributed by the platform: ${formatMoney(stats.revenue, campaign.currency)}`
+                            : ". The platform did not attribute revenue, so none is shown"}
+                          .
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </CardBody>
               </Card>
             </li>
@@ -79,5 +113,14 @@ export default async function PortalCampaignsPage() {
         </ul>
       )}
     </>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-2xs uppercase tracking-widest text-ink-subtle">{label}</dt>
+      <dd className="mt-0.5 text-sm tabular-nums text-navy-800">{value}</dd>
+    </div>
   );
 }

@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 13 (Finance) complete.** The foundation from Phase 2
+**Status: Phase 14 (Marketing) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -56,7 +56,13 @@ a cycle, and a Razorpay integration where the webhook — signature-checked
 against the raw body, keyed on the gateway's own payment id — is the only thing
 that marks an invoice paid.
 
-Campaign reporting, automation and AI phases are not built yet.
+Plus marketing analytics: campaigns with Decimal budgets and daily performance
+that is typed in or imported from a platform export — never fabricated — and an
+analytics dashboard that ranks sources, services, cities, campaigns, popups and
+owners by the revenue they actually produced, with revenue withheld from roles
+that hold no finance permission.
+
+Automation and AI phases are not built yet.
 
 Online payment is optional: with no `RAZORPAY_*` credentials the gateway is
 simply absent, the portal shows no pay button, and payments are recorded by

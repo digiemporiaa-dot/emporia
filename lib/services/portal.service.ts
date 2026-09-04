@@ -2,7 +2,8 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { record } from "@/lib/services/audit.service";
-import { toMoneyString } from "@/lib/money";
+import { div, mul, toMoneyString } from "@/lib/money";
+import { rangeFilter, type DateRange } from "@/lib/analytics/range";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import type { PortalActor } from "@/lib/actor/types";
 import type { PortalMessageInput, PortalProfileInput } from "@/lib/validation/portal";
@@ -472,6 +473,56 @@ export async function listCampaigns(actor: PortalActor) {
   });
 
   return rows.map((row) => ({ ...row, budget: toMoneyString(row.budget) }));
+}
+
+/**
+ * Performance for the client's own campaigns.
+ *
+ * Scoped by the session's `clientId` like every other portal query, and built
+ * only from metrics somebody recorded. A campaign with no data reports no data
+ * — the client is never shown a modelled or estimated figure
+ * (CLAUDE.md 2 rules 3 and 5).
+ */
+export async function campaignReport(actor: PortalActor, range: DateRange) {
+  const campaigns = await db.campaign.findMany({
+    where: { clientId: actor.clientId },
+    orderBy: { startsAt: "desc" },
+    select: { id: true, name: true, currency: true },
+  });
+
+  if (campaigns.length === 0) return [];
+
+  const metrics = await db.campaignMetric.groupBy({
+    by: ["campaignId"],
+    where: {
+      // Restricted to this client's campaigns, not merely filtered afterwards.
+      campaignId: { in: campaigns.map((campaign) => campaign.id) },
+      date: rangeFilter(range),
+    },
+    _sum: { impressions: true, clicks: true, conversions: true, spend: true, revenue: true },
+    _count: { _all: true },
+  });
+
+  const byId = new Map(metrics.map((row) => [row.campaignId, row]));
+
+  return campaigns.map((campaign) => {
+    const metric = byId.get(campaign.id);
+    const impressions = metric?._sum.impressions ?? 0;
+    const clicks = metric?._sum.clicks ?? 0;
+
+    return {
+      id: campaign.id,
+      days: metric?._count._all ?? 0,
+      impressions,
+      clicks,
+      conversions: metric?._sum.conversions ?? 0,
+      spend: toMoneyString(metric?._sum.spend?.toString() ?? "0"),
+      // Null, not zero: nobody measuring revenue is a different statement from
+      // measuring none.
+      revenue: metric?._sum.revenue == null ? null : toMoneyString(metric._sum.revenue.toString()),
+      ctr: impressions === 0 ? null : mul(div(clicks, impressions), 100).toFixed(2),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

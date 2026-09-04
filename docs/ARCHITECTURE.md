@@ -992,6 +992,35 @@ never by loading tables into the browser (CLAUDE.md §12):
 Every panel renders an explicit **empty state** when a query returns nothing.
 No placeholder numbers, no sample series, no "demo" chart data.
 
+Three rules decide what the numbers mean, and each is pinned by a test:
+
+- **Revenue attribution.** A client's received money is attributed to the *one*
+  lead that converted it — the earliest, when several did. Attributing to every
+  converting lead would count the same money once per duplicate enquiry.
+  `breakdowns` and `revenueByDimension` share the rule, so the two screens
+  cannot disagree.
+- **Withheld, not hidden.** `analytics.view` and finance permission are
+  separate: a marketing manager holds the first and not the second. The service
+  returns `revenue: null` for such an actor and the page omits the column
+  entirely — the figures never reach the browser, so this is authorization, not
+  a hidden element.
+- **Null is not zero.** A rate over no leads, a CPC over no clicks, and revenue
+  nobody recorded are all `null` and render as "—" or "not measured". Rendering
+  `0` would assert a measurement that was never taken (CLAUDE.md §2 rule 5).
+
+Lead figures compose `visibilityFilter` from the CRM, so an actor who may see
+only their own leads gets analytics over their own leads rather than a
+team-wide total they are not entitled to.
+
+**Where metrics come from.** `lib/reporting` defines the provider boundary
+(Google Ads, Meta Ads, GA4, Search Console) and **implements none of them** —
+every entry is an unconfigured provider that throws. Until one is implemented,
+a `CampaignMetric` row can only be created two ways, both recorded in
+`MetricSource`: `MANUAL`, typed in a day at a time, or `IMPORT`, parsed from a
+CSV the user exported from the platform. Import validates every row through the
+same Zod schema as manual entry and reports each rejected line by number rather
+than writing it as zeroes.
+
 ---
 
 ## 16. Integration boundaries
@@ -1004,6 +1033,7 @@ implementation and **no fake fallback**:
 | `StorageService` | Cloudflare R2 (S3 presigned) | 11 |
 | `EmailService` | SMTP (nodemailer) | 12 |
 | `PaymentService` | Razorpay | 13 |
+| `ReportingProvider` | Google Ads, Meta Ads, GA4, Search Console — **interfaces only, no implementation** | 14 |
 | `AIService` | provider-swappable | 16 |
 | `ShippingService` | Shiprocket — **interface only, no implementation** | — |
 
