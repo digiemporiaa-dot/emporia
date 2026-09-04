@@ -1,51 +1,21 @@
 import "server-only";
+import { nextDocumentNumber } from "@/lib/numbering/sequence";
 import type { DbClient } from "@/lib/db";
 
 /**
  * Document numbering.
  *
- * Sequential within the year, per document type. Generated inside the caller's
- * transaction and derived from the highest existing number, so two concurrent
- * creations cannot both claim the same one — the unique constraint on `number`
- * is the backstop if they race.
+ * Sequential within the year, per document type, through the shared allocator
+ * in lib/numbering/sequence — which is also where the reasoning about reading
+ * the counter numerically rather than by string order lives.
  */
 
-function prefixFor(kind: "PRO" | "CON", year: number): string {
-  return `${kind}-${year}-`;
-}
-
-async function nextNumber(
-  tx: DbClient,
-  kind: "PRO" | "CON",
-  find: (prefix: string) => Promise<string | null>,
-): Promise<string> {
-  const prefix = prefixFor(kind, new Date().getFullYear());
-  const latest = await find(prefix);
-  const previous = latest ? Number.parseInt(latest.slice(prefix.length), 10) : 0;
-  const next = Number.isFinite(previous) ? previous + 1 : 1;
-  return `${prefix}${String(next).padStart(4, "0")}`;
-}
-
 export async function nextProposalNumber(tx: DbClient): Promise<string> {
-  return nextNumber(tx, "PRO", async (prefix) => {
-    const row = await tx.proposal.findFirst({
-      where: { number: { startsWith: prefix } },
-      orderBy: { number: "desc" },
-      select: { number: true },
-    });
-    return row?.number ?? null;
-  });
+  return nextDocumentNumber(tx, "Proposal", "PRO");
 }
 
 export async function nextContractNumber(tx: DbClient): Promise<string> {
-  return nextNumber(tx, "CON", async (prefix) => {
-    const row = await tx.contract.findFirst({
-      where: { number: { startsWith: prefix } },
-      orderBy: { number: "desc" },
-      select: { number: true },
-    });
-    return row?.number ?? null;
-  });
+  return nextDocumentNumber(tx, "Contract", "CON");
 }
 
 /** URL-safe slug from a client name, uniquified against existing slugs. */

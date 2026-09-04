@@ -216,6 +216,129 @@ async function seedEmailTemplates(): Promise<void> {
   console.log(`  email templates: ${DEFAULT_TEMPLATES.length} (${created} new)`);
 }
 
+
+/**
+ * The two workflows the build plan names, pre-built and **switched off**.
+ *
+ * They are seeded rather than hard-coded so they can be read, edited and turned
+ * on from admin like any other rule — which is the point of the engine. Off by
+ * default because a fresh install should not start assigning leads and emailing
+ * people before anyone has looked at what the rules say.
+ *
+ * Idempotent: a rule that already exists by name is left exactly as it is, so
+ * re-seeding never overwrites someone's edits.
+ */
+async function seedAutomations(): Promise<void> {
+  const rules = [
+    {
+      name: "New lead: assign, chase, and tell the manager",
+      description:
+        "Fills in an owner if capture did not, books a follow-up for tomorrow, and puts it in front of sales management.",
+      order: 10,
+      trigger: "LEAD_CREATED" as const,
+      conditions: [] as { field: string; operator: string; value: unknown }[],
+      actions: [
+        { type: "ASSIGN_LEAD", strategy: "ROUND_ROBIN", onlyIfUnassigned: true },
+        {
+          type: "CREATE_LEAD_TASK",
+          title: "Call {{lead.company}}",
+          detail: "First contact within one working day.",
+          dueInDays: 1,
+          assignTo: "LEAD_OWNER",
+          priority: "HIGH",
+        },
+        { type: "SEND_EMAIL", templateKey: "NEW_LEAD", to: "LEAD_OWNER" },
+        {
+          type: "NOTIFY_USER",
+          to: "ROLE",
+          roleName: "SALES_MANAGER",
+          title: "New enquiry: {{lead.company}}",
+          body: "Score {{lead.score}} from {{lead.sourceSlug}}.",
+        },
+      ],
+    },
+    {
+      name: "Proposal accepted: open the project and onboard",
+      description:
+        "The client already exists by this point — accepting creates it. This opens the project, lays out the onboarding checklist, tells the manager and welcomes the client.",
+      order: 20,
+      trigger: "PROPOSAL_ACCEPTED" as const,
+      conditions: [] as { field: string; operator: string; value: unknown }[],
+      actions: [
+        { type: "CREATE_CLIENT" },
+        {
+          type: "CREATE_PROJECT",
+          nameTemplate: "{{client.name}} onboarding",
+          startInDays: 0,
+          dueInDays: 30,
+        },
+        {
+          type: "CREATE_PROJECT_TASKS",
+          titles: [
+            "Kick-off call",
+            "Collect brand assets and access",
+            "Agree the reporting cadence",
+            "Draft the first month plan",
+          ],
+          dueInDays: 7,
+        },
+        {
+          type: "NOTIFY_USER",
+          to: "PROJECT_MANAGER",
+          title: "New project: {{client.name}}",
+          body: "Won from {{proposal.title}}.",
+        },
+        {
+          type: "SEND_EMAIL",
+          templateKey: "CLIENT_NOTIFICATION",
+          to: "CLIENT_PRIMARY",
+          subject: "Welcome aboard",
+          body: "Thank you for choosing us. Your project is open and we will be in touch to arrange the kick-off.",
+        },
+      ],
+    },
+  ];
+
+  let created = 0;
+
+  for (const rule of rules) {
+    const existing = await prisma.automation.findFirst({
+      where: { name: rule.name },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    await prisma.automation.create({
+      data: {
+        name: rule.name,
+        description: rule.description,
+        // Deliberately off. An admin reads it, tries it, then switches it on.
+        isActive: false,
+        order: rule.order,
+        triggers: { create: { type: rule.trigger } },
+        conditions: {
+          create: rule.conditions.map((condition, index) => ({
+            field: condition.field,
+            operator: condition.operator,
+            value: condition.value as object,
+            order: index,
+          })),
+        },
+        actions: {
+          create: rule.actions.map((action, index) => ({
+            type: action.type as never,
+            config: action as object,
+            order: index,
+          })),
+        },
+      },
+    });
+    created++;
+  }
+
+  console.log(`  automations: ${rules.length} (${created} new, all switched off)`);
+}
+
 async function main(): Promise<void> {
   console.log("Seeding:");
   const permissionIds = await seedPermissions();
@@ -224,6 +347,7 @@ async function main(): Promise<void> {
   await seedLeadSources();
   await seedSiteSettings();
   await seedEmailTemplates();
+  await seedAutomations();
   console.log("Done.");
 }
 

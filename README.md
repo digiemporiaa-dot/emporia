@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 14 (Marketing) complete.** The foundation from Phase 2
+**Status: Phase 15 (Automation) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -62,7 +62,12 @@ analytics dashboard that ranks sources, services, cities, campaigns, popups and
 owners by the revenue they actually produced, with revenue withheld from roles
 that hold no finance permission.
 
-Automation and AI phases are not built yet.
+Plus automation: a `trigger → conditions → actions` engine whose rules live in
+the database and are built, tried and switched on from admin with no deploy.
+Every automated action is attributed to no user and written to the audit trail,
+which is also what the run log reads back.
+
+The AI phase is not built yet.
 
 Online payment is optional: with no `RAZORPAY_*` credentials the gateway is
 simply absent, the portal shows no pay button, and payments are recorded by

@@ -6,6 +6,7 @@ import { record, withAudit } from "@/lib/services/audit.service";
 import { mergeScoringConfig, scoreLead, type ScoringConfig } from "@/lib/crm/scoring";
 import { transitionError } from "@/lib/crm/pipeline";
 import { alertLeadAssigned } from "@/lib/services/alerts.service";
+import { runAutomations } from "@/lib/automation/engine";
 import type { Actor } from "@/lib/actor/types";
 import type { LeadStatus, Priority, TaskStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -335,7 +336,7 @@ export async function changeStatus(
   const error = transitionError(before.status, status);
   if (error) throw new ValidationError(error);
 
-  return withAudit(
+  const changed = await withAudit(
     { actor, action: "STATUS_CHANGE", entityType: "Lead", entityId: id, before },
     async (tx) => {
       const updated = await tx.lead.update({
@@ -361,6 +362,14 @@ export async function changeStatus(
       return updated;
     },
   );
+
+  await runAutomations(
+    "LEAD_STATUS_CHANGED",
+    { leadId: id, actorUserId: actor.type === "SYSTEM" ? null : actor.userId },
+    { "lead.previousStatus": before.status },
+  );
+
+  return changed;
 }
 
 export async function assignLead(
@@ -428,6 +437,11 @@ export async function assignLead(
   // The new owner is told after the handoff is committed. Best-effort: an alert
   // that fails is logged, and never undoes the assignment.
   if (toUserId) await alertLeadAssigned(id, toUserId, actor.name || "Someone");
+
+  await runAutomations("LEAD_ASSIGNED", {
+    leadId: id,
+    actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+  });
 
   return assigned;
 }

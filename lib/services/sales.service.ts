@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { alertProposalAccepted, emailProposal } from "@/lib/services/alerts.service";
+import { runAutomations } from "@/lib/automation/engine";
 import { priceDocument } from "@/lib/money";
 import { isEditable, transitionError } from "@/lib/sales/lifecycle";
 import { nextContractNumber, nextProposalNumber, uniqueClientSlug } from "@/lib/sales/numbering";
@@ -572,6 +573,12 @@ export async function sendProposal(actor: Actor, id: string) {
   // logged either way (lib/services/email.service.ts).
   await emailProposal(id);
 
+  await runAutomations("PROPOSAL_SENT", {
+    proposalId: id,
+    leadId: before.leadId,
+    actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+  });
+
   return sent;
 }
 
@@ -608,7 +615,7 @@ export async function setProposalStatus(actor: Actor, id: string, status: Propos
   const error = transitionError(before.status, status);
   if (error) throw new ValidationError(error);
 
-  return withAudit(
+  const updated = await withAudit(
     { actor, action: "STATUS_CHANGE", entityType: "Proposal", entityId: id, before },
     (tx) =>
       tx.proposal.update({
@@ -620,6 +627,17 @@ export async function setProposalStatus(actor: Actor, id: string, status: Propos
         },
       }),
   );
+
+  if (status === "REJECTED") {
+    await runAutomations("PROPOSAL_REJECTED", {
+      proposalId: id,
+      leadId: updated.leadId,
+      clientId: updated.clientId,
+      actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+    });
+  }
+
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -781,6 +799,16 @@ export async function acceptProposal(
   // Told after the conversion is committed, so the alert can never be the
   // reason a client fails to exist.
   await alertProposalAccepted(result.proposalId, result.clientId);
+
+  // The client already exists by this point — creating it is part of accepting,
+  // not something a rule may or may not do. Rules handle the follow-on work:
+  // the project, its onboarding tasks, the PM's notification, the welcome mail.
+  await runAutomations("PROPOSAL_ACCEPTED", {
+    proposalId: result.proposalId,
+    clientId: result.clientId,
+    leadId: result.leadId,
+    actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+  });
 
   return result;
 }

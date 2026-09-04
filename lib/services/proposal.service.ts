@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
+import { nextProposalNumber } from "@/lib/sales/numbering";
 import { documentTotals, lineTotals, toMoneyString } from "@/lib/money";
 import type { Actor } from "@/lib/actor/types";
 
@@ -18,22 +19,6 @@ import type { Actor } from "@/lib/actor/types";
  * invoice, so a figure quoted from a package and the figure eventually
  * invoiced cannot diverge (CLAUDE.md 2 rule 1, 4).
  */
-
-/** `PRO-2026-0001`, sequential within the year. */
-async function nextProposalNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `PRO-${year}-`;
-
-  const latest = await db.proposal.findFirst({
-    where: { number: { startsWith: prefix } },
-    orderBy: { number: "desc" },
-    select: { number: true },
-  });
-
-  const previous = latest ? Number.parseInt(latest.number.slice(prefix.length), 10) : 0;
-  const next = Number.isFinite(previous) ? previous + 1 : 1;
-  return `${prefix}${String(next).padStart(4, "0")}`;
-}
 
 export type ProposalFromPackageInput = {
   packageId: string;
@@ -92,11 +77,14 @@ export async function createProposalFromPackage(
 
   const totals = documentTotals([line]);
   const computed = lineTotals(line);
-  const number = await nextProposalNumber();
 
   return withAudit(
-    { actor, action: "CREATE", entityType: "Proposal", entityId: number },
+    { actor, action: "CREATE", entityType: "Proposal", entityId: input.packageId },
     async (tx) => {
+      // Allocated inside the transaction, through the one shared allocator:
+      // outside it, two concurrent creations could claim the same number.
+      const number = await nextProposalNumber(tx);
+
       const proposal = await tx.proposal.create({
         data: {
           number,

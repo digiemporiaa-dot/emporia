@@ -15,6 +15,7 @@ import {
   Receipt,
   Settings,
   Users,
+  Workflow,
 } from "lucide-react";
 import type { Route } from "next";
 import { cn } from "@/lib/utils/cn";
@@ -49,6 +50,7 @@ const ICONS = {
   finance: Receipt,
   media: ImageIcon,
   analytics: BarChart3,
+  automation: Workflow,
   settings: Settings,
 } as const;
 

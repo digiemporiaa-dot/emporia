@@ -7,6 +7,7 @@ import { toMoneyString } from "@/lib/money";
 import { hoursToMinutes } from "@/lib/projects/hours";
 import { deriveHealth } from "@/lib/projects/health";
 import { nextProjectCode } from "@/lib/projects/numbering";
+import { runAutomations } from "@/lib/automation/engine";
 import {
   blockingDependencies,
   canTransitionTask,
@@ -285,7 +286,7 @@ export async function createProject(actor: Actor, input: ProjectInput) {
   });
   if (!client) throw new ValidationError("That client does not exist.");
 
-  return withAudit(
+  const project = await withAudit(
     { actor, action: "CREATE", entityType: "Project", entityId: input.name },
     async (tx) => {
       const code = await nextProjectCode(tx);
@@ -308,6 +309,14 @@ export async function createProject(actor: Actor, input: ProjectInput) {
       });
     },
   );
+
+  await runAutomations("PROJECT_CREATED", {
+    projectId: project.id,
+    clientId: input.clientId,
+    actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+  });
+
+  return project;
 }
 
 export async function updateProject(actor: Actor, id: string, input: ProjectInput) {

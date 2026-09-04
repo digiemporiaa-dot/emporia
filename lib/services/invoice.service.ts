@@ -7,6 +7,7 @@ import { gt, toMoneyString } from "@/lib/money";
 import { nextInvoiceNumber } from "@/lib/finance/numbering";
 import { isEditable, isOutstanding, priceInvoice, transitionError } from "@/lib/finance/invoice";
 import { emailInvoice } from "@/lib/services/alerts.service";
+import { runAutomations } from "@/lib/automation/engine";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
 import type {
@@ -190,6 +191,11 @@ export async function sendInvoice(actor: Actor, id: string) {
   // that was never marked sent. The attempt is logged either way.
   await emailInvoice(id);
 
+  await runAutomations("INVOICE_SENT", {
+    invoiceId: id,
+    actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+  });
+
   return sent;
 }
 
@@ -239,14 +245,26 @@ export async function cancelInvoice(actor: Actor, id: string, reason: string | n
  * draft, a paid or a cancelled one.
  */
 export async function markOverdue(now = new Date()): Promise<number> {
+  const where: Prisma.InvoiceWhereInput = {
+    deletedAt: null,
+    status: { in: ["SENT", "PARTIALLY_PAID"] },
+    dueAt: { lt: now },
+  };
+
+  // Collected before the update so the automations below know which invoices
+  // actually slipped — `updateMany` reports a count, not rows.
+  const slipped = await db.invoice.findMany({ where, select: { id: true, clientId: true } });
+
   const result = await db.invoice.updateMany({
-    where: {
-      deletedAt: null,
-      status: { in: ["SENT", "PARTIALLY_PAID"] },
-      dueAt: { lt: now },
-    },
+    where: { id: { in: slipped.map((invoice) => invoice.id) } },
     data: { status: "OVERDUE" },
   });
+
+  // Fired per invoice rather than once for the batch, so a rule's conditions
+  // can look at the invoice that actually slipped.
+  for (const invoice of slipped) {
+    await runAutomations("INVOICE_OVERDUE", { invoiceId: invoice.id, clientId: invoice.clientId });
+  }
 
   return result.count;
 }

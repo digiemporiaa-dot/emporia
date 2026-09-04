@@ -42,6 +42,7 @@ const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "link", href: "/admin/finance", label: "Finance", icon: "finance" }, permission: "invoices.view" },
   { item: { kind: "link", href: "/admin/media", label: "Media", icon: "media" }, permission: "media.view" },
   { item: { kind: "link", href: "/admin/analytics", label: "Analytics", icon: "analytics" }, permission: "analytics.view" },
+  { item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" }, permission: "automation.view" },
   { item: { kind: "link", href: "/admin/settings/email", label: "Settings", icon: "settings" }, permission: "emails.view" },
 ];
 

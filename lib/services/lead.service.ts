@@ -5,6 +5,7 @@ import { ValidationError } from "@/lib/errors";
 import { persistTouches, type VisitorContext } from "@/lib/attribution/server";
 import { assignOnCapture, pickAssignee, scoreOnCapture, scoringConfig } from "@/lib/services/crm.service";
 import { alertNewLead } from "@/lib/services/alerts.service";
+import { runAutomations } from "@/lib/automation/engine";
 import type { DeviceType } from "@/generated/prisma/enums";
 import type { ContactFormInput } from "@/lib/validation/lead";
 
@@ -128,6 +129,9 @@ export async function captureContactLead(
   // captured whether or not the alert goes out, and the send is logged either
   // way (lib/services/email.service.ts).
   await alertNewLead(lead.id);
+
+  // After the capture is committed, and never able to undo it.
+  await runAutomations("LEAD_CREATED", { leadId: lead.id });
 
   return { leadId: lead.id };
 }
@@ -307,6 +311,7 @@ export async function capturePopupLead(
 
   // Outside the transaction, for the same reason as the contact form.
   await alertNewLead(result.leadId);
+  await runAutomations("LEAD_CREATED", { leadId: result.leadId });
 
   return result;
 }

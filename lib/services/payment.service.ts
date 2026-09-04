@@ -8,6 +8,7 @@ import { Decimal, toMoneyString } from "@/lib/money";
 import { applyPayment } from "@/lib/finance/invoice";
 import { fromMinorUnits, payments as gateway } from "@/lib/payments";
 import { emailPaymentReceived } from "@/lib/services/alerts.service";
+import { runAutomations } from "@/lib/automation/engine";
 import { log } from "@/lib/logger";
 import type { Actor } from "@/lib/actor/types";
 import type { PaymentGateway } from "@/generated/prisma/enums";
@@ -125,6 +126,14 @@ export async function recordManualPayment(actor: Actor, input: ManualPaymentInpu
   );
 
   await emailPaymentReceived(result.paymentId);
+
+  await runAutomations("PAYMENT_RECEIVED", {
+    paymentId: result.paymentId,
+    invoiceId: invoice.id,
+    clientId: invoice.clientId,
+    actorUserId: actor.type === "SYSTEM" ? null : actor.userId,
+  });
+
   return result;
 }
 
@@ -283,6 +292,12 @@ export async function handleWebhook(event: WebhookEvent): Promise<{
     });
 
     await emailPaymentReceived(result.id);
+
+    await runAutomations("PAYMENT_RECEIVED", {
+      paymentId: result.id,
+      invoiceId: invoice.id,
+      clientId: invoice.clientId,
+    });
 
     payLog.info({ paymentId: result.id, invoiceId: invoice.id, amount }, "payment captured");
     return { handled: true, reason: "Recorded.", paymentId: result.id };

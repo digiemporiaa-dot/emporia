@@ -1023,6 +1023,57 @@ than writing it as zeroes.
 
 ---
 
+## 15A. Automation
+
+`trigger → conditions → actions`, with every part a database row rather than
+code. A rule is built, tried and switched on in admin; nothing is deployed.
+
+**Where rules run.** `runAutomations` is called *after* the mutation it reacts
+to has committed, and it never throws to its caller. An automation must not be
+the reason a lead fails to be captured or a proposal fails to be accepted, and a
+broken rule is logged and skipped rather than propagated.
+
+**Facts.** Each trigger assembles a flat `Facts` object by reading the record
+fresh from the database at fire time — not from what the caller happened to pass
+— so a rule judges the record as it now stands. Money arrives as a
+fixed-precision string and comparisons go through Decimal, making
+"budget is over 500000" exact. `TRIGGER_FACTS` declares what each trigger
+provides, and the editor builds its condition dropdown from it, so a condition
+cannot be written against a fact that will not be there.
+
+**Wired triggers only.** `WIRED_TRIGGERS` lists the triggers something in the
+codebase actually raises. `TASK_OVERDUE` exists in the schema enum and is
+deliberately absent: nothing fires it, because there is no scheduler, and
+offering it would let someone build a rule that silently never runs.
+
+**Actions check before they act.** Each handler inspects the world first and
+returns a sentence describing what it did — including "nothing, because…".
+That is what the run log shows. Consequences of this:
+
+- `CREATE_CLIENT` on `PROPOSAL_ACCEPTED` reports that the client already exists.
+  Creating it is a transactional part of accepting, not something a rule may or
+  may not do; making a second one is the alternative.
+- `ASSIGN_LEAD` defaults to `onlyIfUnassigned`, because capture already
+  round-robins a new lead and a rule should fill the gap rather than fight
+  the CRM.
+- `SET_LEAD_STATUS` refuses `WON`. Winning creates a Client through the sales
+  flow; reaching it by the side door would leave a won lead with nothing
+  behind it.
+- `CREATE_PROJECT_TASKS` refuses a project that already has tasks, so a repeat
+  firing cannot duplicate a checklist someone is halfway through.
+
+**Stored configs are re-validated at fire time** against the same discriminated
+union that validated them on save. A rule written before a config shape changed
+fails visibly in the run log instead of reaching a handler that cannot read it.
+
+**Audit is the record.** Every action that changes something writes its own
+`AuditLog` row under an actor of type `SYSTEM` — which persists as
+`actorId: null`, because no user did it — and each rule run writes one more row
+naming the trigger, the subject and every action's outcome. The admin run log is
+a read of those rows rather than a second log that could drift from them.
+
+---
+
 ## 16. Integration boundaries
 
 Each external system sits behind an interface in `lib/`, with one real provider
