@@ -1085,7 +1085,7 @@ implementation and **no fake fallback**:
 | `EmailService` | SMTP (nodemailer) | 12 |
 | `PaymentService` | Razorpay | 13 |
 | `ReportingProvider` | Google Ads, Meta Ads, GA4, Search Console — **interfaces only, no implementation** | 14 |
-| `AIService` | provider-swappable | 16 |
+| `AIProvider` | Anthropic (`claude-opus-5`), provider-swappable | 16 |
 | `ShippingService` | Shiprocket — **interface only, no implementation** | — |
 
 **Unconfigured behaviour.** When required env is missing, the provider is not
@@ -1105,6 +1105,52 @@ Specific guarantees:
   invoice paid.
 - **AI** — output always marked AI-generated, always editable, and barred from
   writing `CampaignMetric` rows.
+
+---
+
+## 16A. AI
+
+One provider abstraction (`lib/ai`), six assists (`lib/services/ai.service`),
+and a single rule that shapes both: **the model proposes, a person disposes.**
+
+**Nothing is written.** Every assist returns a draft. There is no code path by
+which the model writes to the database — a person reads the suggestion, edits
+it, and saves it through the ordinary service for that record, which applies
+that record's ordinary validation and audit. The lead assessment sits *beside*
+the rules-engine score and never replaces it.
+
+**Figures come from the database, and go back to the screen from there.** Each
+prompt is handed the facts it may use and is instructed never to produce another
+number. Two structural consequences:
+
+- The proposal drafter is given the line *names* and not the line *prices*, so
+  a drafted paragraph cannot contradict the priced total on the same page.
+- `analyzeCRM` returns the figures it was given alongside the prose, and the
+  page renders those, not numbers parsed out of a sentence. Revenue is only in
+  the facts when the actor holds `invoices.view`, so the analytics permission
+  split (§15) survives into the commentary.
+
+**Empty state beats invented insight.** `analyzeCRM` refuses a period with no
+leads rather than asking for commentary on nothing.
+
+**The thin-page rule reaches the draft.** The SEO assist returns the model's own
+verdict on whether it had enough to be specific about the city, and the editor
+shows a warning when it did not — a draft must not be the reason someone tries
+to publish what `canPublish()` (§13) exists to refuse.
+
+**Marked, always.** Every suggestion renders inside one `AIDraft` component that
+carries the label, the model id, and the sentence saying nothing was saved. A
+new assist cannot forget the marker because it cannot render without it.
+
+**Audited.** Every call records task, model, subject and token usage under
+`AIDraft` in the audit trail — the spend is accountable even though nothing was
+saved.
+
+**Unconfigured is a first-class state.** With no `AI_API_KEY` the provider is
+`UnconfiguredAI`, which throws a typed error; the screens read
+`isAIConfigured()` and render no assist buttons at all, with a line saying why.
+An `AI_PROVIDER` naming a vendor that is not implemented is treated as
+unconfigured rather than guessed at.
 
 ---
 

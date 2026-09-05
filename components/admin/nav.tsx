@@ -14,6 +14,7 @@ import {
   Megaphone,
   Receipt,
   Settings,
+  Sparkles,
   Users,
   Workflow,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const ICONS = {
   media: ImageIcon,
   analytics: BarChart3,
   automation: Workflow,
+  ai: Sparkles,
   settings: Settings,
 } as const;
 

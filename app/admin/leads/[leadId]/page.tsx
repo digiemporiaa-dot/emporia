@@ -8,6 +8,9 @@ import { isAppError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
 import { PriorityBadge, ScoreBadge, StatusBadge } from "@/components/admin/lead-badges";
+import { AIUnavailable } from "@/components/admin/ai-draft";
+import { isAIConfigured } from "@/lib/ai";
+import { LeadAssist } from "./lead-assist";
 import {
   AssignPanel,
   NotesPanel,
@@ -136,6 +139,24 @@ export default async function LeadDetailPage({
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-5">
+          {can(actor, "ai.use") ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Assistant</CardTitle>
+                <p className="text-xs text-ink-subtle">
+                  Reads this lead and drafts. It changes nothing.
+                </p>
+              </CardHeader>
+              <CardBody>
+                {isAIConfigured() ? (
+                  <LeadAssist leadId={lead.id} computedScore={lead.score} />
+                ) : (
+                  <AIUnavailable />
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+
           {lead.message ? (
             <Card>
               <CardHeader>

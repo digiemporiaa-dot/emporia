@@ -13,6 +13,9 @@ import { analyticsParamsSchema } from "@/lib/validation/marketing";
 import { RANGE_LABEL, RANGE_PRESETS, resolveRange } from "@/lib/analytics/range";
 import { formatMoney } from "@/lib/money";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
+import { AIUnavailable } from "@/components/admin/ai-draft";
+import { isAIConfigured } from "@/lib/ai";
+import { CRMInsights } from "./crm-insights";
 
 export const metadata: Metadata = { title: "Analytics" };
 export const dynamic = "force-dynamic";
@@ -134,6 +137,21 @@ export default async function AnalyticsPage({
                     ? `${formatMoney(best.revenue, "INR")} received`
                     : `no revenue received yet; ranked on ${formatMoney(best.pipelineValue, "INR")} of stated budget`}
                 </p>
+              </CardBody>
+            </Card>
+          ) : null}
+
+          {can(actor, "ai.use") ? (
+            <Card className="mt-5">
+              <CardHeader>
+                <CardTitle>Read of these numbers</CardTitle>
+                <p className="text-xs text-ink-subtle">
+                  Commentary on the figures on this page. The figures stay ours; only the reading is
+                  generated.
+                </p>
+              </CardHeader>
+              <CardBody>
+                {isAIConfigured() ? <CRMInsights range={params.range} /> : <AIUnavailable />}
               </CardBody>
             </Card>
           ) : null}

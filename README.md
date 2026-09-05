@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 15 (Automation) complete.** The foundation from Phase 2
+**Status: Phase 16 (AI) complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -67,11 +67,18 @@ the database and are built, tried and switched on from admin with no deploy.
 Every automated action is attributed to no user and written to the audit trail,
 which is also what the run log reads back.
 
-The AI phase is not built yet.
+Plus AI assistance: one provider abstraction over Claude, with six assists —
+lead summary, lead assessment, proposal narrative, content, SEO copy and a read
+of the analytics figures. Every result is a labelled draft that writes nothing;
+every figure the model may mention is handed to it from the database, and the
+screens render those figures from our own data rather than from its prose.
+
+Production hardening is the remaining phase.
 
 Online payment is optional: with no `RAZORPAY_*` credentials the gateway is
 simply absent, the portal shows no pay button, and payments are recorded by
-hand. Nothing is faked in either case.
+hand. AI is optional in the same way: with no `AI_API_KEY` the assist buttons
+are not rendered and the screens say why. Nothing is faked in either case.
 
 ---
 

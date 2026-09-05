@@ -63,6 +63,8 @@ const envSchema = z.object({
 
   AI_PROVIDER: z.string().optional(),
   AI_API_KEY: z.string().optional(),
+  /** Overrides the AI API base. Used to point at a local double in testing. */
+  AI_BASE_URL: z.string().url().optional(),
 
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
@@ -164,5 +166,10 @@ export function razorpayConfig() {
 export function aiConfig() {
   const e = env();
   if (!e.AI_PROVIDER || !e.AI_API_KEY) return null;
-  return { provider: e.AI_PROVIDER, apiKey: e.AI_API_KEY };
+  return {
+    provider: e.AI_PROVIDER,
+    apiKey: e.AI_API_KEY,
+    /** Overrides the API base. Used to point at a local double in testing. */
+    baseUrl: e.AI_BASE_URL ?? null,
+  };
 }
