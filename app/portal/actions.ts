@@ -134,7 +134,7 @@ export async function changePasswordAction(
     // A change-password endpoint that takes the current password is an online
     // guessing oracle, so it is rate limited like the login itself
     // (CLAUDE.md 11).
-    const limit = checkRateLimit(`portal:password:${me.userId}`, {
+    const limit = await checkRateLimit(`portal:password:${me.userId}`, {
       limit: 5,
       windowMs: 15 * 60_000,
     });

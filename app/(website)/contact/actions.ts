@@ -72,7 +72,7 @@ export async function submitContactAction(
   const ip = clientIpFrom(h);
   const userAgent = h.get("user-agent");
 
-  const limit = checkRateLimit(`contact:${ip ?? "unknown"}`, { limit: 5, windowMs: 10 * 60_000 });
+  const limit = await checkRateLimit(`contact:${ip ?? "unknown"}`, { limit: 5, windowMs: 10 * 60_000 });
   if (!limit.allowed) {
     return {
       status: "error",

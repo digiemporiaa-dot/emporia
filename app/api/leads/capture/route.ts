@@ -23,7 +23,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const head = await headers();
   const ip = clientIpFrom(head);
 
-  const limit = checkRateLimit(`lead:capture:${ip ?? "unknown"}`, {
+  const limit = await checkRateLimit(`lead:capture:${ip ?? "unknown"}`, {
     limit: 5,
     windowMs: 10 * 60_000,
   });

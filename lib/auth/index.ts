@@ -25,8 +25,8 @@ async function authorize(
 
   // Rate limit on the IP and on the email separately: the first blunts
   // credential stuffing, the second blunts a distributed attack on one account.
-  const byIp = checkRateLimit(`login:ip:${ip ?? "unknown"}`, { limit: 10, windowMs: 60_000 });
-  const byEmail = checkRateLimit(`login:email:${email}`, { limit: 5, windowMs: 60_000 });
+  const byIp = await checkRateLimit(`login:ip:${ip ?? "unknown"}`, { limit: 10, windowMs: 60_000 });
+  const byEmail = await checkRateLimit(`login:email:${email}`, { limit: 5, windowMs: 60_000 });
   if (!byIp.allowed || !byEmail.allowed) {
     authLog.warn({ email, ip }, "login rate limited");
     return null;

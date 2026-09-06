@@ -2171,6 +2171,20 @@ model SiteSetting {
 
 // Non-secret configuration only. Credentials live in env and are read solely
 // through lib/config (CLAUDE.md 2 rule 6).
+/// Fixed-window rate limiting, shared across application instances.
+///
+/// In-process counters are correct for exactly one container: behind two, an
+/// attacker gets the limit once per instance. The window lives here so the
+/// limit is the limit however many instances are running (docs/ARCHITECTURE.md
+/// 19 D9).
+model RateLimitWindow {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
+}
+
 model IntegrationSetting {
   id        String  @id @default(cuid())
   provider  String  @unique

@@ -28,7 +28,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const visitorId = jar.get(COOKIE.visitorId)?.value;
   if (!visitorId) return NextResponse.json({ ok: false }, { status: 204 });
 
-  const limit = checkRateLimit(`popup:event:${visitorId}`, { limit: 120, windowMs: 60_000 });
+  const limit = await checkRateLimit(`popup:event:${visitorId}`, { limit: 120, windowMs: 60_000 });
   if (!limit.allowed) return NextResponse.json({ ok: false }, { status: 429 });
 
   let parsed: z.infer<typeof bodySchema>;

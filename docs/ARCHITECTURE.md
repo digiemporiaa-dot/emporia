@@ -1348,6 +1348,22 @@ so it costs what a real account costs. Without it the uniform error message is
 undone by the response time, which answers "is this address registered?" one
 request at a time.
 
+**Rate limiting is shared.** `checkRateLimit` writes to Postgres, not process
+memory. The increment is one `INSERT … ON CONFLICT DO UPDATE` that also resets
+an expired window in the same statement, so neither a second instance nor two
+concurrent requests can slip past the limit. Proved two ways: twenty concurrent
+calls against a limit of five let exactly five through, and seven real logins
+against one address produced five attempts and two refusals from a single
+shared row.
+
+**Dependencies carry no known advisories.** `npm audit` reports zero. nodemailer
+moved to 10.x (the `raw`-option advisory was never reachable — our `sendMail`
+passes only addresses, subject and bodies — but the dependency should still be
+current), and `overrides` pin patched `postcss`, `mysql2` and `deepmerge-ts`
+under the toolchain that ships them. The overrides exist so the pins in §2
+survive: `npm audit fix --force` would have installed Next 16 and *downgraded*
+Prisma to 6.
+
 **Not verified here.** The Docker image build could not be run: the sandbox has
 the Docker CLI but no daemon. The Dockerfile and compose file were reviewed
 statically instead.
@@ -1395,7 +1411,7 @@ the work outright.
 | **D6** | Are the `canPublish()` thresholds in §13 the right bar? | They are my proposal, not a spec value — this is a **business rule** and CLAUDE.md §15 rule 6 says ask rather than guess. |
 | **D7** | ISR + on-demand revalidation instead of `generateStaticParams` (§17.2)? | **Yes.** It is the only option that keeps container builds hermetic. |
 | **D8** | Currency: INR only, or multi-currency from the start? | Schema supports multi (`Currency` enum per document); **default and seed INR**. No FX conversion is planned — flag if you need it. |
-| **D9** | Rate limiting store — in-process, or Redis? | **In-process** for now; it is honest for a single container and adds no infrastructure. Multi-instance on Coolify would need Redis, so tell me if you plan to scale horizontally. |
+| **D9** | Rate limiting store — in-process, or Redis? | **Resolved: Postgres.** In-process was correct for one container and wrong behind two — an attacker got the limit once per instance. The window is now a `RateLimitWindow` row incremented by a single `INSERT … ON CONFLICT DO UPDATE`, so the limit holds across instances and concurrent requests cannot both pass it. Postgres was already a hard dependency; Redis would have been new infrastructure for the same guarantee. |
 
 ### Risks
 

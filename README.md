@@ -196,6 +196,9 @@ A few things that will bite you if you assume otherwise:
   validated at server boot by `instrumentation.ts`, not at import time, so
   `next build` stays hermetic — the container image is built without database
   credentials.
+- **Rate limiting is shared, not in-process.** `checkRateLimit` is async and
+  writes a `RateLimitWindow` row, so the limit holds across instances. It needs
+  the database — do not call it from the edge.
 - **Authorization is server-side, always.** `middleware.ts` only checks that a
   session token exists so the redirect gets a proper 307; it is not the security
   boundary. Every action, route handler and page re-checks its own permission.

@@ -32,7 +32,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const ip = clientIpFrom(await headers());
-  const limit = checkRateLimit(`media:presign:${actor.userId}:${ip ?? "unknown"}`, {
+  const limit = await checkRateLimit(`media:presign:${actor.userId}:${ip ?? "unknown"}`, {
     limit: 60,
     windowMs: 60_000,
   });

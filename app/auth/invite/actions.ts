@@ -24,7 +24,7 @@ export async function acceptInviteAction(
 ): Promise<InviteState> {
   const ip = clientIpFrom(await headers());
 
-  const limit = checkRateLimit(`invite:${ip ?? "unknown"}`, { limit: 10, windowMs: 60_000 });
+  const limit = await checkRateLimit(`invite:${ip ?? "unknown"}`, { limit: 10, windowMs: 60_000 });
   if (!limit.allowed) {
     return { ok: false, code: "RATE_LIMITED", message: "Too many attempts. Try again shortly." };
   }

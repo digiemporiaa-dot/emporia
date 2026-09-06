@@ -33,11 +33,11 @@ export async function requestResetAction(
 
   // Both dimensions, like the login itself: the address, so one account cannot
   // be spammed with links, and the origin, so one client cannot enumerate.
-  const byEmail = checkRateLimit(`reset:email:${parsed.data.email}`, {
+  const byEmail = await checkRateLimit(`reset:email:${parsed.data.email}`, {
     limit: 3,
     windowMs: 15 * 60_000,
   });
-  const byIp = checkRateLimit(`reset:ip:${ip ?? "unknown"}`, { limit: 10, windowMs: 15 * 60_000 });
+  const byIp = await checkRateLimit(`reset:ip:${ip ?? "unknown"}`, { limit: 10, windowMs: 15 * 60_000 });
 
   if (!byEmail.allowed || !byIp.allowed) {
     // Still the same answer: a rate-limit message that only appears for real

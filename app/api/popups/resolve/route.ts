@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const [jar, head] = await Promise.all([cookies(), headers()]);
 
   const ip = clientIpFrom(head);
-  const limit = checkRateLimit(`popup:resolve:${ip ?? "unknown"}`, { limit: 60, windowMs: 60_000 });
+  const limit = await checkRateLimit(`popup:resolve:${ip ?? "unknown"}`, { limit: 60, windowMs: 60_000 });
   if (!limit.allowed) {
     return NextResponse.json({ popup: null }, { status: 429 });
   }

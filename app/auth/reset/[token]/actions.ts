@@ -46,7 +46,7 @@ export async function completeResetAction(
 
   // Bounded per token as well as per origin, so a leaked link cannot be
   // hammered and an origin cannot sweep for live ones.
-  const limit = checkRateLimit(`reset:complete:${ip ?? "unknown"}`, {
+  const limit = await checkRateLimit(`reset:complete:${ip ?? "unknown"}`, {
     limit: 10,
     windowMs: 15 * 60_000,
   });
