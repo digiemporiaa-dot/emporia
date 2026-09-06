@@ -1159,6 +1159,10 @@ unconfigured rather than guessed at.
 Deploy target is Coolify, per CLAUDE.md §3. Three concerns: the image, local
 development, and what runs at deploy time.
 
+> This section is the *reasoning*. The operator's procedure — variables, Coolify
+> steps, first boot, provider configuration, scaling, backups, rollback and
+> troubleshooting — is [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ### 17.1 Image
 
 Multi-stage build on **`node:22-bookworm-slim`**, not Alpine. Both `argon2` and

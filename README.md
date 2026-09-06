@@ -166,6 +166,14 @@ The entrypoint runs `prisma migrate deploy` before starting the server. Seeding
 is deliberately **not** automatic, so a redeploy can never overwrite live data
 with demo records — run `npm run db:seed` by hand.
 
+## Deploying
+
+See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — environment variables and
+which of them fail loudly vs. quietly, the Coolify setup, first-boot seeding,
+the provider-side configuration the app cannot do for you (R2 CORS, the Razorpay
+webhook), running more than one instance, backups, rollback and migrations, and
+troubleshooting.
+
 ## Testing
 
 Unit tests run anywhere. The database integration tests need a **separate**
