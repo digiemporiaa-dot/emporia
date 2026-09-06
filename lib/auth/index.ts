@@ -2,7 +2,7 @@ import "server-only";
 import NextAuth from "next-auth";
 import { db } from "@/lib/db";
 import { log } from "@/lib/logger";
-import { verifyPassword } from "@/lib/auth/password";
+import { burnPasswordComparison, verifyPassword } from "@/lib/auth/password";
 import { buildAuthConfig, type AuthorizedUser } from "@/lib/auth/config";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
 import type { RoleNameLiteral } from "@/lib/auth/permissions";
@@ -48,6 +48,9 @@ async function authorize(
   });
 
   if (!user || !user.passwordHash || user.status !== "ACTIVE") {
+    // Spend the same time an existing account would, so the response time does
+    // not reveal whether the address is registered (CLAUDE.md 11).
+    await burnPasswordComparison(credentials.password);
     authLog.info({ email, ip, reason: "no-active-user" }, "login failed");
     return null;
   }

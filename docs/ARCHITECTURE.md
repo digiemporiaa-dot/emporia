@@ -1334,6 +1334,20 @@ make it safe to expose unauthenticated:
 - The token is cleared in the same `updateMany` that sets the password, matched
   on the token again, so a race loses rather than resetting twice.
 
+**Session revocation.** `currentActor` takes **only the user id** from the JWT
+and reads status, role and `clientId` from the database on every request. This
+was not always so: it previously trusted the token for all three, and because
+sessions are eight-hour JWTs that meant a suspended account kept working, a
+demotion did not apply, and a revoked portal user kept reading their old
+client's data — all until the token expired. Reproduced before the fix (a
+suspended admin session still served `/admin/leads`) and after (bounced to the
+login page). The cost is one indexed lookup, deduped per request by `cache()`.
+
+**Login timing.** The "no such user" branch runs a throwaway argon2 verification
+so it costs what a real account costs. Without it the uniform error message is
+undone by the response time, which answers "is this address registered?" one
+request at a time.
+
 **Not verified here.** The Docker image build could not be run: the sandbox has
 the Docker CLI but no daemon. The Dockerfile and compose file were reviewed
 statically instead.

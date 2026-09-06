@@ -31,3 +31,26 @@ export async function verifyPassword(hash: string, plain: string): Promise<boole
     return false;
   }
 }
+
+/**
+ * A verification against a throwaway hash, for the "no such user" branch of a
+ * login.
+ *
+ * Without it, an unknown address returns immediately while a known one pays for
+ * an argon2 verification — a timing difference that answers "does this account
+ * exist?" one request at a time, which the uniform error message otherwise
+ * refuses to.
+ *
+ * The hash is computed once per process, on first use, so the cost is paid on
+ * the comparison rather than on generating it.
+ */
+let decoyHash: Promise<string> | null = null;
+
+export async function burnPasswordComparison(plain: string): Promise<void> {
+  decoyHash ??= hashPassword("password-that-is-never-a-real-credential");
+  try {
+    await argon2.verify(await decoyHash, plain);
+  } catch {
+    // Expected: it never matches. The point is the time it takes.
+  }
+}
