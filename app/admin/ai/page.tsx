@@ -37,7 +37,7 @@ export default async function AIPage() {
   return (
     <>
       <header className="mb-5">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Assistant</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Assistant</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Drafting</h1>
         <p className="mt-1.5 max-w-2xl text-xs text-ink-subtle">
           Everything here produces a draft you edit and save yourself — nothing is written for you,

@@ -47,7 +47,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               It may have expired, or already been used. Ask your account manager for a new one.
             </p>
             <p className="mt-6">
-              <Link href="/auth/login" className="text-sm text-brand-red underline underline-offset-4">
+              <Link href="/auth/login" className="text-sm text-brand-red-text underline underline-offset-4">
                 Go to sign in
               </Link>
             </p>

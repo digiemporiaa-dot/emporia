@@ -86,7 +86,7 @@ export function RecordMetric({ campaignId }: { campaignId: string }) {
       </Field>
 
       {state && !state.ok ? (
-        <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+        <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
           <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
           {state.message}
         </p>
@@ -170,7 +170,7 @@ export function ImportMetrics({ campaignId }: { campaignId: string }) {
             ) : null}
           </div>
         ) : (
-          <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+          <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
             <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
             {outcome.message}
           </p>
@@ -203,7 +203,7 @@ export function DeleteMetric({ id, campaignId }: { id: string; campaignId: strin
         <span className="sr-only">Delete this day</span>
       </button>
       {error ? (
-        <span role="alert" className="block text-2xs text-brand-red">
+        <span role="alert" className="block text-2xs text-brand-red-text">
           {error}
         </span>
       ) : null}

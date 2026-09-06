@@ -68,7 +68,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           : error.code === "INTEGRATION_NOT_CONFIGURED"
             ? 503
             : 400;
-      return NextResponse.json({ error: error.message }, { status });
+      return NextResponse.json({ error: error.publicMessage }, { status });
     }
 
     // Never surface a stack trace (CLAUDE.md 11).

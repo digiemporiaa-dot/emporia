@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { AlertCircle } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
@@ -27,7 +28,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       {state.error ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3 py-2.5 text-sm text-brand-red"
+          className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3 py-2.5 text-sm text-brand-red-text"
         >
           <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>{state.error}</span>
@@ -54,6 +55,12 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
       </Field>
 
       <SubmitButton />
+
+      <p className="text-center text-xs text-ink-subtle">
+        <Link href="/auth/forgot" className="underline underline-offset-2 hover:text-navy-800">
+          Forgotten your password?
+        </Link>
+      </p>
     </form>
   );
 }

@@ -89,7 +89,7 @@ export default async function PortalApprovalPage({
                     <p className="text-sm text-navy-800">
                       Version {version.version}
                       {version.version === approval.currentVersion ? (
-                        <span className="ml-2 text-2xs uppercase tracking-widest text-brand-red">
+                        <span className="ml-2 text-2xs uppercase tracking-widest text-brand-red-text">
                           Latest
                         </span>
                       ) : null}
@@ -122,7 +122,7 @@ export default async function PortalApprovalPage({
                           href={version.media.url}
                           target="_blank"
                           rel="noreferrer noopener"
-                          className="text-2xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
+                          className="text-2xs text-navy-800 underline underline-offset-2 hover:text-brand-red-text"
                         >
                           {version.media.filename}
                         </a>

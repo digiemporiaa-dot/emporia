@@ -1,15 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
+import { pageParamsSchema } from "@/lib/paging";
+import { Pagination } from "@/components/admin/pagination";
 import { can } from "@/lib/auth/rbac";
 import { listPopups } from "@/lib/services/popup.service";
 import { Badge, Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Popups" };
 
-export default async function PopupsAdminPage() {
+export default async function PopupsAdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const actor = await requireActorPage("/admin/marketing/popups");
-  const popups = await listPopups(actor);
+
+  const parsed = pageParamsSchema.safeParse(await searchParams);
+  const params = parsed.success ? parsed.data : pageParamsSchema.parse({});
+  const popups = await listPopups(actor, params);
 
   return (
     <>
@@ -45,14 +54,14 @@ export default async function PopupsAdminPage() {
             </TR>
           </THead>
           <TBody>
-            {popups.length === 0 ? (
+            {popups.rows.length === 0 ? (
               <TableEmpty
                 colSpan={7}
                 title="No popups yet"
                 description="Create one and target it at a page, service or city."
               />
             ) : (
-              popups.map((popup) => (
+              popups.rows.map((popup) => (
                 <TR key={popup.id}>
                   <TD>
                     <Link
@@ -85,6 +94,15 @@ export default async function PopupsAdminPage() {
           </TBody>
         </Table>
       </TableWrap>
+
+      <Pagination
+        basePath="/admin/marketing/popups"
+        params={params}
+        page={popups.page}
+        pages={popups.pages}
+        total={popups.total}
+        perPage={popups.perPage}
+      />
     </>
   );
 }

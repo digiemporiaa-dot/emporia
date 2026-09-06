@@ -72,7 +72,7 @@ export function DecisionForm({ approvalId }: { approvalId: string }) {
       </Field>
 
       {state && !state.ok ? (
-        <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+        <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
           <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
           {state.message}
         </p>

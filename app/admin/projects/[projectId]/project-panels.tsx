@@ -50,7 +50,7 @@ const DATE = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }
 function Problem({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
       <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
       {message}
     </p>
@@ -460,7 +460,7 @@ export function TaskList({
                         <button
                           type="button"
                           onClick={() => setLinking(task.id)}
-                          className="rounded-sm border border-line px-1.5 py-1 text-2xs text-ink-muted hover:border-brand-red hover:text-brand-red"
+                          className="rounded-sm border border-line px-1.5 py-1 text-2xs text-ink-muted hover:border-brand-red hover:text-brand-red-text"
                         >
                           Add dependency
                         </button>

@@ -49,7 +49,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     if (isAppError(error)) {
       const status = error.code === "NOT_FOUND" ? 404 : error.code === "CONFLICT" ? 409 : 400;
-      return NextResponse.json({ error: error.message }, { status });
+      return NextResponse.json({ error: error.publicMessage }, { status });
     }
 
     return NextResponse.json({ error: "That payment could not be started." }, { status: 500 });

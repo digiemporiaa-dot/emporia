@@ -29,7 +29,7 @@ export default async function ClientsPage() {
   return (
     <>
       <header className="mb-6">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Clients</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Clients</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Won business</h1>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Clients are created by accepting a proposal, so every one here traces back to the lead it

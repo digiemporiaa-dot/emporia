@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
+import { pageParamsSchema } from "@/lib/paging";
+import { Pagination } from "@/components/admin/pagination";
 import { can } from "@/lib/auth/rbac";
 import { listContracts } from "@/lib/services/sales.service";
 import { formatMoney } from "@/lib/money";
@@ -30,9 +32,16 @@ const TONE: Record<ContractStatus, "neutral" | "navy" | "warning" | "success" | 
   TERMINATED: "red",
 };
 
-export default async function ContractsPage() {
+export default async function ContractsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const actor = await requireActorPage("/admin/sales/contracts");
-  const contracts = await listContracts(actor);
+
+  const parsed = pageParamsSchema.safeParse(await searchParams);
+  const params = parsed.success ? parsed.data : pageParamsSchema.parse({});
+  const contracts = await listContracts(actor, params);
 
   return (
     <>
@@ -68,14 +77,14 @@ export default async function ContractsPage() {
             </TR>
           </THead>
           <TBody>
-            {contracts.length === 0 ? (
+            {contracts.rows.length === 0 ? (
               <TableEmpty
                 colSpan={7}
                 title="No contracts yet"
                 description="Accept a proposal and draft the contract from it."
               />
             ) : (
-              contracts.map((contract) => (
+              contracts.rows.map((contract) => (
                 <TR key={contract.id}>
                   <TD className="font-mono text-xs">
                     <Link
@@ -103,6 +112,15 @@ export default async function ContractsPage() {
           </TBody>
         </Table>
       </TableWrap>
+
+      <Pagination
+        basePath="/admin/sales/contracts"
+        params={params}
+        page={contracts.page}
+        pages={contracts.pages}
+        total={contracts.total}
+        perPage={contracts.perPage}
+      />
     </>
   );
 }

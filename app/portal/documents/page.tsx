@@ -52,7 +52,7 @@ export default async function PortalDocumentsPage() {
                     <div className="min-w-0">
                       <Link
                         href={`/portal/documents/proposals/${proposal.id}`}
-                        className="text-sm text-navy-800 hover:text-brand-red"
+                        className="text-sm text-navy-800 hover:text-brand-red-text"
                       >
                         <span className="font-mono text-xs">{proposal.number}</span>{" "}
                         {proposal.title}
@@ -130,7 +130,7 @@ export default async function PortalDocumentsPage() {
                     </p>
                     {contract.terms ? (
                       <details className="mt-1.5">
-                        <summary className="cursor-pointer text-2xs text-ink-muted hover:text-brand-red">
+                        <summary className="cursor-pointer text-2xs text-ink-muted hover:text-brand-red-text">
                           Read the terms
                         </summary>
                         <p className="mt-1.5 whitespace-pre-wrap text-xs text-ink">

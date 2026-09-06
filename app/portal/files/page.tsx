@@ -47,7 +47,7 @@ export default async function PortalFilesPage() {
                   href={file.url}
                   rel="noreferrer noopener"
                   target="_blank"
-                  className="text-sm text-navy-800 hover:text-brand-red"
+                  className="text-sm text-navy-800 hover:text-brand-red-text"
                 >
                   {file.filename}
                 </a>

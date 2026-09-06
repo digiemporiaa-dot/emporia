@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
+import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { withAudit } from "@/lib/services/audit.service";
 import { toMoneyString } from "@/lib/money";
 import { rangeFilter, type DateRange } from "@/lib/analytics/range";
@@ -23,8 +24,13 @@ import type { Prisma } from "@/generated/prisma/client";
 // Campaigns
 // ---------------------------------------------------------------------------
 
-export async function listCampaigns(actor: Actor, params: CampaignListParams = {}) {
+export async function listCampaigns(
+  actor: Actor,
+  params: CampaignListParams & Partial<PageParams> = {},
+) {
   requirePermission(actor, "campaigns.view");
+
+  const { page, perPage, skip, take } = toSkipTake(params);
 
   const where: Prisma.CampaignWhereInput = {
     ...(params.status ? { status: params.status } : {}),
@@ -33,6 +39,8 @@ export async function listCampaigns(actor: Actor, params: CampaignListParams = {
   };
 
   const rows = await db.campaign.findMany({
+    skip,
+    take,
     where,
     orderBy: [{ status: "asc" }, { startsAt: "desc" }],
     select: {
@@ -51,7 +59,14 @@ export async function listCampaigns(actor: Actor, params: CampaignListParams = {
     },
   });
 
-  return rows.map((row) => ({ ...row, budget: toMoneyString(row.budget) }));
+  const total = await db.campaign.count({ where });
+
+  return paged(
+    rows.map((row) => ({ ...row, budget: toMoneyString(row.budget) })),
+    total,
+    page,
+    perPage,
+  );
 }
 
 export async function getCampaign(actor: Actor, id: string) {

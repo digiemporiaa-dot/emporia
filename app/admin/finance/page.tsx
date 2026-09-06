@@ -34,7 +34,7 @@ export default async function FinancePage() {
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Finance</p>
+          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Finance</p>
           <h1 className="mt-1.5 text-2xl text-navy-800">Money</h1>
           <p className="mt-1.5 text-xs text-ink-subtle">
             {isPaymentsConfigured()
@@ -44,12 +44,12 @@ export default async function FinancePage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/admin/finance/invoices">
-            <span className="inline-flex h-9 items-center rounded-md border border-line-strong px-3 text-sm text-navy-800 hover:border-brand-red hover:text-brand-red">
+            <span className="inline-flex h-9 items-center rounded-md border border-line-strong px-3 text-sm text-navy-800 hover:border-brand-red hover:text-brand-red-text">
               Invoices
             </span>
           </Link>
           <Link href="/admin/finance/retainers">
-            <span className="inline-flex h-9 items-center rounded-md border border-line-strong px-3 text-sm text-navy-800 hover:border-brand-red hover:text-brand-red">
+            <span className="inline-flex h-9 items-center rounded-md border border-line-strong px-3 text-sm text-navy-800 hover:border-brand-red hover:text-brand-red-text">
               Retainers
             </span>
           </Link>

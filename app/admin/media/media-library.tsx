@@ -76,7 +76,7 @@ function Thumb({ item, className = "" }: { item: LibraryItem; className?: string
 function Problem({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
       <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
       {message}
     </p>
@@ -197,7 +197,7 @@ export function MediaLibrary({
             <button
               type="button"
               onClick={() => setNewFolder(true)}
-              className="mt-2 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-ink-muted hover:text-brand-red"
+              className="mt-2 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-ink-muted hover:text-brand-red-text"
             >
               <FolderPlus size={13} aria-hidden="true" />
               New folder
@@ -468,7 +468,7 @@ function DetailPanel({
                 void navigator.clipboard.writeText(item.url);
                 setCopied(true);
               }}
-              className="inline-flex h-8 items-center gap-1 rounded-sm border border-line-strong px-2 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red"
+              className="inline-flex h-8 items-center gap-1 rounded-sm border border-line-strong px-2 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red-text"
             >
               {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
               {copied ? "Copied" : "Copy"}

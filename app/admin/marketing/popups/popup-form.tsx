@@ -92,7 +92,7 @@ export function PopupForm({
       {state && !state.ok ? (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-3 text-sm text-brand-red"
+          className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-3 text-sm text-brand-red-text"
         >
           <AlertCircle size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>{state.message}</span>
@@ -347,7 +347,7 @@ export function PopupForm({
               <button
                 type="button"
                 onClick={() => setTargets((t) => t.filter((_, i) => i !== index))}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-xs text-ink-subtle hover:bg-red-50 hover:text-brand-red"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-sm px-1.5 py-1 text-xs text-ink-subtle hover:bg-red-50 hover:text-brand-red-text"
               >
                 <Trash2 size={13} aria-hidden="true" /> Remove rule {index + 1}
               </button>

@@ -117,7 +117,7 @@ export default async function InvoicesPage({
                         ) : null}
                       </TD>
                       <TD className="text-xs text-ink-subtle">{DATE.format(invoice.issuedAt)}</TD>
-                      <TD className={`text-xs ${late ? "text-brand-red" : "text-ink-subtle"}`}>
+                      <TD className={`text-xs ${late ? "text-brand-red-text" : "text-ink-subtle"}`}>
                         {DATE.format(invoice.dueAt)}
                       </TD>
                       <TD className="text-right tabular-nums">

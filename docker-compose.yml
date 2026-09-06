@@ -10,7 +10,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-emporia}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-emporia}
+      # No default. This file is also the reference for the Coolify deployment,
+      # and a fallback password here is one that reaches production silently.
+      # Compose fails with the message below if it is unset.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-emporia}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -33,7 +36,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://emporia:emporia@db:5432/emporia?schema=public}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
     ports:
       - "${APP_PORT:-3000}:3000"
     healthcheck:

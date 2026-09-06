@@ -30,7 +30,7 @@ export default async function AutomationPage() {
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
             Automation
           </p>
           <h1 className="mt-1.5 text-2xl text-navy-800">Rules</h1>

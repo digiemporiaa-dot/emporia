@@ -56,7 +56,7 @@ export default async function AnalyticsPage({
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
             Analytics
           </p>
           <h1 className="mt-1.5 text-2xl text-navy-800">Where the work comes from</h1>
@@ -76,7 +76,7 @@ export default async function AnalyticsPage({
               aria-current={option === params.range ? "true" : undefined}
               className={`rounded-md border px-2.5 py-1 text-xs ${
                 option === params.range
-                  ? "border-brand-red bg-red-50 text-brand-red"
+                  ? "border-brand-red bg-red-50 text-brand-red-text"
                   : "border-line-strong text-navy-800 hover:border-navy-300"
               }`}
             >

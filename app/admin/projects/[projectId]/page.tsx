@@ -192,7 +192,7 @@ export default async function ProjectPage({
                     <dd>
                       <Link
                         href={`/admin/sales/contracts/${project.contract.id}`}
-                        className="font-mono text-xs text-navy-800 hover:text-brand-red"
+                        className="font-mono text-xs text-navy-800 hover:text-brand-red-text"
                       >
                         {project.contract.number}
                       </Link>

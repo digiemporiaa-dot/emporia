@@ -72,7 +72,7 @@ export function PublishPanel({
       {state && !state.ok ? (
         <div
           role="alert"
-          className="flex items-start gap-2 border-t border-line bg-red-50 px-4 py-3 text-xs text-brand-red"
+          className="flex items-start gap-2 border-t border-line bg-red-50 px-4 py-3 text-xs text-brand-red-text"
         >
           <AlertCircle size={14} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>{state.message}</span>

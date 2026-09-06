@@ -45,7 +45,7 @@ export function TaskPriority({ priority }: { priority: Priority }) {
     return <span className="text-2xs uppercase tracking-wide text-ink-subtle">{priority.toLowerCase()}</span>;
   }
   return (
-    <span className="text-2xs font-semibold uppercase tracking-wide text-brand-red">
+    <span className="text-2xs font-semibold uppercase tracking-wide text-brand-red-text">
       {priority.toLowerCase()}
     </span>
   );

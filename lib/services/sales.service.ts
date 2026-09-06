@@ -2,6 +2,7 @@ import "server-only";
 import { db, type DbClient } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
+import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { alertProposalAccepted, emailProposal } from "@/lib/services/alerts.service";
 import { runAutomations } from "@/lib/automation/engine";
@@ -107,10 +108,14 @@ export async function upsertCatalogItem(actor: Actor, id: string | null, input: 
 // Opportunities
 // ---------------------------------------------------------------------------
 
-export async function listOpportunities(actor: Actor) {
+export async function listOpportunities(actor: Actor, params: Partial<PageParams> = {}) {
   requirePermission(actor, "opportunities.view");
 
+  const { page, perPage, skip, take } = toSkipTake(params);
+
   const rows = await db.opportunity.findMany({
+    skip,
+    take,
     orderBy: [{ stage: "asc" }, { expectedCloseAt: "asc" }],
     select: {
       id: true,
@@ -127,7 +132,14 @@ export async function listOpportunities(actor: Actor) {
     },
   });
 
-  return rows.map((row) => ({ ...row, value: row.value.toString() }));
+  const total = await db.opportunity.count();
+
+  return paged(
+    rows.map((row) => ({ ...row, value: row.value.toString() })),
+    total,
+    page,
+    perPage,
+  );
 }
 
 export async function getOpportunity(actor: Actor, id: string) {
@@ -316,10 +328,14 @@ function serialiseProposal(proposal: ProposalRow): SerialisedProposal {
   };
 }
 
-export async function listProposals(actor: Actor) {
+export async function listProposals(actor: Actor, params: Partial<PageParams> = {}) {
   requirePermission(actor, "proposals.view");
 
+  const { page, perPage, skip, take } = toSkipTake(params);
+
   const rows = await db.proposal.findMany({
+    skip,
+    take,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -337,7 +353,14 @@ export async function listProposals(actor: Actor) {
     },
   });
 
-  return rows.map((row) => ({ ...row, total: row.total.toString() }));
+  const total = await db.proposal.count();
+
+  return paged(
+    rows.map((row) => ({ ...row, total: row.total.toString() })),
+    total,
+    page,
+    perPage,
+  );
 }
 
 export async function getProposal(actor: Actor, id: string) {
@@ -817,10 +840,14 @@ export async function acceptProposal(
 // Contracts
 // ---------------------------------------------------------------------------
 
-export async function listContracts(actor: Actor) {
+export async function listContracts(actor: Actor, params: Partial<PageParams> = {}) {
   requirePermission(actor, "contracts.view");
 
+  const { page, perPage, skip, take } = toSkipTake(params);
+
   const rows = await db.contract.findMany({
+    skip,
+    take,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -838,7 +865,14 @@ export async function listContracts(actor: Actor) {
     },
   });
 
-  return rows.map((row) => ({ ...row, value: row.value.toString() }));
+  const total = await db.contract.count();
+
+  return paged(
+    rows.map((row) => ({ ...row, value: row.value.toString() })),
+    total,
+    page,
+    perPage,
+  );
 }
 
 export async function getContract(actor: Actor, id: string) {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { currentActor } from "@/lib/actor";
 import { requirePortalActor } from "@/lib/auth/rbac";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 import * as portal from "@/lib/services/portal.service";
 import {
   portalApprovalDecisionSchema,
@@ -129,6 +130,22 @@ export async function changePasswordAction(
 ): Promise<PortalActionState> {
   try {
     const me = await actor();
+
+    // A change-password endpoint that takes the current password is an online
+    // guessing oracle, so it is rate limited like the login itself
+    // (CLAUDE.md 11).
+    const limit = checkRateLimit(`portal:password:${me.userId}`, {
+      limit: 5,
+      windowMs: 15 * 60_000,
+    });
+    if (!limit.allowed) {
+      return {
+        ok: false,
+        code: "RATE_LIMITED",
+        message: "Too many attempts. Try again in a few minutes.",
+      };
+    }
+
     const parsed = portalPasswordSchema.safeParse({
       currentPassword: formData.get("currentPassword"),
       newPassword: formData.get("newPassword"),

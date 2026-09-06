@@ -168,7 +168,7 @@ export function MediaPicker({
           </div>
 
           {error ? (
-            <p role="alert" className="mt-2 text-xs text-brand-red">
+            <p role="alert" className="mt-2 text-xs text-brand-red-text">
               {error}
             </p>
           ) : null}

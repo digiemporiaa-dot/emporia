@@ -31,7 +31,7 @@ export default async function EmailSettingsPage({
   return (
     <>
       <header className="mb-5">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Settings</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Settings</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Email</h1>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Every send is recorded here, including the ones that failed.
@@ -62,7 +62,7 @@ export default async function EmailSettingsPage({
                   <div className="min-w-0">
                     <Link
                       href={`/admin/settings/email/${template.key}`}
-                      className="text-sm text-navy-800 hover:text-brand-red"
+                      className="text-sm text-navy-800 hover:text-brand-red-text"
                     >
                       {template.name}
                     </Link>

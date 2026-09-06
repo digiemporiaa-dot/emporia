@@ -79,7 +79,7 @@ export function LocalFaqs({
         <form action={formAction} className="space-y-3 border-t border-line px-4 py-4" noValidate>
           <input type="hidden" name="serviceCityPageId" value={pageId} />
           {state && !state.ok ? (
-            <p role="alert" className="text-xs text-brand-red">
+            <p role="alert" className="text-xs text-brand-red-text">
               {state.message}
             </p>
           ) : null}

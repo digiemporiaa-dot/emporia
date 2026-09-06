@@ -46,7 +46,7 @@ export default async function CatalogPage() {
   return (
     <>
       <header className="mb-7">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Catalog</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Catalog</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Services, cities and local pages</h1>
       </header>
 

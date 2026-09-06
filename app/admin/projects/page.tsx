@@ -51,7 +51,7 @@ export default async function ProjectsPage({
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Delivery</p>
+          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Delivery</p>
           <h1 className="mt-1.5 text-2xl text-navy-800">Projects</h1>
           <p className="mt-1.5 text-xs text-ink-subtle">
             {seesWholeTeam(actor)

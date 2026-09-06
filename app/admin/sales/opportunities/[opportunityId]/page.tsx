@@ -123,7 +123,7 @@ export default async function OpportunityPage({
                   <li key={proposal.id} className="flex items-baseline justify-between gap-3">
                     <Link
                       href={`/admin/sales/proposals/${proposal.id}`}
-                      className="text-sm text-navy-800 hover:text-brand-red"
+                      className="text-sm text-navy-800 hover:text-brand-red-text"
                     >
                       {proposal.number}
                     </Link>

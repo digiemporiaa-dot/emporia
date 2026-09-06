@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
+import { pageParamsSchema } from "@/lib/paging";
+import { Pagination } from "@/components/admin/pagination";
 import { can, requirePermission } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { dueRetainers, listRetainers } from "@/lib/services/retainer.service";
@@ -43,12 +45,19 @@ const LABEL: Record<RetainerStatus, string> = {
   EXPIRED: "Expired",
 };
 
-export default async function RetainersPage() {
+export default async function RetainersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const actor = await requireActorPage("/admin/finance/retainers");
+
+  const parsed = pageParamsSchema.safeParse(await searchParams);
+  const params = parsed.success ? parsed.data : pageParamsSchema.parse({});
   requirePermission(actor, "retainers.view");
 
   const [retainers, due, clients] = await Promise.all([
-    listRetainers(actor),
+    listRetainers(actor, params),
     dueRetainers(actor),
     can(actor, "retainers.create")
       ? db.client.findMany({
@@ -111,14 +120,14 @@ export default async function RetainersPage() {
                 </TR>
               </THead>
               <TBody>
-                {retainers.length === 0 ? (
+                {retainers.rows.length === 0 ? (
                   <TableEmpty
                     colSpan={canEdit ? 8 : 7}
                     title="No retainers yet"
                     description="Put a client on a recurring fee and it will be billed on its cycle."
                   />
                 ) : (
-                  retainers.map((retainer) => (
+                  retainers.rows.map((retainer) => (
                     <TR key={retainer.id}>
                       <TD className="text-navy-800">{retainer.client.name}</TD>
                       <TD>{retainer.name}</TD>
@@ -151,6 +160,15 @@ export default async function RetainersPage() {
               </TBody>
             </Table>
           </TableWrap>
+
+          <Pagination
+            basePath="/admin/finance/retainers"
+            params={params}
+            page={retainers.page}
+            pages={retainers.pages}
+            total={retainers.total}
+            perPage={retainers.perPage}
+          />
         </div>
 
         {can(actor, "retainers.create") ? (

@@ -37,7 +37,7 @@ function Submit({ label }: { label: string }) {
 function Problem({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
       <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
       {message}
     </p>
@@ -116,7 +116,7 @@ export function PortalAccessPanel({
                     type="button"
                     onClick={() => revoke(user.id)}
                     disabled={pending}
-                    className="rounded-sm border border-line px-1.5 py-1 text-2xs text-ink-muted hover:border-brand-red hover:text-brand-red"
+                    className="rounded-sm border border-line px-1.5 py-1 text-2xs text-ink-muted hover:border-brand-red hover:text-brand-red-text"
                   >
                     Revoke
                   </button>
@@ -168,7 +168,7 @@ export function PortalAccessPanel({
                     void navigator.clipboard.writeText(state.data.inviteUrl);
                     setCopied(true);
                   }}
-                  className="inline-flex h-8 items-center gap-1 rounded-sm border border-line-strong px-2 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red"
+                  className="inline-flex h-8 items-center gap-1 rounded-sm border border-line-strong px-2 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red-text"
                 >
                   {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
                   {copied ? "Copied" : "Copy"}

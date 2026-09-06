@@ -82,7 +82,7 @@ export default async function CatalogPage() {
 
                   {editable ? (
                     <details className="mt-3">
-                      <summary className="cursor-pointer text-xs text-ink-muted hover:text-brand-red">
+                      <summary className="cursor-pointer text-xs text-ink-muted hover:text-brand-red-text">
                         Edit
                       </summary>
                       <div className="mt-3 border-t border-border pt-3">

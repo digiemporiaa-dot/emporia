@@ -5,6 +5,8 @@ import { can, requirePermission } from "@/lib/auth/rbac";
 import { listCampaigns } from "@/lib/services/campaign.service";
 import { campaignPerformance } from "@/lib/services/analytics.service";
 import { campaignListParamsSchema } from "@/lib/validation/marketing";
+import { pageParamsSchema } from "@/lib/paging";
+import { Pagination } from "@/components/admin/pagination";
 import { resolveRange, RANGE_LABEL, RANGE_PRESETS, type RangePreset } from "@/lib/analytics/range";
 import { formatMoney } from "@/lib/money";
 import { Badge, Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
@@ -40,7 +42,9 @@ export default async function CampaignsPage({
 
   const raw = await searchParams;
   const parsed = campaignListParamsSchema.safeParse(raw);
-  const params = parsed.success ? parsed.data : {};
+  const filters = parsed.success ? parsed.data : {};
+  const pageParsed = pageParamsSchema.safeParse(raw);
+  const params = { ...filters, ...(pageParsed.success ? pageParsed.data : pageParamsSchema.parse({})) };
 
   const preset: RangePreset = RANGE_PRESETS.includes(raw["range"] as RangePreset)
     ? (raw["range"] as RangePreset)
@@ -82,7 +86,7 @@ export default async function CampaignsPage({
                 aria-current={option === preset ? "true" : undefined}
                 className={`rounded-md border px-2.5 py-1 text-xs ${
                   option === preset
-                    ? "border-brand-red bg-red-50 text-brand-red"
+                    ? "border-brand-red bg-red-50 text-brand-red-text"
                     : "border-line-strong text-navy-800 hover:border-navy-300"
                 }`}
               >
@@ -114,14 +118,14 @@ export default async function CampaignsPage({
             </TR>
           </THead>
           <TBody>
-            {campaigns.length === 0 ? (
+            {campaigns.rows.length === 0 ? (
               <TableEmpty
                 colSpan={9}
                 title="No campaigns yet"
                 description="Add a campaign, then enter or import its daily numbers."
               />
             ) : (
-              campaigns.map((campaign) => {
+              campaigns.rows.map((campaign) => {
                 const row = byId.get(campaign.id);
                 return (
                   <TR key={campaign.id}>
@@ -171,6 +175,15 @@ export default async function CampaignsPage({
           </TBody>
         </Table>
       </TableWrap>
+
+      <Pagination
+        basePath="/admin/marketing/campaigns"
+        params={{ ...params, range: preset }}
+        page={campaigns.page}
+        pages={campaigns.pages}
+        total={campaigns.total}
+        perPage={campaigns.perPage}
+      />
     </>
   );
 }

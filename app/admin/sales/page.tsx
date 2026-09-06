@@ -66,7 +66,7 @@ export default async function SalesPage() {
   return (
     <>
       <header className="mb-6">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Sales</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Sales</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Pipeline to signature</h1>
         {open > 0 ? (
           <p className="mt-1.5 text-xs text-ink-subtle">

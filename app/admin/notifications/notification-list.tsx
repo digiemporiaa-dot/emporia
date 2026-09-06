@@ -104,7 +104,7 @@ export function NotificationList({
                       router.refresh();
                     })
                   }
-                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-line-strong px-1.5 py-1 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red"
+                  className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-line-strong px-1.5 py-1 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red-text"
                 >
                   <Check size={11} aria-hidden="true" />
                   Mark read

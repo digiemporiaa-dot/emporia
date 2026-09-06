@@ -32,7 +32,7 @@ export default async function ApprovalsPage() {
   return (
     <>
       <header className="mb-5">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Delivery</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Delivery</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Approvals</h1>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Every version is kept, so an approval records what was approved rather than what the work

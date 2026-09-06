@@ -171,7 +171,7 @@ export default async function ServiceCityPage({
 
             <div className="mt-8 grid gap-8 lg:grid-cols-12">
               <div className="lg:col-span-8">
-                <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+                <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
                   {page.city.name}, {page.city.state}
                 </p>
                 <h1 className="mt-4 text-4xl text-navy-800">

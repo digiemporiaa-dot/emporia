@@ -8,7 +8,7 @@ Read [`CLAUDE.md`](./CLAUDE.md) before changing anything. The delivery plan is
 [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md); the design and the reasoning behind
 it are in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-**Status: Phase 16 (AI) complete.** The foundation from Phase 2
+**Status: all 17 phases complete.** The foundation from Phase 2
 (schema, auth, RBAC, design tokens, UI primitives, admin shell, audit trail,
 Docker) plus the public marketing site: homepage, services, packages, case
 studies, blog, CMS-driven pages, and a contact form that creates real CRM leads.
@@ -73,7 +73,11 @@ of the analytics figures. Every result is a labelled draft that writes nothing;
 every figure the model may mention is handed to it from the database, and the
 screens render those figures from our own data rather than from its prose.
 
-Production hardening is the remaining phase.
+Plus production hardening: a password reset flow, security headers, server-side
+paging on every admin list, and an accessibility pass that took the whole app to
+zero serious axe violations at AA.
+
+Every phase in [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md) is built.
 
 Online payment is optional: with no `RAZORPAY_*` credentials the gateway is
 simply absent, the portal shows no pay button, and payments are recorded by
@@ -153,6 +157,10 @@ removed later.
 ```bash
 docker compose up -d     # postgres + app
 ```
+
+`POSTGRES_PASSWORD` and `DATABASE_URL` have no defaults — Compose refuses to
+start without them. A fallback password here is one that reaches production
+silently, and this file is also the reference for the Coolify deployment.
 
 The entrypoint runs `prisma migrate deploy` before starting the server. Seeding
 is deliberately **not** automatic, so a redeploy can never overwrite live data

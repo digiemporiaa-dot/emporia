@@ -10,6 +10,59 @@ const nextConfig: NextConfig = {
     // Server Actions are the primary write path; keep the payload cap tight.
     serverActions: { bodySizeLimit: "2mb" },
   },
+
+  /**
+   * Security headers.
+   *
+   * Applied at the framework rather than left to the reverse proxy: Coolify
+   * fronts the container, and a header the app depends on should not be a
+   * setting someone can forget in a different system (CLAUDE.md 11).
+   *
+   * The CSP allows Razorpay's checkout script and frame, because that is how
+   * the gateway takes a card; nothing else is granted. `unsafe-inline` on
+   * styles is required by Next's own inlined critical CSS, and `unsafe-eval`
+   * is deliberately absent.
+   */
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      // Razorpay checkout is loaded from their CDN; 'unsafe-inline' covers
+      // Next's bootstrap script tags, which carry no user input.
+      "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      // Uploads go straight to R2, and checkout talks to Razorpay.
+      "connect-src 'self' https://*.r2.cloudflarestorage.com https://api.razorpay.com https://lumberjack.razorpay.com",
+      "frame-src https://api.razorpay.com https://checkout.razorpay.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "upgrade-insecure-requests",
+    ].join("; ");
+
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: csp },
+          // Belt and braces with frame-ancestors, for older browsers.
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+          },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

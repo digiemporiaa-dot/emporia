@@ -106,7 +106,7 @@ export default async function PackagesPage() {
                     </CtaButton>
                     <Link
                       href={`/packages/${pkg.slug}`}
-                      className="inline-flex h-10 items-center px-2 text-sm font-medium text-navy-700 underline underline-offset-4 hover:text-brand-red"
+                      className="inline-flex h-10 items-center px-2 text-sm font-medium text-navy-700 underline underline-offset-4 hover:text-brand-red-text"
                     >
                       Details
                     </Link>

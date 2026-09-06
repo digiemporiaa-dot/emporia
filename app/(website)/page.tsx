@@ -259,8 +259,19 @@ export default async function HomePage() {
               {headlineMetrics.map((metric) => {
                 const parsed = splitMetric(metric.value);
                 return (
-                  <div key={`${metric.client}-${metric.label}`} className="bg-navy-800 px-1 py-6 sm:px-6">
-                    <dd className="font-display text-5xl tabular-nums text-white">
+                  // A dl's div wrapper may contain only dt and dd, and the term
+                  // must precede its description. The visual order — big number
+                  // first — is restored with flex ordering rather than by
+                  // writing invalid markup.
+                  <div
+                    key={`${metric.client}-${metric.label}`}
+                    className="flex flex-col bg-navy-800 px-1 py-6 sm:px-6"
+                  >
+                    <dt className="order-2 mt-3 text-sm text-navy-100">
+                      {metric.label}
+                      <span className="mt-1 block text-xs text-navy-300">{metric.client}</span>
+                    </dt>
+                    <dd className="order-1 font-display text-5xl tabular-nums text-white">
                       {parsed.prefix}
                       {parsed.number === null ? (
                         metric.value
@@ -269,8 +280,6 @@ export default async function HomePage() {
                       )}
                       <span className="text-brand-red">{metric.unit}</span>
                     </dd>
-                    <dt className="mt-3 text-sm text-navy-100">{metric.label}</dt>
-                    <p className="mt-1 text-xs text-navy-300">{metric.client}</p>
                   </div>
                 );
               })}
@@ -462,7 +471,7 @@ export default async function HomePage() {
                     <p className="mt-1 text-xs text-ink-subtle">
                       {pkg.billingType === "RETAINER" ? "per month, retainer" : "per month"} · excl. tax
                     </p>
-                    <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-red">
+                    <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-red-text">
                       What is included
                       <span aria-hidden="true" className="transition-transform group-hover:translate-x-1">
                         →

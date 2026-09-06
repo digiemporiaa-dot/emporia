@@ -36,7 +36,7 @@ export function RuleToggle({ id, isActive }: { id: string; isActive: boolean }) 
         {isActive ? "Switch off" : "Switch on"}
       </Button>
       {error ? (
-        <p role="alert" className="max-w-64 text-right text-2xs text-brand-red">
+        <p role="alert" className="max-w-64 text-right text-2xs text-brand-red-text">
           {error}
         </p>
       ) : null}
@@ -84,7 +84,7 @@ export function DeleteRule({ id }: { id: string }) {
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-2xs text-brand-red">
+        <p role="alert" className="text-2xs text-brand-red-text">
           {error}
         </p>
       ) : null}
@@ -172,7 +172,7 @@ export function PreviewRule({ id }: { id: string }) {
             </details>
           </div>
         ) : (
-          <p role="alert" className="text-xs text-brand-red">
+          <p role="alert" className="text-xs text-brand-red-text">
             {result.message}
           </p>
         )

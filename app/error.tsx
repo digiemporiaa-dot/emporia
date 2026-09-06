@@ -23,7 +23,7 @@ export default function GlobalError({
 
   return (
     <main id="main" className="mx-auto flex min-h-dvh max-w-(--container-narrow) flex-col justify-center px-6">
-      <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Error</p>
+      <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Error</p>
       <h1 className="mt-3 text-3xl text-navy-800">Something went wrong</h1>
       <p className="mt-3 max-w-prose text-ink-muted">
         The problem has been logged. Try again, and if it keeps happening quote the reference below.

@@ -67,7 +67,7 @@ export function PipelineBoard({ leads, canMove }: { leads: BoardLead[]; canMove:
       {error ? (
         <div
           role="alert"
-          className="mb-3 flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-brand-red"
+          className="mb-3 flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-brand-red-text"
         >
           <AlertCircle size={15} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>{error}</span>
@@ -124,7 +124,7 @@ export function PipelineBoard({ leads, canMove }: { leads: BoardLead[]; canMove:
                         <div className="flex items-start justify-between gap-2">
                           <Link
                             href={`/admin/leads/${lead.id}`}
-                            className="text-sm font-medium text-navy-800 hover:text-brand-red"
+                            className="text-sm font-medium text-navy-800 hover:text-brand-red-text"
                           >
                             {lead.name}
                           </Link>
@@ -154,7 +154,7 @@ export function PipelineBoard({ leads, canMove }: { leads: BoardLead[]; canMove:
                             {lead.assignedTo?.name ?? "Unassigned"}
                           </span>
                           {lead.priority === "HIGH" || lead.priority === "URGENT" ? (
-                            <span className="text-2xs font-semibold uppercase tracking-wide text-brand-red">
+                            <span className="text-2xs font-semibold uppercase tracking-wide text-brand-red-text">
                               {lead.priority.toLowerCase()}
                             </span>
                           ) : null}

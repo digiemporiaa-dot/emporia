@@ -119,7 +119,7 @@ export default async function CityPage({ params }: { params: Promise<{ citySlug:
                 { name: city.name, path: `/cities/${city.slug}` },
               ]}
             />
-            <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-brand-red">
+            <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
               {city.state}
             </p>
             <h1 className="mt-4 max-w-3xl text-4xl">Digital marketing in {city.name}</h1>
@@ -224,7 +224,7 @@ export default async function CityPage({ params }: { params: Promise<{ citySlug:
                 <li key={other.id}>
                   <Link
                     href={`/cities/${other.slug}`}
-                    className="inline-flex rounded-sm border border-line-strong px-3 py-1.5 text-sm text-navy-700 transition-colors hover:border-brand-red hover:text-brand-red"
+                    className="inline-flex rounded-sm border border-line-strong px-3 py-1.5 text-sm text-navy-700 transition-colors hover:border-brand-red hover:text-brand-red-text"
                   >
                     {other.name}
                   </Link>

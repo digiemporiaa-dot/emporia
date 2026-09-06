@@ -51,7 +51,7 @@ export default async function PortalContentPage() {
         <div className="space-y-6">
           {awaiting.length > 0 ? (
             <section>
-              <h2 className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+              <h2 className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
                 With you for review
               </h2>
               <ul className="mt-2 space-y-2">

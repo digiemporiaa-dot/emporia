@@ -110,7 +110,7 @@ export default async function ContentPage({
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Delivery</p>
+          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Delivery</p>
           <h1 className="mt-1.5 text-2xl text-navy-800">Content calendar</h1>
           <p className="mt-1.5 text-xs text-ink-subtle">
             {params.view === "calendar" ? monthLabel : "Every item by workflow stage"} ·{" "}
@@ -158,7 +158,7 @@ export default async function ContentPage({
                       <li key={item.id} className="rounded-md border border-line bg-white p-2.5">
                         <Link
                           href={`/admin/content/${item.id}`}
-                          className="text-sm text-navy-800 hover:text-brand-red"
+                          className="text-sm text-navy-800 hover:text-brand-red-text"
                         >
                           {item.title}
                         </Link>
@@ -208,7 +208,7 @@ export default async function ContentPage({
                         <li key={item.id}>
                           <Link
                             href={`/admin/content/${item.id}`}
-                            className="block rounded-sm border border-line bg-surface-muted px-1.5 py-1 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red"
+                            className="block rounded-sm border border-line bg-surface-muted px-1.5 py-1 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red-text"
                           >
                             <span className="block truncate font-medium">{item.title}</span>
                             <span className="block truncate text-ink-subtle">
@@ -238,7 +238,7 @@ export default async function ContentPage({
                   >
                     <Link
                       href={`/admin/content/${item.id}`}
-                      className="text-sm text-navy-800 hover:text-brand-red"
+                      className="text-sm text-navy-800 hover:text-brand-red-text"
                     >
                       {item.title}
                     </Link>

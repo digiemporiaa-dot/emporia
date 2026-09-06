@@ -20,7 +20,7 @@ import type { EmailStatus } from "@/generated/prisma/enums";
 function Problem({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
       <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
       {message}
     </p>
@@ -289,7 +289,7 @@ export function EmailLogTable({
           <button
             type="button"
             onClick={() => push({ status: "FAILED" })}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-100 bg-red-50 px-2.5 text-xs text-brand-red"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-red-100 bg-red-50 px-2.5 text-xs text-brand-red-text"
           >
             <AlertCircle size={13} aria-hidden="true" />
             {failures} failed
@@ -339,7 +339,7 @@ export function EmailLogTable({
                   <td className="px-3 py-2">
                     <span className="text-navy-800">{row.subject}</span>
                     {row.error ? (
-                      <span className="block text-2xs text-brand-red">{row.error}</span>
+                      <span className="block text-2xs text-brand-red-text">{row.error}</span>
                     ) : null}
                   </td>
                   <td className="px-3 py-2 text-2xs text-ink-subtle">
@@ -368,7 +368,7 @@ export function EmailLogTable({
                             router.refresh();
                           });
                         }}
-                        className="inline-flex items-center gap-1 rounded-sm border border-line-strong px-1.5 py-1 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red"
+                        className="inline-flex items-center gap-1 rounded-sm border border-line-strong px-1.5 py-1 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red-text"
                       >
                         <RotateCw size={11} aria-hidden="true" />
                         Retry

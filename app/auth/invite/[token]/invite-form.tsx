@@ -45,7 +45,7 @@ export function InviteForm({ token }: { token: string }) {
       {state && !state.ok ? (
         <p
           role="alert"
-          className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-3 text-sm text-brand-red"
+          className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-3 text-sm text-brand-red-text"
         >
           <AlertCircle size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
           {state.message}

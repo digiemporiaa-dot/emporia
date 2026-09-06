@@ -64,7 +64,7 @@ export default async function BlogPage() {
                       className="group grid gap-2 border-b border-line py-7 transition-colors hover:bg-surface-muted lg:grid-cols-12 lg:gap-8 lg:px-2"
                     >
                       <div className="lg:col-span-2">
-                        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+                        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
                           {post.category?.name ?? "Article"}
                         </p>
                         {post.publishedAt ? (

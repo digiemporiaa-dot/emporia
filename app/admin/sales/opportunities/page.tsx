@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
+import { pageParamsSchema } from "@/lib/paging";
+import { Pagination } from "@/components/admin/pagination";
 import { can } from "@/lib/auth/rbac";
 import { listOpportunities } from "@/lib/services/sales.service";
 import { formatMoney } from "@/lib/money";
@@ -30,9 +32,16 @@ const TONE: Record<OpportunityStage, "neutral" | "navy" | "warning" | "success" 
   LOST: "red",
 };
 
-export default async function OpportunitiesPage() {
+export default async function OpportunitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const actor = await requireActorPage("/admin/sales/opportunities");
-  const opportunities = await listOpportunities(actor);
+
+  const parsed = pageParamsSchema.safeParse(await searchParams);
+  const params = parsed.success ? parsed.data : pageParamsSchema.parse({});
+  const opportunities = await listOpportunities(actor, params);
 
   return (
     <>
@@ -69,14 +78,14 @@ export default async function OpportunitiesPage() {
             </TR>
           </THead>
           <TBody>
-            {opportunities.length === 0 ? (
+            {opportunities.rows.length === 0 ? (
               <TableEmpty
                 colSpan={8}
                 title="No opportunities yet"
                 description="Open one against a qualified lead or an existing client."
               />
             ) : (
-              opportunities.map((opportunity) => (
+              opportunities.rows.map((opportunity) => (
                 <TR key={opportunity.id}>
                   <TD>
                     <Link
@@ -111,6 +120,15 @@ export default async function OpportunitiesPage() {
           </TBody>
         </Table>
       </TableWrap>
+
+      <Pagination
+        basePath="/admin/sales/opportunities"
+        params={params}
+        page={opportunities.page}
+        pages={opportunities.pages}
+        total={opportunities.total}
+        perPage={opportunities.perPage}
+      />
     </>
   );
 }

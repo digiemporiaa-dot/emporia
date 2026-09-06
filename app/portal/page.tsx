@@ -46,7 +46,7 @@ export default async function PortalHome() {
   return (
     <>
       <header className="mb-6">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
           {data.client.name}
         </p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Your account</h1>
@@ -90,7 +90,7 @@ export default async function PortalHome() {
                   <div className="min-w-0">
                     <Link
                       href={`/portal/projects/${project.id}`}
-                      className="text-sm text-navy-800 hover:text-brand-red"
+                      className="text-sm text-navy-800 hover:text-brand-red-text"
                     >
                       {project.name}
                     </Link>

@@ -159,7 +159,7 @@ export function ProjectFilters({
               setSearch("");
               router.push("/admin/projects");
             }}
-            className="inline-flex h-9 items-center gap-1 rounded-md px-2.5 text-sm text-ink-muted hover:text-brand-red"
+            className="inline-flex h-9 items-center gap-1 rounded-md px-2.5 text-sm text-ink-muted hover:text-brand-red-text"
           >
             <X size={14} aria-hidden="true" />
             Clear {activeCount}

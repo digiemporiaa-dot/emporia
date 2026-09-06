@@ -26,7 +26,7 @@ export default async function MediaPage({
   return (
     <>
       <header className="mb-5">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Library</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Library</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Media</h1>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Files go straight from your browser to storage; this server only checks what landed.

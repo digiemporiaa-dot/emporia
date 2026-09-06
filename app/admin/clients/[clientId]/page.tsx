@@ -98,7 +98,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
                     <li key={proposal.id} className="flex items-baseline justify-between gap-3">
                       <Link
                         href={`/admin/sales/proposals/${proposal.id}`}
-                        className="text-sm text-navy-800 hover:text-brand-red"
+                        className="text-sm text-navy-800 hover:text-brand-red-text"
                       >
                         <span className="font-mono text-xs">{proposal.number}</span> {proposal.title}
                       </Link>
@@ -128,7 +128,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
                     <li key={contract.id} className="flex items-baseline justify-between gap-3">
                       <Link
                         href={`/admin/sales/contracts/${contract.id}`}
-                        className="text-sm text-navy-800 hover:text-brand-red"
+                        className="text-sm text-navy-800 hover:text-brand-red-text"
                       >
                         <span className="font-mono text-xs">{contract.number}</span> {contract.title}
                       </Link>
@@ -159,7 +159,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
                     <p className="text-sm text-navy-800">
                       {contact.name}
                       {contact.isPrimary ? (
-                        <span className="ml-2 align-middle text-2xs uppercase tracking-widest text-brand-red">
+                        <span className="ml-2 align-middle text-2xs uppercase tracking-widest text-brand-red-text">
                           Primary
                         </span>
                       ) : null}

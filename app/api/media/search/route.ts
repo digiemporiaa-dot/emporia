@@ -42,7 +42,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     });
   } catch (error) {
     if (isAppError(error) && error.code === "FORBIDDEN") {
-      return NextResponse.json({ error: error.message }, { status: 403 });
+      return NextResponse.json({ error: error.publicMessage }, { status: 403 });
     }
     return NextResponse.json({ error: "That search failed." }, { status: 500 });
   }

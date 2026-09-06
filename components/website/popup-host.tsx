@@ -270,7 +270,7 @@ export function PopupHost() {
             {popup.body ? <p className="text-sm text-ink-muted">{popup.body}</p> : null}
 
             {error ? (
-              <p role="alert" className="text-xs text-brand-red">
+              <p role="alert" className="text-xs text-brand-red-text">
                 {error}
               </p>
             ) : null}

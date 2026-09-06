@@ -6,7 +6,9 @@ type Tone = "neutral" | "navy" | "red" | "success" | "warning";
 const TONES: Record<Tone, string> = {
   neutral: "bg-surface-sunken text-ink-muted border-line-strong",
   navy: "bg-navy-50 text-navy-700 border-navy-100",
-  red: "bg-red-50 text-brand-red border-red-100",
+  // The text red, not the fill red: a badge is 11px, and #df1f38 on red-50
+  // measures 4.37:1 — under AA (CLAUDE.md 12).
+  red: "bg-red-50 text-brand-red-text border-red-100",
   success: "bg-success-bg text-success border-success/20",
   warning: "bg-warning-bg text-warning border-warning/20",
 };

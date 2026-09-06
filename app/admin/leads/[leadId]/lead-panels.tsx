@@ -38,7 +38,7 @@ function Feedback({ state }: { state: CrmActionState }) {
     );
   }
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red">
+    <p role="alert" className="flex items-start gap-1.5 text-xs text-brand-red-text">
       <AlertCircle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
       {state.message}
     </p>
@@ -282,7 +282,7 @@ export function RescoreButton({ leadId }: { leadId: string }) {
       type="button"
       disabled={pending}
       onClick={() => start(async () => void (await rescoreAction(leadId)))}
-      className="text-2xs text-ink-subtle underline underline-offset-2 hover:text-brand-red disabled:opacity-60"
+      className="text-2xs text-ink-subtle underline underline-offset-2 hover:text-brand-red-text disabled:opacity-60"
     >
       {pending ? "Recalculating…" : "Recalculate"}
     </button>

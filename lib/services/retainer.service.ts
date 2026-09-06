@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
+import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { withAudit } from "@/lib/services/audit.service";
 import { toMoneyString } from "@/lib/money";
 import { nextBillingDate } from "@/lib/finance/invoice";
@@ -19,10 +20,14 @@ import type { RetainerInput } from "@/lib/validation/finance";
  * transaction, so a repeated run cannot bill the same period twice.
  */
 
-export async function listRetainers(actor: Actor) {
+export async function listRetainers(actor: Actor, params: Partial<PageParams> = {}) {
   requirePermission(actor, "retainers.view");
 
+  const { page, perPage, skip, take } = toSkipTake(params);
+
   const rows = await db.retainer.findMany({
+    skip,
+    take,
     orderBy: [{ status: "asc" }, { nextBillingAt: "asc" }],
     select: {
       id: true,
@@ -39,7 +44,14 @@ export async function listRetainers(actor: Actor) {
     },
   });
 
-  return rows.map((row) => ({ ...row, amount: toMoneyString(row.amount) }));
+  const total = await db.retainer.count();
+
+  return paged(
+    rows.map((row) => ({ ...row, amount: toMoneyString(row.amount) })),
+    total,
+    page,
+    perPage,
+  );
 }
 
 export async function createRetainer(actor: Actor, input: RetainerInput) {

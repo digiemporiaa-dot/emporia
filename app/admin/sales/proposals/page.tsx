@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
+import { pageParamsSchema } from "@/lib/paging";
+import { Pagination } from "@/components/admin/pagination";
 import { can } from "@/lib/auth/rbac";
 import { listProposals } from "@/lib/services/sales.service";
 import { formatMoney } from "@/lib/money";
@@ -22,9 +24,16 @@ const TONE: Record<ProposalStatus, "neutral" | "navy" | "warning" | "success" | 
   REJECTED: "red",
 };
 
-export default async function ProposalsPage() {
+export default async function ProposalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const actor = await requireActorPage("/admin/sales/proposals");
-  const proposals = await listProposals(actor);
+
+  const parsed = pageParamsSchema.safeParse(await searchParams);
+  const params = parsed.success ? parsed.data : pageParamsSchema.parse({});
+  const proposals = await listProposals(actor, params);
 
   return (
     <>
@@ -60,14 +69,14 @@ export default async function ProposalsPage() {
             </TR>
           </THead>
           <TBody>
-            {proposals.length === 0 ? (
+            {proposals.rows.length === 0 ? (
               <TableEmpty
                 colSpan={7}
                 title="No proposals yet"
                 description="Quote a lead to get started."
               />
             ) : (
-              proposals.map((proposal) => (
+              proposals.rows.map((proposal) => (
                 <TR key={proposal.id}>
                   <TD className="font-mono text-xs">
                     <Link
@@ -99,6 +108,15 @@ export default async function ProposalsPage() {
           </TBody>
         </Table>
       </TableWrap>
+
+      <Pagination
+        basePath="/admin/sales/proposals"
+        params={params}
+        page={proposals.page}
+        pages={proposals.pages}
+        total={proposals.total}
+        perPage={proposals.perPage}
+      />
     </>
   );
 }

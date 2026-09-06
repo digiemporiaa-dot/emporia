@@ -14,6 +14,12 @@
 @theme {
   /* --- Brand ------------------------------------------------------------ */
   --color-brand-red: #df1f38;
+  /* The brand red is mandatory and unchanged above: it is what fills buttons,
+     accents and active states, where it sits under white text or beside large
+     type. As *small text on a light surface* it measures 4.25-4.31:1 on our
+     tinted surfaces, under the 4.5:1 AA needs. This is the same hue darkened
+     for that one job — eyebrows, labels, inline links (CLAUDE.md 6, 12). */
+  --color-brand-red-text: #c01a2e;
   --color-brand-navy: #002a3a;
   --color-white: #ffffff;
 
@@ -38,7 +44,10 @@
   /* Neutrals */
   --color-ink: #0b1a22;
   --color-ink-muted: #4a5c66;
-  --color-ink-subtle: #6f818b;
+  /* Darkened from #6f818b, which measured 3.6-4.1:1 on our surfaces and
+     failed AA for normal text (CLAUDE.md 12). This clears 4.5:1 on every
+     surface token below. */
+  --color-ink-subtle: #5c6d77;
   --color-line: #dfe6ea;
   --color-line-strong: #c3d0d7;
   --color-surface: #ffffff;

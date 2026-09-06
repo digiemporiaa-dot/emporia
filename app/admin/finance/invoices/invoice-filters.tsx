@@ -141,7 +141,7 @@ export function InvoiceFilters({
               setSearch("");
               router.push("/admin/finance/invoices");
             }}
-            className="inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm text-ink-muted hover:bg-surface-muted hover:text-brand-red"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm text-ink-muted hover:bg-surface-muted hover:text-brand-red-text"
           >
             <X size={14} aria-hidden="true" />
             Clear {activeCount}

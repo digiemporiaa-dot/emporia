@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
+import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { withAudit } from "@/lib/services/audit.service";
 import { selectPopup, type PageContext, type VisitorState } from "@/lib/popups/targeting";
 import type { Actor } from "@/lib/actor/types";
@@ -140,10 +141,14 @@ export async function recordEvent(input: PopupEventInput): Promise<void> {
 // Admin
 // ---------------------------------------------------------------------------
 
-export async function listPopups(actor: Actor) {
+export async function listPopups(actor: Actor, params: Partial<PageParams> = {}) {
   requirePermission(actor, "popups.view");
 
-  return db.popup.findMany({
+  const { page, perPage, skip, take } = toSkipTake(params);
+
+  const rows = await db.popup.findMany({
+    skip,
+    take,
     orderBy: [{ isActive: "desc" }, { priority: "desc" }, { name: "asc" }],
     select: {
       id: true,
@@ -158,6 +163,10 @@ export async function listPopups(actor: Actor) {
       _count: { select: { targets: true, leads: true } },
     },
   });
+
+  const total = await db.popup.count();
+
+  return paged(rows, total, page, perPage);
 }
 
 export async function getPopup(actor: Actor, id: string) {

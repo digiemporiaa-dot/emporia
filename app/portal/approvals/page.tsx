@@ -54,7 +54,7 @@ export default async function PortalApprovalsPage() {
                     <div className="min-w-0">
                       <Link
                         href={`/portal/approvals/${approval.id}`}
-                        className="text-sm font-medium text-navy-800 hover:text-brand-red"
+                        className="text-sm font-medium text-navy-800 hover:text-brand-red-text"
                       >
                         {approval.title}
                       </Link>

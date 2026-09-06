@@ -121,7 +121,7 @@ export default async function ContentItemPage({
                       href={item.media.url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="text-2xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
+                      className="text-2xs text-navy-800 underline underline-offset-2 hover:text-brand-red-text"
                     >
                       {item.media.filename}
                     </a>
@@ -191,7 +191,7 @@ export default async function ContentItemPage({
                     <li key={approval.id} className="flex items-baseline justify-between gap-3">
                       <Link
                         href={`/admin/approvals/${approval.id}`}
-                        className="text-sm text-navy-800 hover:text-brand-red"
+                        className="text-sm text-navy-800 hover:text-brand-red-text"
                       >
                         {approval.title}
                       </Link>

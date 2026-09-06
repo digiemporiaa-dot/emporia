@@ -34,8 +34,12 @@ export function Eyebrow({
   tone?: "red" | "muted" | "light";
   className?: string;
 }) {
+  // The red tone is the AA-safe text red, not the fill red: an eyebrow is
+  // 11px, and the brand red measures under 4.5:1 at that size on our light
+  // surfaces (CLAUDE.md 12). Use `light` on dark backgrounds — no red passes
+  // there as small text.
   const tones = {
-    red: "text-brand-red",
+    red: "text-brand-red-text",
     muted: "text-ink-subtle",
     light: "text-navy-300",
   } as const;

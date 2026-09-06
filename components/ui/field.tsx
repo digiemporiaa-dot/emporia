@@ -67,7 +67,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(fun
 export function FieldError({ id, children }: { id: string; children?: React.ReactNode }) {
   if (!children) return null;
   return (
-    <p id={id} role="alert" className="text-xs text-brand-red">
+    <p id={id} role="alert" className="text-xs text-brand-red-text">
       {children}
     </p>
   );

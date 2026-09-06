@@ -133,7 +133,7 @@ export default async function ContractPage({
                     <dd>
                       <Link
                         href={`/admin/sales/proposals/${contract.proposal.id}`}
-                        className="font-mono text-xs text-navy-800 hover:text-brand-red"
+                        className="font-mono text-xs text-navy-800 hover:text-brand-red-text"
                       >
                         {contract.proposal.number}
                       </Link>

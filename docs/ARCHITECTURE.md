@@ -1287,6 +1287,59 @@ can be built on a machine with a daemon, and Phase 17 owns proving it.
 
 ---
 
+## 17A. Hardening findings
+
+The Phase 17 sweep and what it changed. Recorded because each one is a rule the
+codebase now depends on, not a one-off edit.
+
+**Contrast (AA).** `--color-ink-subtle` was `#6f818b`, measuring 3.59-4.05:1 on
+our surfaces — under the 4.5:1 AA needs for normal text, everywhere it was used.
+Darkened to `#5c6d77`. The brand red is unchanged and mandatory (§6) for fills,
+accents and large type, but at 11px on a tinted surface it measures 4.25-4.31:1,
+so `--color-brand-red-text: #c01a2e` exists for small text and is what the
+`Eyebrow` and `Badge` primitives use. No red in the system clears AA as small
+text on navy — dark panels use `navy-300`.
+
+Measured with axe-core across 17 pages under `prefers-reduced-motion: reduce`.
+That setting matters to the measurement, not just to users: the scroll-reveal
+animations otherwise leave elements mid-fade when axe samples them, and it
+reports the blended colour. A "failure" naming a foreground the stylesheet never
+contains is that artefact, not a defect.
+
+**Error messages.** `AppError.message` is the *internal* message when a subclass
+supplies one; `publicMessage` is the one meant for a user. Four route handlers
+returned `error.message`, leaking the internal text. Route handlers return
+`error.publicMessage`; server actions already went through `toActionFailure`,
+which was always correct.
+
+**Security headers** are set in `next.config.ts` rather than left to the reverse
+proxy, because a header the app depends on should not be a setting someone can
+forget in a different system: CSP (Razorpay's checkout script and frame are the
+only third-party grants; no `unsafe-eval`), `X-Frame-Options`, `nosniff`,
+`Referrer-Policy`, `Permissions-Policy`, HSTS.
+
+**Paging.** `lib/paging` is the single definition of the bounds, and every admin
+list goes through it. Six lists — proposals, contracts, opportunities,
+campaigns, retainers, popups — previously read whole tables, which §12 forbids
+once the agency has a few years of history.
+
+**Password reset** (`lib/services/password-reset.service`) closes a gap the
+schema and the email template had been carrying since Phase 2. Three properties
+make it safe to expose unauthenticated:
+
+- The response is identical whether or not the address exists, including when
+  rate limited — a different answer for a real address is an enumeration oracle.
+- Only a SHA-256 of the token is stored, so a leaked backup hands over no live
+  links. The plaintext exists only in the email.
+- The token is cleared in the same `updateMany` that sets the password, matched
+  on the token again, so a race loses rather than resetting twice.
+
+**Not verified here.** The Docker image build could not be run: the sandbox has
+the Docker CLI but no daemon. The Dockerfile and compose file were reviewed
+statically instead.
+
+---
+
 ## 18. Testing strategy
 
 Vitest, with a **real Postgres test database** on the native server (no

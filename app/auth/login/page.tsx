@@ -26,7 +26,9 @@ export default async function LoginPage({
       <section className="relative hidden flex-col justify-between bg-navy-800 px-12 py-14 text-white lg:flex">
         <p className="font-display text-lg font-semibold tracking-tighter">Emporia</p>
         <div>
-          <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">
+          {/* On the navy panel, not red: no red in the system clears 4.5:1
+              against navy-800 at 11px. navy-300 measures 5.56:1. */}
+          <p className="text-2xs font-semibold uppercase tracking-widest text-navy-300">
             Agency operating system
           </p>
           <h1 className="mt-4 max-w-lg text-4xl">

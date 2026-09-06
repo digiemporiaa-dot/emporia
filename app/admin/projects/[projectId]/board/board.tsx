@@ -64,7 +64,7 @@ export function TaskBoard({ tasks, canMove }: { tasks: BoardTask[]; canMove: boo
       {error ? (
         <div
           role="alert"
-          className="mb-3 flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-brand-red"
+          className="mb-3 flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-3.5 py-2.5 text-sm text-brand-red-text"
         >
           <AlertCircle size={15} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>{error}</span>
@@ -131,7 +131,7 @@ export function TaskBoard({ tasks, canMove }: { tasks: BoardTask[]; canMove: boo
                       ) : null}
 
                       {task.priority === "HIGH" || task.priority === "URGENT" ? (
-                        <p className="mt-1 text-2xs font-semibold uppercase tracking-wide text-brand-red">
+                        <p className="mt-1 text-2xs font-semibold uppercase tracking-wide text-brand-red-text">
                           {task.priority.toLowerCase()}
                         </p>
                       ) : null}

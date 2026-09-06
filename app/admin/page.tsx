@@ -69,7 +69,7 @@ export default async function AdminDashboard() {
   return (
     <>
       <header className="mb-7">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red">Dashboard</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Dashboard</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">
           {firstName ? `Welcome, ${firstName}` : "Welcome"}
         </h1>
