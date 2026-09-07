@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Traced standalone output keeps the Docker runner minimal (see docs/ARCHITECTURE.md 17.1).
+  // Traced standalone output gives the runner a self-contained server.js
+  // (see docs/ARCHITECTURE.md 17.1).
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,

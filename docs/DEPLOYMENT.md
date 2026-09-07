@@ -132,6 +132,20 @@ to leave a password in the environment.
    `SELECT 1`, so it reports the database being unreachable, not merely the
    process being alive. It returns no detail on failure — it is unauthenticated,
    and an error body there would describe your infrastructure to anyone asking.
+
+   Coolify runs that probe as a command *inside the container*, and
+   `node:22-bookworm-slim` ships neither `curl` nor `wget`. The runner stage
+   therefore installs `curl`, so the default probe shape works as written:
+
+   ```bash
+   curl -fsS http://127.0.0.1:3000/api/health
+   ```
+
+   The image also declares its own `HEALTHCHECK` with the same command, which
+   is what `docker ps` and Compose report against. If you prefer not to depend
+   on `curl` being present, `node -e "fetch('http://127.0.0.1:3000/api/health')
+   .then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"` needs nothing
+   but the runtime — that is the form `docker-compose.yml` uses.
 6. **Attach the domain** and let the proxy issue TLS. HTTPS is not optional:
    session cookies are `__Secure-`-prefixed and `secure` in production, so over
    plain HTTP nobody can stay signed in.
@@ -159,8 +173,13 @@ Once the first deploy is healthy, seed the configuration data by hand — a shel
 into the running container, or a one-off job on the same image:
 
 ```bash
-npm run db:seed
+docker exec -it <container> npm run db:seed
 ```
+
+The runner image carries `tsx`, the generated Prisma client and the `lib/`
+modules `prisma/seed.ts` imports, precisely so this works in the deployed
+container rather than only on a developer's machine. It is not wired into the
+entrypoint, and should not be — see "What happens on every deploy" above.
 
 That creates roles, the 94 permissions, the role→permission mapping, lead
 sources and the first super admin. It is idempotent: re-running it will not
@@ -375,6 +394,19 @@ being reproducible.
 **`npm install prisma` broke the build.**
 `prisma@latest` is a release candidate. `prisma` and `@prisma/client` are pinned
 to exactly `7.10.0`.
+
+**Container exits on boot with `Cannot find module '<something>'`.**
+Almost certainly the entrypoint's `prisma migrate deploy`, not the server. The
+Prisma 7 CLI has a large transitive closure and the runner needs all of it; the
+image therefore copies the whole `node_modules` from the builder rather than a
+hand-picked subset. If you trim that COPY to save space, this is what comes
+back. `--omit=dev` has the same effect for a different reason: `prisma`, `tsx`
+and `dotenv` are devDependencies.
+
+**Coolify reports the container unhealthy while the app answers fine.**
+The probe command cannot run. `curl` is installed in the runner for exactly
+this; if you changed the base image or the health check, check the probe
+executes at all — a missing binary exits 127, which reads as a failed check.
 
 ---
 

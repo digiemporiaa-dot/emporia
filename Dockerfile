@@ -33,7 +33,7 @@ COPY . .
 # queries Postgres at build time (docs/ARCHITECTURE.md 17.2).
 RUN npm run build
 
-# --- runner: minimal, non-root ---------------------------------------------
+# --- runner: non-root, and able to run its own migrations and seed -----------
 FROM node:${NODE_VERSION} AS runner
 WORKDIR /app
 
@@ -42,25 +42,66 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
+# curl, solely so an HTTP health check has something to run with. This base
+# image ships neither curl nor wget, so Coolify's `curl -f .../api/health`
+# probe exits 127 and the container is marked unhealthy while it is serving
+# perfectly well (docs/DEPLOYMENT.md §4).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs nextjs
 
-# Standalone output carries only the traced dependencies.
+# The whole dependency tree, devDependencies included.
+#
+# The entrypoint runs the Prisma 7 CLI, whose transitive closure is ~130
+# packages — `effect` among them. Copying only node_modules/{prisma,@prisma,
+# dotenv} left every one of those unresolvable and the container died on boot
+# with "Cannot find module 'effect'". `npm ci --omit=dev` is not the fix
+# either: prisma, tsx and dotenv are all devDependencies, so pruning dev is
+# exactly what removes the CLI. The image is correspondingly large; that is a
+# deliberate trade for a runner that can migrate and seed itself.
+#
+# This has to land BEFORE the standalone output so that Next's traced
+# node_modules is laid on top of it, not overwritten by it. The two overlap
+# only on identical files from the same install.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+
+# Standalone output: server.js at /app/server.js, plus its traced dependencies
+# and the compiled server bundle under .next/. Next copies the project's real
+# package.json here too, scripts and all, which is what makes `npm run db:seed`
+# resolvable inside the container.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Migrations and the CLI are needed by the entrypoint's `migrate deploy`.
+# Migrations, for the entrypoint's `migrate deploy`.
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma7.config.ts ./prisma7.config.ts
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/dotenv ./node_modules/dotenv
+
+# `npm run db:seed` — i.e. `tsx prisma/seed.ts` — is how the first super admin
+# is created, so it has to run in the deployed image rather than only on a
+# developer's machine (docs/DEPLOYMENT.md §5). Beyond prisma/ and tsx, it needs:
+#   generated/     seed.ts imports ../generated/prisma/client.js, and the
+#                  Prisma 7 client generator emits TypeScript, not JavaScript —
+#                  the server bundle has it compiled in, but tsx needs source.
+#   lib/           ../lib/auth/permissions.js and ../lib/email/templates.js,
+#                  the latter importing @/lib/email/types.
+#   tsconfig.json  resolves that `@/*` path alias for tsx.
+# Together these are under 10 MB, which next to the node_modules above is noise.
+COPY --from=builder --chown=nextjs:nodejs /app/generated ./generated
+COPY --from=builder --chown=nextjs:nodejs /app/lib ./lib
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+
 COPY --chown=nextjs:nodejs docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
 USER nextjs
 EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+    CMD curl -fsS http://127.0.0.1:3000/api/health || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]
 CMD ["node", "server.js"]

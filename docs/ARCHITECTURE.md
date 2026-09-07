@@ -1173,12 +1173,13 @@ recurring build failure. The size difference does not justify that.
 ```
 deps     → npm ci (cached on package-lock.json alone)
 builder  → prisma generate → next build   (output: "standalone")
-runner   → distroless-ish slim, non-root `node` user,
-           copies .next/standalone, .next/static, public, prisma/
+runner   → slim, non-root `nextjs` user, curl for the health probe,
+           the full node_modules with .next/standalone laid on top,
+           plus .next/static, public/, prisma/, generated/, lib/
 ```
 
-- `next.config.ts` sets `output: "standalone"` so the runner carries only the
-  traced dependencies.
+- `next.config.ts` sets `output: "standalone"` so the server itself carries only
+  the traced dependencies.
 - Runs as a non-root user, `EXPOSE 3000`, `NODE_ENV=production`.
 
 > **Revised in Phase 2.** This section originally called for
@@ -1191,6 +1192,38 @@ runner   → distroless-ish slim, non-root `node` user,
 - `.dockerignore` excludes `node_modules`, `.next`, `.git`, `.env*`, `docs`,
   test output — both for build speed and so a stray `.env` can never enter an
   image layer.
+
+> **Revised after the first production deploy.** The runner used to copy exactly
+> three folders out of `node_modules` — `prisma`, `@prisma`, `dotenv` — on the
+> theory that the standalone trace covered everything else. It does, for the
+> *server*. It does not for the **Prisma 7 CLI** the entrypoint runs, whose
+> transitive closure is around 130 packages, `effect` among them. None were in
+> the image, so `prisma migrate deploy` died on `Cannot find module 'effect'`
+> before `server.js` was ever reached, and every container crash-looped on boot.
+>
+> `npm ci --omit=dev` is not the fix: `prisma`, `tsx` and `dotenv` are all
+> devDependencies, so pruning dev is precisely what removes the CLI. The runner
+> now copies the **whole** `/app/node_modules` from the builder and lays the
+> standalone output on top of it — order matters, so that Next's traced
+> `node_modules` overlays the full tree rather than being overwritten by it, and
+> `server.js` still lands at `/app/server.js`.
+>
+> The same copy is what makes `npm run db:seed` — how the first super admin is
+> created — runnable inside the deployed container. Beyond `tsx`, the seed needs
+> `generated/` (the Prisma 7 client generator emits TypeScript; the server
+> bundle has it compiled in, `tsx` needs the source), `lib/` for the two modules
+> `prisma/seed.ts` imports, and `tsconfig.json` to resolve their `@/*` alias.
+>
+> The cost is image size: roughly 2 GB rather than a few hundred megabytes. That
+> is the deliberate trade — a runner that can migrate and seed itself beats a
+> small one that crash-loops. If it ever needs to come down, the honest lever is
+> a fourth stage that runs `npm ci` for the CLI's closure alone, not another
+> guess at which folders the CLI touches.
+>
+> `curl` is installed in the runner for the same class of reason: the base image
+> has neither `curl` nor `wget`, so an HTTP health check — which is what Coolify
+> runs — had nothing to execute with and every container reported unhealthy
+> while serving fine (docs/DEPLOYMENT.md §4).
 
 ### 17.2 The build-time database problem
 

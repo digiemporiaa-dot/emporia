@@ -164,7 +164,16 @@ silently, and this file is also the reference for the Coolify deployment.
 
 The entrypoint runs `prisma migrate deploy` before starting the server. Seeding
 is deliberately **not** automatic, so a redeploy can never overwrite live data
-with demo records — run `npm run db:seed` by hand.
+with demo records — run `npm run db:seed` by hand:
+
+```bash
+docker compose exec app npm run db:seed
+```
+
+The runner image carries the full `node_modules` rather than a hand-picked
+subset, because the Prisma CLI the entrypoint runs and the `tsx` the seed runs
+are both devDependencies with large dependency closures. It costs about 2 GB of
+image; the reasoning is in [docs/ARCHITECTURE.md §17.1](docs/ARCHITECTURE.md).
 
 ## Deploying
 
