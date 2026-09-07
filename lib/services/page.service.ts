@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { ConflictError, NotFoundError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
-import { paged, toSkipTake, type Paged } from "@/lib/paging";
+import { paged, toSkipTake } from "@/lib/paging";
 import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
 import type { Actor } from "@/lib/actor/types";
 import type {
@@ -59,29 +59,14 @@ const detailSelect = {
   },
 } as const;
 
-export type PageRow = Awaited<ReturnType<typeof listPages>>["rows"][number];
-
-export async function listPages(
-  actor: Actor,
-  input: PageListInput,
-): Promise<Paged<{
-  id: string;
-  slug: string;
-  title: string;
-  internalName: string | null;
-  status: string;
-  publishedAt: Date | null;
-  updatedAt: Date;
-  createdAt: Date;
-  _count: { sections: number };
-}>> {
+export async function listPages(actor: Actor, input: PageListInput) {
   requirePermission(actor, "pages.view");
 
   const { page, perPage, skip, take } = toSkipTake(input);
   const query = input.query?.trim();
 
   const where = {
-    deletedAt: null,
+    deletedAt: input.view === "deleted" ? { not: null } : null,
     ...(input.status ? { status: input.status } : {}),
     ...(query
       ? {
@@ -102,6 +87,8 @@ export async function listPages(
   return paged(rows, total, page, perPage);
 }
 
+export type PageRow = Awaited<ReturnType<typeof listPages>>["rows"][number];
+
 export async function getPage(actor: Actor, id: string) {
   requirePermission(actor, "pages.view");
 
@@ -114,16 +101,32 @@ export async function getPage(actor: Actor, id: string) {
  * A soft-deleted page still owns its slug — restoring it must not collide with
  * something created in the meantime — so the check deliberately ignores
  * `deletedAt`.
+ *
+ * `currentSlug` is the slug this page already has. A reserved slug is refused
+ * when moving *onto* it, but never when a page is simply keeping the one it
+ * holds: `home`, `about`, `careers` and the legal pages are CMS pages whose
+ * sections the bespoke routes read by exactly that slug. Without this, editing
+ * any of them would fail on a field the editor never touched.
  */
-async function assertSlugFree(slug: string, excludeId?: string): Promise<void> {
-  if (isReservedSlug(slug)) {
-    throw new ConflictError("That address is used by a built-in page. Choose another slug.");
+async function assertSlugFree(
+  slug: string,
+  excludeId?: string,
+  currentSlug?: string,
+): Promise<void> {
+  // Both conflicts here are about the slug, and say so, so the form can put
+  // the message on that field instead of only in a banner at the top.
+  if (slug !== currentSlug && isReservedSlug(slug)) {
+    const message = "That address is used by a built-in page. Choose another slug.";
+    throw new ConflictError(message, { slug: [message] });
   }
   const clash = await db.page.findFirst({
     where: { slug, ...(excludeId ? { id: { not: excludeId } } : {}) },
     select: { id: true },
   });
-  if (clash) throw new ConflictError("Another page already uses that slug.");
+  if (clash) {
+    const message = "Another page already uses that slug.";
+    throw new ConflictError(message, { slug: [message] });
+  }
 }
 
 const slugTaken = async (candidate: string): Promise<boolean> =>
@@ -149,7 +152,7 @@ export async function updatePage(actor: Actor, id: string, input: PageInput) {
   requirePermission(actor, "pages.edit");
 
   const before = await getPage(actor, id);
-  await assertSlugFree(input.slug, id);
+  await assertSlugFree(input.slug, id, before.slug);
 
   // Changing status through this path is an edit, not a publish. Reaching
   // PUBLISHED goes through setPageStatus, which requires `pages.publish`.
@@ -283,7 +286,8 @@ export async function restorePage(actor: Actor, id: string) {
   if (!page) throw new NotFoundError("That page does not exist.");
 
   // Something else may have claimed the slug while this page was in the bin.
-  await assertSlugFree(page.slug, id);
+  // Its own slug is not held against it, reserved or not.
+  await assertSlugFree(page.slug, id, page.slug);
 
   const restored = await withAudit(
     { actor, action: "RESTORE", entityType: "Page", entityId: id },

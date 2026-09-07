@@ -25,16 +25,27 @@ const nextConfig: NextConfig = {
    * is deliberately absent.
    */
   async headers() {
+    const isDev = process.env.NODE_ENV === "development";
+
     const csp = [
       "default-src 'self'",
       // Razorpay checkout is loaded from their CDN; 'unsafe-inline' covers
       // Next's bootstrap script tags, which carry no user input.
-      "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com",
+      //
+      // 'unsafe-eval' is added in development ONLY. `next dev` compiles and
+      // evaluates modules through eval for fast refresh, so without it React
+      // never hydrates: every client component is inert, and forms fall back to
+      // a native POST that `form-action 'self'` then blocks. The dev server is
+      // unusable for anything interactive without this, and a production build
+      // never evaluates a string as script — which is why the directive is
+      // conditional rather than simply present.
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://checkout.razorpay.com`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      // Uploads go straight to R2, and checkout talks to Razorpay.
-      "connect-src 'self' https://*.r2.cloudflarestorage.com https://api.razorpay.com https://lumberjack.razorpay.com",
+      // Uploads go straight to R2, and checkout talks to Razorpay. In
+      // development, fast refresh also needs its own websocket.
+      `connect-src 'self'${isDev ? " ws: wss:" : ""} https://*.r2.cloudflarestorage.com https://api.razorpay.com https://lumberjack.razorpay.com`,
       "frame-src https://api.razorpay.com https://checkout.razorpay.com",
       "object-src 'none'",
       "base-uri 'self'",

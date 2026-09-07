@@ -62,8 +62,11 @@ export class ValidationError extends AppError {
 }
 
 export class ConflictError extends AppError {
-  constructor(message = "That conflicts with something that already exists.") {
-    super("CONFLICT", 409, message);
+  // `details` matches ForbiddenError and ValidationError, so a conflict that
+  // knows which field it is about (a duplicate slug, say) can say so and have
+  // the form render the message against that input rather than only in a banner.
+  constructor(message = "That conflicts with something that already exists.", details?: unknown) {
+    super("CONFLICT", 409, message, { details });
   }
 }
 

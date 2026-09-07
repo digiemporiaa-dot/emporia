@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { pageParamsSchema } from "@/lib/paging";
-import { pageSlugSchema } from "@/lib/validation/slug";
+import { pageSlugSchema, slugSchema } from "@/lib/validation/slug";
 
 /**
  * Website page CMS validation.
@@ -20,7 +20,14 @@ export type PublishStatusInput = z.infer<typeof publishStatusSchema>;
 
 export const pageSchema = z.object({
   title: z.string().trim().min(2, "Enter a page title.").max(160),
-  slug: pageSlugSchema,
+  /**
+   * Format only. Whether a reserved slug is allowed depends on whether this
+   * page already holds it — `home`, `about` and the other bespoke routes read
+   * their sections from a CMS page with exactly that slug, and those pages must
+   * stay editable. Only the service knows the current slug, so only the service
+   * can decide (see assertSlugFree).
+   */
+  slug: slugSchema,
   internalName: z.string().trim().max(160).nullable().optional(),
   description: z.string().trim().max(500).nullable().optional(),
   status: publishStatusSchema.default("DRAFT"),
@@ -46,6 +53,12 @@ export type PageDraftInput = z.infer<typeof pageDraftSchema>;
 export const pageListSchema = pageParamsSchema.extend({
   query: z.string().trim().max(120).optional(),
   status: publishStatusSchema.optional(),
+  /**
+   * `deleted` lists the bin. Without it, soft-deleted pages would be
+   * unreachable from the admin and "delete" would be irreversible in practice
+   * despite the row still being there.
+   */
+  view: z.enum(["active", "deleted"]).default("active"),
 });
 export type PageListInput = z.infer<typeof pageListSchema>;
 

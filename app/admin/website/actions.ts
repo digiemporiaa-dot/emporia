@@ -126,7 +126,9 @@ export async function setPageStatusAction(
   }
 }
 
-export async function duplicatePageAction(id: string): Promise<PageActionState> {
+export async function duplicatePageAction(
+  id: string,
+): Promise<ActionResult<{ id: string; slug: string }>> {
   try {
     const actor = await requireActor();
     const copy = await pageService.duplicatePage(actor, id);
