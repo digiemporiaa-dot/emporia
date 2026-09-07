@@ -5,6 +5,7 @@ import { publishedPageSections } from "@/lib/content/queries";
 import { PageSections } from "@/components/website/page-sections";
 import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
 import { resolveRedirect } from "@/lib/services/redirect.service";
+import { isReservedSlug } from "@/lib/utils/slug";
 
 /**
  * CMS landing pages, and the redirect fallback.
@@ -19,15 +20,13 @@ import { resolveRedirect } from "@/lib/services/redirect.service";
  */
 export const dynamic = "force-dynamic";
 
-/** Slugs that already have a dedicated route; never served from here. */
-const RESERVED = new Set(["home", "about", "careers", "privacy-policy", "terms-and-conditions"]);
 
 function slugFrom(segments: string[]): string | null {
   // Only single-segment CMS pages, so a deep path cannot collide with a
   // sectioned route such as /services/seo/gurgaon (Phase 5).
   if (segments.length !== 1) return null;
   const slug = segments[0];
-  if (!slug || RESERVED.has(slug)) return null;
+  if (!slug || isReservedSlug(slug)) return null;
   return slug;
 }
 

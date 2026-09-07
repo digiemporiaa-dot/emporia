@@ -64,6 +64,19 @@ export const PERMISSIONS = [
   "content.edit",
   "content.delete",
   "content.publish",
+
+  /**
+   * Website page CMS. Deliberately NOT folded into `content.*`: that namespace
+   * is the content *calendar* (ContentCalendarItem — social posts, blog
+   * scheduling), enforced in delivery-content.service.ts. Reusing it would
+   * hand anyone who can schedule a social post the ability to edit and publish
+   * the public website.
+   */
+  "pages.view",
+  "pages.create",
+  "pages.edit",
+  "pages.delete",
+  "pages.publish",
   "catalog.view",
   "catalog.create",
   "catalog.edit",
@@ -173,6 +186,7 @@ const READ_ONLY_BASELINE: Permission[] = [
   "tasks.view",
   "media.view",
   "content.view",
+  "pages.view",
   "catalog.view",
 ];
 
@@ -220,6 +234,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "media.upload",
     "catalog.view",
     "content.view",
+    "pages.view",
     "projects.view",
     "tasks.view",
   ],
@@ -259,6 +274,10 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "content.create",
     "content.edit",
     "content.publish",
+    "pages.view",
+    "pages.create",
+    "pages.edit",
+    "pages.publish",
     "catalog.view",
     "catalog.edit",
     "seo.view",
@@ -279,6 +298,11 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "content.edit",
     "content.delete",
     "content.publish",
+    "pages.view",
+    "pages.create",
+    "pages.edit",
+    "pages.delete",
+    "pages.publish",
     "catalog.view",
     "catalog.create",
     "catalog.edit",

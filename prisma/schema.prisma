@@ -825,6 +825,21 @@ model Page {
   title  String
   status PublishStatus @default(DRAFT)
 
+  /// Admin-facing label. The public `title` is a headline and is often not the
+  /// clearest thing to scan a list of 200 pages by.
+  internalName String?
+  /// Short editorial note for the team. Never rendered publicly.
+  description  String?
+
+  /// Set the first time the page reaches PUBLISHED and kept thereafter, so
+  /// unpublishing and republishing does not rewrite history.
+  publishedAt DateTime?
+
+  /// Soft delete. A page's slug is a live URL; hard-deleting one silently
+  /// breaks inbound links and loses the section history behind it. Every read
+  /// path filters on `deletedAt: null`.
+  deletedAt DateTime?
+
   seoId String? @unique
   seo   Seo?    @relation("PageSeo", fields: [seoId], references: [id], onDelete: SetNull)
 
@@ -834,6 +849,8 @@ model Page {
   sections PageSection[]
 
   @@index([status])
+  @@index([deletedAt])
+  @@index([updatedAt])
 }
 
 model PageSection {
@@ -844,10 +861,61 @@ model PageSection {
   order   Int    @default(0)
   content Json
 
+  /// Builder label, shown in the section outline. Falls back to the block's
+  /// own name when unset.
+  name String?
+
+  /// Hide/Show in the builder. A hidden section stays in the page and keeps
+  /// its position; it is simply not rendered publicly. Distinct from deleting.
+  isVisible Boolean @default(true)
+
+  /// When set, this slot renders a ReusableSection instead of its own content.
+  /// `type` and `content` are still populated: they hold the last resolved
+  /// snapshot, so a reusable section that is deleted or unpublished degrades
+  /// this one band to its last-known-good state rather than blanking the page
+  /// (the same posture `parseSections` already takes towards bad CMS data).
+  reusableSectionId String?
+  reusableSection   ReusableSection? @relation(fields: [reusableSectionId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([pageId, order])
+  @@index([reusableSectionId])
+}
+
+/// A section authored once and placed on many pages.
+///
+/// Phase 1 lays the foundation only: the model, the FK from PageSection and the
+/// publish/global flags. Resolution, editing and the "used on N pages" view
+/// arrive with the reusable-sections feature itself.
+model ReusableSection {
+  id String @id @default(cuid())
+
+  /// Stable human-readable handle, e.g. `global-cta`. Lets a reusable section
+  /// be referenced from a seed or a migration without knowing its cuid.
+  key  String @unique
+  name String
+
+  type    String
+  content Json
+
+  status PublishStatus @default(DRAFT)
+
+  /// A global section is one the site places automatically rather than one an
+  /// editor drags onto a page. The flag exists now so the distinction is in the
+  /// data model before anything depends on it.
+  isGlobal Boolean @default(false)
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  usages PageSection[]
+
+  @@index([status])
+  @@index([isGlobal])
+  @@index([deletedAt])
 }
 
 model BlogPost {
@@ -1285,7 +1353,6 @@ model Client {
 
 /**
  * A message between a client and the agency.
- *
  * Scoped by clientId, which is what the portal filters on. `fromClient` records
  * which side wrote it at the time of writing, rather than being re-derived from
  * the author's account type later.

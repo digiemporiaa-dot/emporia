@@ -2,15 +2,11 @@ import { z } from "zod";
 
 /** Shared validation for the City and ServiceCityPage CMS. */
 
-const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// The schema itself now lives in lib/validation/slug.ts, shared with the page
+// CMS. Re-exported here so this module's existing importers are unaffected.
+import { slugSchema } from "@/lib/validation/slug";
 
-export const slugSchema = z
-  .string()
-  .trim()
-  .toLowerCase()
-  .min(2, "A slug needs at least two characters.")
-  .max(80)
-  .regex(slugPattern, "Use lowercase letters, numbers and hyphens only.");
+export { slugSchema };
 
 export const citySchema = z.object({
   name: z.string().trim().min(2, "Enter the city name.").max(80),

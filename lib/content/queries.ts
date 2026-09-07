@@ -45,11 +45,16 @@ export type PublishedPage = {
 export const publishedPageSections = unstable_cache(
   async (slug: string): Promise<PublishedPage | null> => {
     const page = await db.page.findFirst({
-      where: { slug, status: "PUBLISHED" },
+      // `deletedAt: null` matters as much as the status: a soft-deleted page
+      // keeps its row and its PUBLISHED history, and must stop serving anyway.
+      where: { slug, status: "PUBLISHED", deletedAt: null },
       select: {
         title: true,
         seo: { select: seoSelect },
         sections: {
+          // A hidden section keeps its slot in the builder and its position in
+          // the order; it simply does not reach the public page.
+          where: { isVisible: true },
           orderBy: { order: "asc" },
           select: { id: true, type: true, order: true, content: true },
         },

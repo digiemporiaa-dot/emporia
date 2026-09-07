@@ -181,7 +181,7 @@ modules `prisma/seed.ts` imports, precisely so this works in the deployed
 container rather than only on a developer's machine. It is not wired into the
 entrypoint, and should not be — see "What happens on every deploy" above.
 
-That creates roles, the 94 permissions, the role→permission mapping, lead
+That creates roles, the 99 permissions, the role→permission mapping, lead
 sources and the first super admin. It is idempotent: re-running it will not
 duplicate anything. The super admin is created **only** if
 `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD` are set — credentials

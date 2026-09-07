@@ -64,7 +64,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       select: { slug: true, updatedAt: true },
     }),
     db.page.findMany({
-      where: { status: "PUBLISHED", OR: [{ seo: null }, { seo: { robotsIndex: true } }] },
+      where: {
+        status: "PUBLISHED",
+        deletedAt: null,
+        OR: [{ seo: null }, { seo: { robotsIndex: true } }],
+      },
       select: { slug: true, updatedAt: true },
     }),
     // A city is only listed once it has a published local page behind it —
