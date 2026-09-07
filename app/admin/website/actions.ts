@@ -199,3 +199,102 @@ export async function suggestSlugAction(title: string): Promise<ActionResult<{ s
     return toActionFailure(error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Sections — the page builder
+// ---------------------------------------------------------------------------
+
+const BUILDER_PATH = (pageId: string) => `${LIST_PATH}/${pageId}`;
+
+export async function addSectionAction(
+  pageId: string,
+  type: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const section = await pageService.addSection(actor, pageId, type);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: section.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "add section failed");
+    return toActionFailure(error);
+  }
+}
+
+/**
+ * Save one section's content.
+ *
+ * `content` arrives as an object from the editor and is validated in the
+ * service against that block's own schema — the stored value is the parsed
+ * one, never the payload as sent.
+ */
+export async function saveSectionAction(
+  pageId: string,
+  sectionId: string,
+  content: unknown,
+  name?: string | null,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const section = await pageService.updateSection(actor, sectionId, {
+      content,
+      ...(name === undefined ? {} : { name }),
+    });
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: section.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "save section failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function duplicateSectionAction(
+  pageId: string,
+  sectionId: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const copy = await pageService.duplicateSection(actor, sectionId);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: copy.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "duplicate section failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function setSectionVisibleAction(
+  pageId: string,
+  sectionId: string,
+  isVisible: boolean,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const section = await pageService.setSectionVisible(actor, sectionId, isVisible);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: section.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "set section visibility failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function deleteSectionAction(
+  pageId: string,
+  sectionId: string,
+): Promise<ActionResult<{ pageId: string }>> {
+  try {
+    const actor = await requireActor();
+    const result = await pageService.deleteSection(actor, sectionId);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: result };
+  } catch (error) {
+    actionLog.error({ err: error }, "delete section failed");
+    return toActionFailure(error);
+  }
+}

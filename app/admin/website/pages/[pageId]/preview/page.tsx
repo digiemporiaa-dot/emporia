@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { getPage } from "@/lib/services/page.service";
 import { isAppError } from "@/lib/errors";
 import { parseSections } from "@/lib/content/sections";
+import { resolveSectionImages } from "@/lib/content/media";
 import { PageSections } from "@/components/website/page-sections";
 import { PageStatusBadge } from "../../page-status";
 
@@ -49,6 +50,7 @@ export default async function PreviewPage({
   }
 
   const sections = parseSections(page.sections);
+  const images = Object.fromEntries(await resolveSectionImages(sections));
   const dropped = page.sections.length - sections.length;
   const hidden = page.sections.filter((section) => !section.isVisible).length;
 
@@ -85,7 +87,7 @@ export default async function PreviewPage({
         </p>
       ) : (
         <div className="bg-white">
-          <PageSections sections={sections} title={page.title} />
+          <PageSections sections={sections} title={page.title} images={images} />
         </div>
       )}
     </div>

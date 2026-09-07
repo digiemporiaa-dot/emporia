@@ -2,6 +2,16 @@ import * as React from "react";
 import { Container, CtaButton, Eyebrow, IndexNumber } from "@/components/website/primitives";
 import { HeroReveal, Reveal, Stagger, StaggerItem } from "@/components/website/motion";
 import type { ParsedSection } from "@/lib/content/sections";
+import {
+  FeatureBlock,
+  HeadingBlock,
+  ImageBlock,
+  ImageBoxBlock,
+  ImageTextBlock,
+  RichTextBlock,
+  TableBlock,
+  type BlockImages,
+} from "@/components/website/blocks";
 
 /**
  * Renderer for CMS page sections.
@@ -22,9 +32,19 @@ function formatUpdated(value: string): string | null {
   return Number.isNaN(date.getTime()) ? null : DATE_FORMAT.format(date);
 }
 
+/**
+ * Section types that render the page's <h1> themselves.
+ *
+ * `hero` emits one from its own heading; `legal` emits one from the page title.
+ * Every other type — including every builder block, which is capped at h2 —
+ * leaves the page without a level-one heading, so one has to be supplied.
+ */
+const EMITS_H1 = new Set(["hero", "legal"]);
+
 export function PageSections({
   sections,
   title,
+  images = {},
 }: {
   sections: readonly ParsedSection[];
   /**
@@ -33,9 +53,23 @@ export function PageSections({
    * a document title alone is not one.
    */
   title?: string;
+  /** Images referenced by builder blocks, resolved by the query in one batch. */
+  images?: BlockImages;
 }) {
+  // A page assembled from builder blocks would otherwise ship with no <h1> at
+  // all: an accessibility failure and an SEO one. Rendered only when nothing
+  // else provides it, so the hand-composed pages are untouched.
+  const needsTitle = Boolean(title) && !sections.some((section) => EMITS_H1.has(section.type));
+
   return (
     <>
+      {needsTitle ? (
+        <header className="border-b border-line">
+          <Container className="pt-12 pb-8 lg:pt-16 lg:pb-10">
+            <h1 className="max-w-3xl text-4xl text-navy-800">{title}</h1>
+          </Container>
+        </header>
+      ) : null}
       {sections.map((section) => {
         switch (section.type) {
           case "hero":
@@ -215,6 +249,22 @@ export function PageSections({
                 </Container>
               </section>
             );
+
+          // --- builder blocks -------------------------------------------
+          case "heading":
+            return <HeadingBlock key={section.id} content={section.content} />;
+          case "richText":
+            return <RichTextBlock key={section.id} content={section.content} />;
+          case "image":
+            return <ImageBlock key={section.id} content={section.content} images={images} />;
+          case "imageBox":
+            return <ImageBoxBlock key={section.id} content={section.content} images={images} />;
+          case "imageText":
+            return <ImageTextBlock key={section.id} content={section.content} images={images} />;
+          case "table":
+            return <TableBlock key={section.id} content={section.content} />;
+          case "feature":
+            return <FeatureBlock key={section.id} content={section.content} images={images} />;
 
           // Homepage-only section types are composed bespokely on that route.
           default:

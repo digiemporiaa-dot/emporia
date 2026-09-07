@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { toMoneyString } from "@/lib/money";
+import { resolveSectionImages, type SectionImages } from "@/lib/content/media";
 import { parseSections, type ParsedSection } from "@/lib/content/sections";
 import { seoSelect, type EntitySeo } from "@/lib/seo/select";
 
@@ -38,6 +39,8 @@ const ONE_HOUR = 3600;
 export type PublishedPage = {
   title: string;
   sections: ParsedSection[];
+  /** Images referenced by the sections, resolved in one batched query. */
+  images: Record<string, { id: string; url: string; alt: string | null; width: number | null; height: number | null }>;
   seo: EntitySeo | null;
 };
 
@@ -63,10 +66,17 @@ export const publishedPageSections = unstable_cache(
 
     if (!page) return null;
 
+    const sections = parseSections(page.sections);
+    // A Map is not serialisable through the cache boundary, so this crosses it
+    // as a plain object (docs/ARCHITECTURE.md 17.2, cached values must be
+    // serialisable).
+    const images: SectionImages = await resolveSectionImages(sections);
+
     return {
       title: page.title,
       seo: page.seo,
-      sections: parseSections(page.sections),
+      sections,
+      images: Object.fromEntries(images),
     };
   },
   ["published-page"],

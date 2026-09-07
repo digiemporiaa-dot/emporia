@@ -29,5 +29,5 @@ export default async function Page() {
   const page = await publishedPageSections(SLUG);
   if (!page) notFound();
 
-  return <PageSections sections={page.sections} title={page.title} />;
+  return <PageSections sections={page.sections} title={page.title} images={page.images} />;
 }

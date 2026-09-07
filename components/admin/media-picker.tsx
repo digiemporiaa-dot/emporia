@@ -13,7 +13,7 @@ import { Uploader, type UploadedMedia } from "@/app/admin/media/uploader";
  * id, and the service still checks the permission.
  */
 
-type PickedMedia = {
+export type PickedMedia = {
   id: string;
   url: string;
   filename: string;
@@ -29,6 +29,7 @@ export function MediaPicker({
   hint,
   accept = "IMAGE",
   canUpload = true,
+  onChange,
 }: {
   name: string;
   label: string;
@@ -36,8 +37,24 @@ export function MediaPicker({
   hint?: string;
   accept?: "IMAGE" | "VIDEO" | "DOCUMENT" | "ANY";
   canUpload?: boolean;
+  /**
+   * Notified when the selection changes. Optional: the hidden input remains the
+   * mechanism for form-posting callers, and this exists for the ones holding
+   * their content in React state rather than in a form (the page builder).
+   */
+  onChange?: (media: PickedMedia | null) => void;
 }) {
-  const [picked, setPicked] = React.useState<PickedMedia | null>(value ?? null);
+  const [picked, setPickedState] = React.useState<PickedMedia | null>(value ?? null);
+
+  // One setter, so a new call site cannot change the selection without the
+  // callback firing.
+  const setPicked = React.useCallback(
+    (next: PickedMedia | null) => {
+      setPickedState(next);
+      onChange?.(next);
+    },
+    [onChange],
+  );
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState<SearchRow[]>([]);
   const [query, setQuery] = React.useState("");

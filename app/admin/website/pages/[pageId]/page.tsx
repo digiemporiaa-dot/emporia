@@ -8,6 +8,9 @@ import { isAppError } from "@/lib/errors";
 import { PageStatusBadge } from "../page-status";
 import { PreviewLink } from "../row-actions";
 import { PageSettingsForm } from "./page-settings-form";
+import { PageBuilder } from "./builder";
+import { db } from "@/lib/db";
+import { mediaIdsIn } from "@/lib/content/blocks";
 
 export const metadata: Metadata = { title: "Edit page" };
 
@@ -36,6 +39,28 @@ export default async function EditPagePage({
     throw error;
   }
 
+  // Thumbnails for sections that reference an image, so the editor opens with
+  // the current selection shown rather than an empty picker. One batched query.
+  const mediaBySection = new Map<string, string>();
+  for (const section of page.sections) {
+    const [mediaId] = mediaIdsIn(section.type, section.content);
+    if (mediaId) mediaBySection.set(section.id, mediaId);
+  }
+  const mediaRows =
+    mediaBySection.size === 0
+      ? []
+      : await db.media.findMany({
+          where: { id: { in: [...new Set(mediaBySection.values())] }, deletedAt: null },
+          select: { id: true, url: true, filename: true, type: true },
+        });
+  const byId = new Map(mediaRows.map((row) => [row.id, row]));
+  const sectionMedia = Object.fromEntries(
+    [...mediaBySection.entries()].flatMap(([sectionId, mediaId]) => {
+      const row = byId.get(mediaId);
+      return row ? [[sectionId, row] as const] : [];
+    }),
+  );
+
   return (
     <>
       <header className="mb-6">
@@ -61,45 +86,13 @@ export default async function EditPagePage({
 
       <PageSettingsForm page={page} canPublish={can(actor, "pages.publish")} />
 
-      <section aria-labelledby="sections-heading" className="mt-10 max-w-2xl">
-        <h2 id="sections-heading" className="text-lg text-navy-800">
-          Sections
-        </h2>
-        <p className="mt-1 text-sm text-ink-muted">
-          This page has {page.sections.length} section
-          {page.sections.length === 1 ? "" : "s"}.
-        </p>
+      <PageBuilder
+        pageId={page.id}
+        sections={page.sections}
+        media={sectionMedia}
+        canEdit={can(actor, "pages.edit")}
+      />
 
-        {page.sections.length > 0 ? (
-          <ol className="mt-4 divide-y divide-line rounded-lg border border-line bg-white">
-            {page.sections.map((section, index) => (
-              <li key={section.id} className="flex items-center gap-3 px-3.5 py-2.5">
-                <span className="w-5 text-right text-xs tabular-nums text-ink-subtle">
-                  {index + 1}
-                </span>
-                <span className="font-medium text-navy-800">{section.name ?? section.type}</span>
-                <span className="font-mono text-2xs text-ink-subtle">{section.type}</span>
-                {!section.isVisible ? (
-                  <span className="ml-auto text-xs text-ink-subtle">Hidden</span>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="mt-4 rounded-lg border border-dashed border-line-strong px-4 py-6 text-center text-sm text-ink-subtle">
-            No sections yet.
-          </p>
-        )}
-
-        {/*
-          Read-only for now. Adding, editing, reordering and hiding sections is
-          the visual builder, which is the next phase — showing a disabled
-          drag-and-drop surface here would be a mock, not a feature.
-        */}
-        <p className="mt-3 text-xs text-ink-subtle">
-          Editing sections arrives with the page builder.
-        </p>
-      </section>
     </>
   );
 }

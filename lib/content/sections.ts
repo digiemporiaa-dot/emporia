@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BLOCK_SCHEMAS } from "@/lib/content/blocks";
 
 /**
  * PageSection content schemas.
@@ -75,7 +76,22 @@ export const legalSection = z.object({
   clauses: z.array(z.object({ heading: z.string(), text: z.string() })),
 });
 
+/**
+ * Every section type that can appear on a page.
+ *
+ * Two families, deliberately kept distinct:
+ *
+ *   BLOCK_SCHEMAS   general-purpose builder blocks, offered in Add Section
+ *   the rest        bespoke bands composed by hand for the homepage, About,
+ *                   Careers and the legal pages
+ *
+ * The bespoke ones stay because live pages are built from them; they are simply
+ * not offered in the builder, because "industries" or "legal" is not something
+ * you would drop onto an arbitrary landing page. Migrate, don't bulldoze
+ * (CLAUDE.md 2 rule 10).
+ */
 export const SECTION_SCHEMAS = {
+  ...BLOCK_SCHEMAS,
   hero: heroSection,
   positioning: positioningSection,
   process: processSection,

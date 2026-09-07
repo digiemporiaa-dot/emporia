@@ -1,12 +1,14 @@
 import "server-only";
 import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
-import { ConflictError, NotFoundError } from "@/lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { paged, toSkipTake } from "@/lib/paging";
 import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
+import { BLOCK_SCHEMAS, blockDefinition, isBlockType, type BlockType } from "@/lib/content/blocks";
 import type { Actor } from "@/lib/actor/types";
+import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type {
   PageDraftInput,
   PageInput,
@@ -330,4 +332,216 @@ export async function suggestSlug(actor: Actor, title: string): Promise<string> 
   requirePermission(actor, "pages.create");
   if (!slugify(title)) return "";
   return uniqueSlug(title, slugTaken);
+}
+
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
+
+const sectionSelect = {
+  id: true,
+  pageId: true,
+  type: true,
+  order: true,
+  content: true,
+  name: true,
+  isVisible: true,
+  reusableSectionId: true,
+} as const;
+
+/**
+ * Validate a block's content against its own schema.
+ *
+ * Content arrives as JSON from the builder, so it is parsed rather than
+ * trusted, and the parsed value — not the input — is what gets stored. That
+ * strips unknown keys and applies the schema's defaults, so a section row can
+ * never hold a shape the renderer has not agreed to.
+ */
+function parseBlockContent(type: BlockType, content: unknown): InputJsonValue {
+  const result = BLOCK_SCHEMAS[type].safeParse(content);
+  if (!result.success) {
+    const fieldErrors = result.error.flatten().fieldErrors;
+    throw new ValidationError(
+      result.error.issues[0]?.message ?? "Check the section's details.",
+      fieldErrors,
+    );
+  }
+  return result.data as InputJsonValue;
+}
+
+/** Load a section and its page, refusing one that belongs to a deleted page. */
+async function getSectionOr404(id: string) {
+  const section = await db.pageSection.findFirst({
+    where: { id, page: { deletedAt: null } },
+    select: sectionSelect,
+  });
+  if (!section) throw new NotFoundError("That section does not exist.");
+  return section;
+}
+
+/**
+ * Add a block to the end of a page.
+ *
+ * The block starts from its library defaults, which are already valid, so a
+ * newly added section renders immediately instead of showing an error the
+ * editor has to clear before they can see what they added.
+ */
+export async function addSection(actor: Actor, pageId: string, type: string) {
+  requirePermission(actor, "pages.edit");
+  await getPage(actor, pageId);
+
+  if (!isBlockType(type)) {
+    throw new ValidationError("That is not a block you can add.");
+  }
+
+  const last = await db.pageSection.findFirst({
+    where: { pageId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+
+  const definition = blockDefinition(type);
+  const content = parseBlockContent(type, definition.defaults);
+
+  const section = await withAudit(
+    { actor, action: "CREATE", entityType: "PageSection", entityId: pageId, after: { type } },
+    (tx) =>
+      tx.pageSection.create({
+        data: {
+          pageId,
+          type,
+          order: (last?.order ?? -1) + 1,
+          content,
+          name: definition.label,
+        },
+        select: sectionSelect,
+      }),
+  );
+
+  revalidateTag(PAGE_TAG);
+  return section;
+}
+
+export async function updateSection(
+  actor: Actor,
+  id: string,
+  input: { content: unknown; name?: string | null },
+) {
+  requirePermission(actor, "pages.edit");
+
+  const before = await getSectionOr404(id);
+  if (!isBlockType(before.type)) {
+    // The bespoke bands (hero, legal, and the rest) are not builder blocks and
+    // have no editor. Refusing here means the builder cannot corrupt one by
+    // saving a shape it invented for it.
+    throw new ValidationError("That section type cannot be edited in the builder.");
+  }
+
+  const content = parseBlockContent(before.type, input.content);
+
+  const section = await withAudit(
+    { actor, action: "UPDATE", entityType: "PageSection", entityId: id, before },
+    (tx) =>
+      tx.pageSection.update({
+        where: { id },
+        data: {
+          content,
+          ...(input.name === undefined ? {} : { name: input.name || null }),
+        },
+        select: sectionSelect,
+      }),
+  );
+
+  revalidateTag(PAGE_TAG);
+  return section;
+}
+
+/** Copy a section in place, directly beneath the one it came from. */
+export async function duplicateSection(actor: Actor, id: string) {
+  requirePermission(actor, "pages.edit");
+  const source = await getSectionOr404(id);
+
+  const created = await db.$transaction(async (tx) => {
+    // Everything after the source shifts down first, so the copy lands next to
+    // its original rather than at the end of the page.
+    await tx.pageSection.updateMany({
+      where: { pageId: source.pageId, order: { gt: source.order } },
+      data: { order: { increment: 1 } },
+    });
+
+    const copy = await tx.pageSection.create({
+      data: {
+        pageId: source.pageId,
+        type: source.type,
+        order: source.order + 1,
+        content: source.content ?? {},
+        name: source.name,
+        isVisible: source.isVisible,
+        reusableSectionId: source.reusableSectionId,
+      },
+      select: sectionSelect,
+    });
+
+    await record(
+      {
+        actor,
+        action: "CREATE",
+        entityType: "PageSection",
+        entityId: copy.id,
+        after: { duplicatedFrom: source.id },
+      },
+      tx,
+    );
+
+    return copy;
+  });
+
+  revalidateTag(PAGE_TAG);
+  return created;
+}
+
+/**
+ * Hide or show a section.
+ *
+ * Distinct from deleting: the section keeps its content and its position, and
+ * simply stops reaching the public page.
+ */
+export async function setSectionVisible(actor: Actor, id: string, isVisible: boolean) {
+  requirePermission(actor, "pages.edit");
+  const before = await getSectionOr404(id);
+
+  const section = await withAudit(
+    { actor, action: "UPDATE", entityType: "PageSection", entityId: id, before },
+    (tx) => tx.pageSection.update({ where: { id }, data: { isVisible }, select: sectionSelect }),
+  );
+
+  revalidateTag(PAGE_TAG);
+  return section;
+}
+
+/**
+ * Remove a section, closing the gap it leaves.
+ *
+ * Hard delete, unlike a page: a section has no URL of its own and nothing links
+ * to it, so there is no history to preserve beyond the audit row — which
+ * carries its content.
+ */
+export async function deleteSection(actor: Actor, id: string) {
+  requirePermission(actor, "pages.edit");
+  const before = await getSectionOr404(id);
+
+  await db.$transaction(async (tx) => {
+    await tx.pageSection.delete({ where: { id } });
+    await tx.pageSection.updateMany({
+      where: { pageId: before.pageId, order: { gt: before.order } },
+      data: { order: { decrement: 1 } },
+    });
+    await record(
+      { actor, action: "DELETE", entityType: "PageSection", entityId: id, before },
+      tx,
+    );
+  });
+
+  revalidateTag(PAGE_TAG);
+  return { pageId: before.pageId };
 }

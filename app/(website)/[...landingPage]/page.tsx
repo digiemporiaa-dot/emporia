@@ -61,7 +61,7 @@ export default async function LandingPage({
   if (slug) {
     const page = await publishedPageSections(slug);
     if (page) {
-      return <PageSections sections={page.sections} title={page.title} />;
+      return <PageSections sections={page.sections} title={page.title} images={page.images} />;
     }
   }
 
