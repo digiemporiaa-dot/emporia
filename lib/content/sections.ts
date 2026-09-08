@@ -10,16 +10,13 @@ import { BLOCK_SCHEMAS } from "@/lib/content/blocks";
  * data should degrade one band of a page, not take the whole route down.
  */
 
-export const heroSection = z.object({
-  eyebrow: z.string().optional(),
-  heading: z.string(),
-  body: z.string().optional(),
-  ctaLabel: z.string().optional(),
-  ctaHref: z.string().optional(),
-  secondaryLabel: z.string().optional(),
-  secondaryHref: z.string().optional(),
-  facts: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
-});
+/**
+ * `hero` used to be declared here as a loose shape. It moved into
+ * BLOCK_SCHEMAS when the builder gained a hero block, on the same terms `cta`
+ * moved before it: the block's schema is a superset, so every existing row on
+ * the homepage, About and the rest still parses and still renders — they are
+ * simply editable now, and can carry an image and a background.
+ */
 
 export const positioningSection = z.object({
   eyebrow: z.string().optional(),
@@ -72,9 +69,9 @@ export const legalSection = z.object({
 /**
  * Every section type that can appear on a page.
  *
- * `cta` used to be declared here. It moved into BLOCK_SCHEMAS when the builder
- * gained a call-to-action block: the block's schema is a superset of the one
- * this file held, so the existing rows on the homepage and elsewhere still
+ * `cta` and `hero` used to be declared here. Both moved into BLOCK_SCHEMAS when
+ * the builder gained blocks for them: each block schema is a superset of the
+ * one this file held, so the existing rows on the homepage and elsewhere still
  * parse and still render — they are simply editable now too.
  *
  * Two families, deliberately kept distinct:
@@ -90,7 +87,6 @@ export const legalSection = z.object({
  */
 export const SECTION_SCHEMAS = {
   ...BLOCK_SCHEMAS,
-  hero: heroSection,
   positioning: positioningSection,
   process: processSection,
   industries: industriesSection,

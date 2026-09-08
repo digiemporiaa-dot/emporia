@@ -487,6 +487,81 @@ export async function updateSection(
   return section;
 }
 
+/**
+ * Change a section's block type, keeping what the new type also accepts.
+ *
+ * Every block shares a `band`, and most share a heading, an eyebrow, a body and
+ * a grid, so converting a Benefits band into Image cards should not throw away
+ * the copy and the layout someone already set. What the new type has no field
+ * for is dropped — silently, because there is nowhere to put it, and the
+ * builder says so before the change is made.
+ *
+ * A section linked to a reusable section is refused: its type is decided where
+ * it is authored, and changing the copy here would be overwritten by the next
+ * save of the original.
+ */
+export async function changeSectionType(actor: Actor, id: string, type: string) {
+  requirePermission(actor, "pages.edit");
+
+  const before = await getSectionOr404(id);
+  if (!isBlockType(type)) {
+    throw new ValidationError("That is not a block you can change to.");
+  }
+  if (before.reusableSectionId) {
+    throw new ValidationError(
+      "This section is linked to a reusable section. Unlink it before changing its type.",
+    );
+  }
+  const previous = before.type;
+  if (!isBlockType(previous)) {
+    throw new ValidationError("That section type cannot be edited in the builder.");
+  }
+
+  const definition = blockDefinition(type);
+  const current = (before.content ?? {}) as Record<string, unknown>;
+  const shared = Object.keys(BLOCK_SCHEMAS[type].shape);
+
+  const carried: Record<string, unknown> = { ...definition.defaults };
+  for (const key of shared) {
+    if (key in current && current[key] !== undefined) carried[key] = current[key];
+  }
+
+  // A carried value can still be wrong for the new type — `items` of one shape
+  // where another is expected. Falling back to the defaults means the change
+  // always succeeds and always leaves a renderable section, rather than failing
+  // with a validation error about a field the editor never touched.
+  const parsed = BLOCK_SCHEMAS[type].safeParse(carried);
+  const content = (
+    parsed.success ? parsed.data : parseBlockContent(type, definition.defaults)
+  ) as InputJsonValue;
+
+  const section = await withAudit(
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "PageSection",
+      entityId: id,
+      before,
+      after: { type },
+    },
+    (tx) =>
+      tx.pageSection.update({
+        where: { id },
+        data: {
+          type,
+          content,
+          // The old label named the old block; keep a custom one, replace the
+          // one that was just the block's name.
+          ...(before.name === blockDefinition(previous).label ? { name: definition.label } : {}),
+        },
+        select: sectionSelect,
+      }),
+  );
+
+  revalidateTag(PAGE_TAG);
+  return section;
+}
+
 /** Copy a section in place, directly beneath the one it came from. */
 export async function duplicateSection(actor: Actor, id: string) {
   requirePermission(actor, "pages.edit");

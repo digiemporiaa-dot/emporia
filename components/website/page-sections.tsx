@@ -1,15 +1,20 @@
 import * as React from "react";
-import { Container, CtaButton, Eyebrow, IndexNumber } from "@/components/website/primitives";
-import { HeroReveal, Reveal, Stagger, StaggerItem } from "@/components/website/motion";
+import { Container, Eyebrow, IndexNumber } from "@/components/website/primitives";
+import { Reveal, Stagger, StaggerItem } from "@/components/website/motion";
 import type { ParsedSection } from "@/lib/content/sections";
 import {
+  BenefitsBlock,
   CtaBlock,
   FaqBlock,
   FeatureBlock,
+  FullWidthImageBlock,
+  HeroBlock,
   IconBlock,
   IconCardsBlock,
   ImageCardsBlock,
   ListBlock,
+  LogoGridBlock,
+  TextImageBlock,
   TextListBlock,
   HeadingBlock,
   ImageBlock,
@@ -80,30 +85,7 @@ export function PageSections({
       {sections.map((section) => {
         switch (section.type) {
           case "hero":
-            return (
-              <section key={section.id} className="border-b border-line">
-                <Container className="pt-14 pb-12 lg:pt-20 lg:pb-16">
-                  <HeroReveal>
-                    {section.content.eyebrow ? <Eyebrow>{section.content.eyebrow}</Eyebrow> : null}
-                    <h1 className="mt-4 max-w-3xl text-4xl text-navy-800">
-                      {section.content.heading}
-                    </h1>
-                    {section.content.body ? (
-                      <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-muted">
-                        {section.content.body}
-                      </p>
-                    ) : null}
-                    {section.content.ctaLabel && section.content.ctaHref ? (
-                      <div className="mt-8">
-                        <CtaButton href={{ pathname: section.content.ctaHref }} size="lg">
-                          {section.content.ctaLabel}
-                        </CtaButton>
-                      </div>
-                    ) : null}
-                  </HeroReveal>
-                </Container>
-              </section>
-            );
+            return <HeroBlock key={section.id} content={section.content} images={images} />;
 
           case "prose":
             return (
@@ -237,13 +219,13 @@ export function PageSections({
           }
 
           case "cta":
-            return <CtaBlock key={section.id} content={section.content} />;
+            return <CtaBlock key={section.id} content={section.content} images={images} />;
 
           // --- builder blocks -------------------------------------------
           case "heading":
-            return <HeadingBlock key={section.id} content={section.content} />;
+            return <HeadingBlock key={section.id} content={section.content} images={images} />;
           case "richText":
-            return <RichTextBlock key={section.id} content={section.content} />;
+            return <RichTextBlock key={section.id} content={section.content} images={images} />;
           case "image":
             return <ImageBlock key={section.id} content={section.content} images={images} />;
           case "imageBox":
@@ -251,21 +233,31 @@ export function PageSections({
           case "imageText":
             return <ImageTextBlock key={section.id} content={section.content} images={images} />;
           case "table":
-            return <TableBlock key={section.id} content={section.content} />;
+            return <TableBlock key={section.id} content={section.content} images={images} />;
           case "feature":
             return <FeatureBlock key={section.id} content={section.content} images={images} />;
           case "list":
-            return <ListBlock key={section.id} content={section.content} />;
+            return <ListBlock key={section.id} content={section.content} images={images} />;
           case "textList":
-            return <TextListBlock key={section.id} content={section.content} />;
+            return <TextListBlock key={section.id} content={section.content} images={images} />;
           case "icon":
-            return <IconBlock key={section.id} content={section.content} />;
+            return <IconBlock key={section.id} content={section.content} images={images} />;
           case "iconCards":
-            return <IconCardsBlock key={section.id} content={section.content} />;
+            return <IconCardsBlock key={section.id} content={section.content} images={images} />;
           case "imageCards":
             return <ImageCardsBlock key={section.id} content={section.content} images={images} />;
           case "faq":
-            return <FaqBlock key={section.id} content={section.content} />;
+            return <FaqBlock key={section.id} content={section.content} images={images} />;
+          case "textImage":
+            return <TextImageBlock key={section.id} content={section.content} images={images} />;
+          case "benefits":
+            return <BenefitsBlock key={section.id} content={section.content} images={images} />;
+          case "logoGrid":
+            return <LogoGridBlock key={section.id} content={section.content} images={images} />;
+          case "fullWidthImage":
+            return (
+              <FullWidthImageBlock key={section.id} content={section.content} images={images} />
+            );
 
           // Homepage-only section types are composed bespokely on that route.
           default:

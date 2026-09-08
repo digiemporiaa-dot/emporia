@@ -805,6 +805,100 @@ every lead can name the page, popup, campaign and UTM touch that produced it;
 and every rupee of revenue can be traced back through invoice → project →
 client → proposal → lead → source → city → service.
 
+
+---
+
+## 11A. The page section builder
+
+### 11A.1 One registry, three consumers
+
+A page is `PageSection[]`, each row `{ type, order, content: Json, isVisible,
+name, reusableSectionId }`. There is no second table for layout and no separate
+model for cards: a block's whole configuration is one JSON document, validated
+by the zod schema registered under its type.
+
+`BLOCK_SCHEMAS` in `lib/content/blocks.ts` is the registry, and three things
+read it, so a block cannot exist in one and be missing from another:
+
+| consumer | file |
+|---|---|
+| storage + validation | `lib/services/page.service.ts` |
+| public rendering | `components/website/page-sections.tsx` → `blocks.tsx` |
+| the editor | `app/admin/website/pages/[pageId]/block-fields.tsx` |
+
+`BLOCK_LIBRARY` sits beside the schemas and carries each block's label,
+description, group, defaults and presets. A test asserts the two lists agree and
+that every default and every preset parses — a block half-registered fails in
+the builder, in front of an editor, which is exactly where it should not.
+
+### 11A.2 Two shared objects
+
+Rather than fourteen blocks each growing their own spacing and column controls,
+two objects are shared by all of them:
+
+- **`band`** (`lib/content/presentation.ts`) — container width, padding, margin,
+  alignment, background (none / solid / gradient / image, with overlay), border,
+  radius, text tone.
+- **`grid`** (`lib/content/grid.ts`) — desktop 1–6, tablet 1–4, mobile 1–2, plus
+  gap, row gap and column gap.
+
+Both are **optional**. A row stored before they existed has neither, parses
+unchanged, and renders exactly as it did: each block passes `<Band>` the padding
+and width it previously hard-coded, and the spacing scale exists precisely
+because those values had to remain representable. Adding a control here reaches
+every block at once.
+
+`resolveGrid` prefers a stored `grid` and falls back to the pre-grid `columns`
+field, so card blocks published at two or three across keep their width and gain
+the new controls the first time someone opens them.
+
+### 11A.3 Tokens, never interpolation
+
+Every spacing, width, radius and column value is an enumerated token that maps
+to a **literal** Tailwind class. This is not stylistic. `lg:grid-cols-${n}` is
+invisible to Tailwind's scanner, so the CSS is never generated: the grid looks
+right in development, where the JIT compiler sees the class in the browser, and
+silently collapses to one column in production. Every class an editor can reach
+is written out verbatim in the two token files, and a test asserts it.
+
+Colours and the background image URL cannot be tokens, so they become inline
+styles and are validated hard instead: a colour must be a six-digit hex, and a
+URL must be absolute https or root-relative and free of the quotes, parentheses
+and whitespace that would let it break out of `url(...)`.
+
+The layout is CSS Grid and Tailwind breakpoints throughout. Nothing measures a
+viewport in JavaScript, so a page is correct in the first paint rather than
+after hydration.
+
+### 11A.4 Images
+
+A block stores `mediaId` and nothing else — never a copied URL — so a replaced
+or re-described image is correct everywhere it appears. `mediaIdsIn` is the
+single list of every place an id can live (the block, a card, a card's hover
+image, the section background), and both the public query and the admin screen
+resolve them in one batched query. A miss there is not a type error; it is an
+image that silently fails to render, which is why the list is in one place.
+
+Every image control offers alt text and a **decorative** flag, which renders an
+empty alt and `aria-hidden`. Copy laid over a full-width image makes that image
+decorative automatically: it is not announced twice.
+
+### 11A.5 Changing a block's type
+
+`changeSectionType` carries across every field the new type also declares — the
+band, the grid, the heading, the copy — and drops what it has no field for. If
+the carried content does not validate for the new type, the block falls back to
+its defaults, so the change always leaves a renderable section rather than
+failing on a field the editor never touched. The builder says what will be
+dropped before the change is made.
+
+### 11A.6 Headings
+
+Builder blocks emit `h2` and `h3` only; the page's `h1` is its hero, its legal
+band, or the title header `PageSections` prepends when nothing else provides
+one. `EMITS_H1` names the types that supply their own. A CMS cannot be allowed
+to produce a page with two level-one headings, or none.
+
 ---
 
 ## 12. SEO architecture

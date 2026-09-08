@@ -32,13 +32,26 @@ describe("block library", () => {
   });
 
   it("does not treat a bespoke section type as a builder block", () => {
-    for (const type of ["hero", "legal", "roles", "positioning"]) {
+    // `hero` and `cta` were promoted into the library; the hand-composed bands
+    // that remain are still not something you drop onto an arbitrary page.
+    for (const type of ["legal", "roles", "positioning", "prose", "values", "industries"]) {
       expect(isBlockType(type)).toBe(false);
     }
   });
 
-  it("ships the fourteen blocks the CMS promises", () => {
-    expect(BLOCK_LIBRARY).toHaveLength(14);
+  it("every preset produces content its block still accepts", () => {
+    // A preset only seeds defaults, so it is merged over them — and a preset
+    // that produced an invalid block would fail the moment someone picked it.
+    for (const block of BLOCK_LIBRARY) {
+      for (const preset of block.presets ?? []) {
+        const merged = { ...block.defaults, ...preset.defaults };
+        const result = BLOCK_SCHEMAS[block.type].safeParse(merged);
+        expect(
+          result.success,
+          `${block.type} / ${preset.label}: ${result.success ? "" : result.error.message}`,
+        ).toBe(true);
+      }
+    }
   });
 
   it("every icon in the set has a label", () => {

@@ -253,6 +253,23 @@ export async function saveSectionAction(
   }
 }
 
+export async function changeSectionTypeAction(
+  pageId: string,
+  sectionId: string,
+  type: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const section = await pageService.changeSectionType(actor, sectionId, type);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: section.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "changeSectionType failed");
+    return toActionFailure(error);
+  }
+}
+
 export async function duplicateSectionAction(
   pageId: string,
   sectionId: string,
