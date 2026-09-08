@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
@@ -9,6 +10,7 @@ import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
 import { BLOCK_SCHEMAS, blockDefinition, isBlockType, type BlockType } from "@/lib/content/blocks";
 import type { Actor } from "@/lib/actor/types";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
+import type { PageSeoInput } from "@/lib/validation/seo";
 import type {
   PageDraftInput,
   PageInput,
@@ -46,7 +48,27 @@ const listSelect = {
 const detailSelect = {
   ...listSelect,
   description: true,
+  deletedAt: true,
+  previewToken: true,
   seoId: true,
+  seo: {
+    select: {
+      id: true,
+      metaTitle: true,
+      metaDescription: true,
+      canonical: true,
+      ogTitle: true,
+      ogDescription: true,
+      ogImageId: true,
+      ogImageAlt: true,
+      twitterTitle: true,
+      twitterDescription: true,
+      twitterImageId: true,
+      robotsIndex: true,
+      robotsFollow: true,
+      schemaType: true,
+    },
+  },
   sections: {
     orderBy: { order: "asc" as const },
     select: {
@@ -544,4 +566,115 @@ export async function deleteSection(actor: Actor, id: string) {
 
   revalidateTag(PAGE_TAG);
   return { pageId: before.pageId };
+}
+
+// ---------------------------------------------------------------------------
+// SEO and preview
+// ---------------------------------------------------------------------------
+
+/**
+ * Save a page's SEO record, creating it on first save.
+ *
+ * `seo.edit` rather than `pages.edit`: SEO is its own responsibility in the
+ * permission catalogue, and a marketing manager who may tune metadata is not
+ * necessarily someone who may rewrite the page's content.
+ */
+export async function updatePageSeo(actor: Actor, pageId: string, input: PageSeoInput) {
+  requirePermission(actor, "seo.edit");
+
+  const before = await db.page.findFirst({
+    where: { id: pageId, deletedAt: null },
+    select: { id: true, seoId: true, seo: { select: { id: true } } },
+  });
+  if (!before) throw new NotFoundError("That page does not exist.");
+
+  const data = {
+    metaTitle: input.metaTitle,
+    metaDescription: input.metaDescription,
+    canonical: input.canonical,
+    ogTitle: input.ogTitle,
+    ogDescription: input.ogDescription,
+    ogImageId: input.ogImageId,
+    ogImageAlt: input.ogImageAlt,
+    twitterTitle: input.twitterTitle,
+    twitterDescription: input.twitterDescription,
+    twitterImageId: input.twitterImageId,
+    robotsIndex: input.robotsIndex,
+    robotsFollow: input.robotsFollow,
+    schemaType: input.schemaType,
+  };
+
+  await withAudit(
+    { actor, action: "UPDATE", entityType: "PageSeo", entityId: pageId, before },
+    async (tx) => {
+      if (before.seoId) {
+        return tx.seo.update({ where: { id: before.seoId }, data });
+      }
+      // The Seo row is created first and linked by id: Prisma will not accept a
+      // nested relation create alongside scalar foreign keys in the same call.
+      const seo = await tx.seo.create({ data });
+      return tx.page.update({ where: { id: pageId }, data: { seoId: seo.id } });
+    },
+  );
+
+  revalidateTag(PAGE_TAG);
+  return getPage(actor, pageId);
+}
+
+/**
+ * Mint (or rotate) a shareable draft-preview link.
+ *
+ * 32 bytes from a CSPRNG, base64url — long enough that guessing is not a
+ * strategy. Rotating replaces the old token, which is how a shared link is
+ * revoked from someone who should no longer have it.
+ */
+export async function issuePreviewToken(actor: Actor, pageId: string) {
+  requirePermission(actor, "pages.edit");
+  await getPage(actor, pageId);
+
+  const token = randomBytes(32).toString("base64url");
+
+  await withAudit(
+    { actor, action: "UPDATE", entityType: "Page", entityId: pageId, after: { previewLink: "issued" } },
+    (tx) => tx.page.update({ where: { id: pageId }, data: { previewToken: token } }),
+  );
+
+  return token;
+}
+
+export async function revokePreviewToken(actor: Actor, pageId: string) {
+  requirePermission(actor, "pages.edit");
+  await getPage(actor, pageId);
+
+  await withAudit(
+    { actor, action: "UPDATE", entityType: "Page", entityId: pageId, after: { previewLink: "revoked" } },
+    (tx) => tx.page.update({ where: { id: pageId }, data: { previewToken: null } }),
+  );
+}
+
+/**
+ * Resolve a preview token to its page.
+ *
+ * Unauthenticated by design — that is what the link is for — so the token is
+ * the entire credential and this deliberately returns nothing for a deleted
+ * page. A page that is already published is still served here rather than
+ * redirected: the point of the link is to show the current draft state.
+ */
+export async function getPageByPreviewToken(token: string) {
+  if (!token || token.length < 20) return null;
+
+  return db.page.findFirst({
+    where: { previewToken: token, deletedAt: null },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      status: true,
+      sections: {
+        where: { isVisible: true },
+        orderBy: { order: "asc" },
+        select: { id: true, type: true, order: true, content: true },
+      },
+    },
+  });
 }

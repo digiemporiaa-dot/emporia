@@ -242,4 +242,110 @@ describeDb("page CMS service", () => {
     });
     expect(entries.length).toBeGreaterThan(0);
   });
+  it("creates the SEO record on first save and updates it thereafter", async () => {
+    const page = track(await pageService.createPage(editor, { title: "Seo lifecycle" }));
+    const seoEditor = actorWith(editor.userId, ["pages.view", "seo.edit"]);
+
+    const first = await pageService.updatePageSeo(seoEditor, page.id, {
+      metaTitle: "First title",
+      metaDescription: null,
+      canonical: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageId: null,
+      ogImageAlt: null,
+      twitterTitle: null,
+      twitterDescription: null,
+      twitterImageId: null,
+      robotsIndex: true,
+      robotsFollow: true,
+      schemaType: "NONE",
+    });
+    expect(first.seo?.metaTitle).toBe("First title");
+    const seoId = first.seoId;
+    expect(seoId).not.toBeNull();
+
+    const second = await pageService.updatePageSeo(seoEditor, page.id, {
+      metaTitle: "Second title",
+      metaDescription: "A description.",
+      canonical: null,
+      ogTitle: null,
+      ogDescription: null,
+      ogImageId: null,
+      ogImageAlt: null,
+      twitterTitle: null,
+      twitterDescription: null,
+      twitterImageId: null,
+      robotsIndex: false,
+      robotsFollow: true,
+      schemaType: "FAQ_PAGE",
+    });
+    // Updated in place rather than a second row orphaning the first.
+    expect(second.seoId).toBe(seoId);
+    expect(second.seo?.metaTitle).toBe("Second title");
+    expect(second.seo?.robotsIndex).toBe(false);
+    expect(second.seo?.schemaType).toBe("FAQ_PAGE");
+  });
+
+  it("gates SEO on seo.edit, not on pages.edit", async () => {
+    const page = track(await pageService.createPage(editor, { title: "Seo permission" }));
+    const contentOnly = actorWith(editor.userId, ["pages.view", "pages.edit"]);
+
+    await expect(
+      pageService.updatePageSeo(contentOnly, page.id, {
+        metaTitle: "Nope",
+        metaDescription: null,
+        canonical: null,
+        ogTitle: null,
+        ogDescription: null,
+        ogImageId: null,
+        ogImageAlt: null,
+        twitterTitle: null,
+        twitterDescription: null,
+        twitterImageId: null,
+        robotsIndex: true,
+        robotsFollow: true,
+        schemaType: "NONE",
+      }),
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it("issues a preview token that resolves, and stops resolving once revoked", async () => {
+    const page = track(await pageService.createPage(editor, { title: "Preview token" }));
+
+    const token = await pageService.issuePreviewToken(editor, page.id);
+    expect(token.length).toBeGreaterThanOrEqual(40);
+
+    const resolved = await pageService.getPageByPreviewToken(token);
+    expect(resolved?.id).toBe(page.id);
+
+    // Rotating invalidates the previous link, which is how sharing is undone.
+    const rotated = await pageService.issuePreviewToken(editor, page.id);
+    expect(rotated).not.toBe(token);
+    expect(await pageService.getPageByPreviewToken(token)).toBeNull();
+
+    await pageService.revokePreviewToken(editor, page.id);
+    expect(await pageService.getPageByPreviewToken(rotated)).toBeNull();
+  });
+
+  it("will not resolve a preview token for a deleted page, or a junk one", async () => {
+    const page = track(await pageService.createPage(editor, { title: "Preview deleted" }));
+    const token = await pageService.issuePreviewToken(editor, page.id);
+    await pageService.deletePage(editor, page.id);
+
+    expect(await pageService.getPageByPreviewToken(token)).toBeNull();
+    expect(await pageService.getPageByPreviewToken("")).toBeNull();
+    expect(await pageService.getPageByPreviewToken("short")).toBeNull();
+  });
+
+  it("excludes hidden sections from what a shared preview shows", async () => {
+    const page = track(await pageService.createPage(editor, { title: "Preview hidden" }));
+    await pageService.addSection(editor, page.id, "heading");
+    const hidden = await pageService.addSection(editor, page.id, "richText");
+    await pageService.setSectionVisible(editor, hidden.id, false);
+
+    const token = await pageService.issuePreviewToken(editor, page.id);
+    const resolved = await pageService.getPageByPreviewToken(token);
+    expect(resolved?.sections).toHaveLength(1);
+  });
 });

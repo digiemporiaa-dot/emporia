@@ -39,6 +39,8 @@ const ONE_HOUR = 3600;
 export type PublishedPage = {
   title: string;
   sections: ParsedSection[];
+  /** The schema type an editor opted into, gating structured data. */
+  schemaType: string | null;
   /** Images referenced by the sections, resolved in one batched query. */
   images: Record<string, { id: string; url: string; alt: string | null; width: number | null; height: number | null }>;
   seo: EntitySeo | null;
@@ -75,6 +77,7 @@ export const publishedPageSections = unstable_cache(
     return {
       title: page.title,
       seo: page.seo,
+      schemaType: page.seo?.schemaType ?? null,
       sections,
       images: Object.fromEntries(images),
     };

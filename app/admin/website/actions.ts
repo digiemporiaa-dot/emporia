@@ -9,6 +9,7 @@ import {
   sectionOrderSchema,
 } from "@/lib/validation/page";
 import * as pageService from "@/lib/services/page.service";
+import { pageSeoSchema } from "@/lib/validation/seo";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -295,6 +296,77 @@ export async function deleteSectionAction(
     return { ok: true, data: result };
   } catch (error) {
     actionLog.error({ err: error }, "delete section failed");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SEO and preview links
+// ---------------------------------------------------------------------------
+
+export async function savePageSeoAction(
+  _prev: ActionResult<{ id: string }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }> | null> {
+  try {
+    const actor = await requireActor();
+    const raw = fields(formData);
+
+    const pageId = typeof raw["pageId"] === "string" ? raw["pageId"] : "";
+    if (!pageId) return { ok: false, code: "VALIDATION", message: "Missing page id." };
+
+    const parsed = pageSeoSchema.safeParse({
+      ...raw,
+      // Unchecked boxes are absent from FormData entirely, which is not the
+      // same as false unless it is made so here.
+      robotsIndex: raw["robotsIndex"] === "on",
+      robotsFollow: raw["robotsFollow"] === "on",
+    });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the SEO fields.",
+        details: parsed.error.flatten().fieldErrors,
+      };
+    }
+
+    await pageService.updatePageSeo(actor, pageId, parsed.data);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: pageId } };
+  } catch (error) {
+    actionLog.error({ err: error }, "save page seo failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function issuePreviewTokenAction(
+  pageId: string,
+): Promise<ActionResult<{ token: string }>> {
+  try {
+    const actor = await requireActor();
+    const token = await pageService.issuePreviewToken(actor, pageId);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { token } };
+  } catch (error) {
+    actionLog.error({ err: error }, "issue preview token failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function revokePreviewTokenAction(
+  pageId: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    await pageService.revokePreviewToken(actor, pageId);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: pageId } };
+  } catch (error) {
+    actionLog.error({ err: error }, "revoke preview token failed");
     return toActionFailure(error);
   }
 }

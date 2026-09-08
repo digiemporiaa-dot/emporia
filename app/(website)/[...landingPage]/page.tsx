@@ -3,6 +3,8 @@ import type { Route } from "next";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { publishedPageSections } from "@/lib/content/queries";
 import { PageSections } from "@/components/website/page-sections";
+import { JsonLd } from "@/components/website/json-ld";
+import { faqSchemaForSections, pageBreadcrumbs } from "@/lib/seo/page-schema";
 import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
 import { resolveRedirect } from "@/lib/services/redirect.service";
 import { isReservedSlug } from "@/lib/utils/slug";
@@ -61,7 +63,20 @@ export default async function LandingPage({
   if (slug) {
     const page = await publishedPageSections(slug);
     if (page) {
-      return <PageSections sections={page.sections} title={page.title} images={page.images} />;
+      return (
+        <>
+          <JsonLd
+            schema={[
+              pageBreadcrumbs(page.title, slug),
+              // Emitted only when the page has FAQ blocks AND an editor set the
+              // schema type — markup that describes content the page does not
+              // show is what gets structured data penalised.
+              faqSchemaForSections(page.sections, page.schemaType),
+            ]}
+          />
+          <PageSections sections={page.sections} title={page.title} images={page.images} />
+        </>
+      );
     }
   }
 

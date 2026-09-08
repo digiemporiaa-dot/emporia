@@ -840,6 +840,15 @@ model Page {
   /// path filters on `deletedAt: null`.
   deletedAt DateTime?
 
+  /// Shareable draft preview.
+  ///
+  /// Null means no link exists — the default, because an unlisted URL that
+  /// serves unpublished content should be something someone opts into rather
+  /// than something every page carries. Generated from a CSPRNG, rotatable,
+  /// and revocable by setting it back to null. The route it serves is noindex
+  /// and excluded from the sitemap.
+  previewToken String? @unique
+
   seoId String? @unique
   seo   Seo?    @relation("PageSeo", fields: [seoId], references: [id], onDelete: SetNull)
 

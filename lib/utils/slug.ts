@@ -36,6 +36,7 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "api",
   "auth",
   "portal",
+  "preview",
   // Generated files. The slug pattern rejects dots, so these can only be hit
   // without their extension, but naming them costs nothing.
   "robots",
