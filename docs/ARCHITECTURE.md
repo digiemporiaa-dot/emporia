@@ -1573,6 +1573,54 @@ Services, case studies, blog posts and blog categories carry the relation but
 have no admin CRUD at all — they are seed-only, so there is no screen to hang a
 panel on. They get one when they get a module.
 
+### 17.1d Header, footer and navigation
+
+The site's chrome is content, not code. The header menu, its call-to-action
+button, the footer's Company and legal columns, the social profiles, the contact
+details, the site name and the tagline are edited at **Settings → Navigation**
+and stored in `SiteSetting` — the existing key/value/group table, not a second
+settings model.
+
+**It reuses the keys that already existed.** `site.name`, `site.tagline`,
+`site.email`, `site.phone` and `site.address` are the rows the seed writes and
+the contact page reads. This screen edits *those* rows rather than shadowing
+them, so there is one answer to "what is the company phone number". The lists
+add `nav.headerLinks`, `nav.cta`, `nav.footerCompanyLinks`, `nav.footerLegalLinks`,
+`nav.socialLinks` and `nav.copyrightName`.
+
+**Unconfigured is not blank.** `DEFAULT_NAVIGATION` in
+`lib/services/navigation.service.ts` is exactly the set of links the header and
+footer were previously hardcoded with. A deployment that upgrades into this
+feature and never opens the screen renders precisely what it rendered before,
+and the admin form opens pre-filled with it rather than empty. There is no
+migration and nothing to seed.
+
+**A bad row degrades one list, never the navigation.** Every stored list is
+re-validated on read; one that will not parse falls back to its default while
+the rest of the navigation is unaffected. This runs on every public request, so
+the fallback is silent rather than logged. The distinction the read preserves is
+*saved as empty* versus *never saved*: a column an editor deliberately cleared
+stays cleared, because the row exists.
+
+**`href` is the security boundary.** These values are rendered into every page,
+so `lib/validation/navigation.ts` accepts only four shapes — a root-relative
+path, a `#anchor`, an absolute `http(s)://` URL, or `mailto:`/`tel:`. Everything
+else is rejected at the schema, including `javascript:`, `data:`, a
+scheme-relative `//host` that would silently leave the site, and any value
+carrying whitespace or markup. `components/website/nav-link.tsx` then routes
+internal paths through `next/link` and anything with a scheme through a plain
+anchor, adding `rel="noopener noreferrer"` to every new-tab link.
+
+**The client boundary moved down, not up.** `SiteHeader` is now a server
+component that reads the navigation and passes it to `SiteHeaderNav`, which
+keeps the mobile dialog, the focus trap and the active-link state. The links
+themselves render on the server (CLAUDE.md 2 rule 8).
+
+Reads are cached under the `site-navigation` tag; a save revalidates that and
+the `pages` tag, because the name and tagline are also read through
+`siteSettings()`. Writes require `settings.edit`, and each one records an
+audit row.
+
 ### 17.2 The build-time database problem
 
 This is the one genuinely awkward interaction between Next and containers, and

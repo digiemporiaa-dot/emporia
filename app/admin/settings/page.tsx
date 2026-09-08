@@ -22,8 +22,10 @@ export default async function SettingsPage() {
   requireStaff(actor);
 
   const seesEmail = can(actor, "emails.view");
-  const seesAI = can(actor, "settings.view");
-  const ai = seesAI ? await aiStatus() : null;
+  // Navigation and the AI provider are both "how the system is configured", so
+  // both cards are gated on the same permission.
+  const seesSettings = can(actor, "settings.view");
+  const ai = seesSettings ? await aiStatus() : null;
 
   return (
     <>
@@ -50,7 +52,23 @@ export default async function SettingsPage() {
           </Link>
         ) : null}
 
-        {seesAI ? (
+        {seesSettings ? (
+          <Link href="/admin/settings/navigation" className="group">
+            <Card className="h-full transition-colors group-hover:border-navy-300">
+              <CardBody>
+                <h2 className="font-display text-lg text-navy-800 group-hover:text-brand-red">
+                  Navigation
+                </h2>
+                <p className="mt-2 text-xs text-ink-subtle">
+                  The header menu, the call-to-action button, the footer columns, social profiles
+                  and contact details.
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
+        ) : null}
+
+        {seesSettings ? (
           <Link href="/admin/settings/ai" className="group">
             <Card className="h-full transition-colors group-hover:border-navy-300">
               <CardBody>
@@ -72,7 +90,7 @@ export default async function SettingsPage() {
         ) : null}
       </div>
 
-      {!seesEmail && !seesAI ? (
+      {!seesEmail && !seesSettings ? (
         <p className="text-sm text-ink-subtle">Your role does not include any settings.</p>
       ) : null}
     </>
