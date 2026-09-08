@@ -28,6 +28,8 @@ export type GeminiDouble = {
   reply: (text: string) => void;
   /** Reply with a body that has no candidates at all. */
   replyEmpty: () => void;
+  /** Reply without naming a model version, as an older API surface would. */
+  replyWithoutVersion: (text: string) => void;
   /** Reply as Gemini does when it refuses a prompt. */
   replyBlocked: (reason?: string) => void;
   /** Make the next call fail with this status and body. */
@@ -41,6 +43,7 @@ export async function startGeminiDouble(): Promise<GeminiDouble> {
   const requests: RecordedGeminiRequest[] = [];
   let nextText = "OK";
   let mode: "text" | "empty" | "blocked" | "hang" = "text";
+  let withVersion = true;
   let blockReason = "SAFETY";
   let failure: { status: number; body: string } | null = null;
 
@@ -93,6 +96,8 @@ export async function startGeminiDouble(): Promise<GeminiDouble> {
             { content: { parts: [{ text: nextText }], role: "model" }, finishReason: "STOP" },
           ],
           usageMetadata: { promptTokenCount: 11, candidatesTokenCount: 7 },
+          // Google resolves an alias to a concrete version and reports it here.
+          ...(withVersion ? { modelVersion: "gemini-2.5-flash-002" } : {}),
         }),
       );
     });
@@ -107,6 +112,12 @@ export async function startGeminiDouble(): Promise<GeminiDouble> {
     requests,
     reply: (text) => {
       mode = "text";
+      withVersion = true;
+      nextText = text;
+    },
+    replyWithoutVersion: (text) => {
+      mode = "text";
+      withVersion = false;
       nextText = text;
     },
     replyEmpty: () => {

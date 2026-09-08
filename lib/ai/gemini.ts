@@ -30,6 +30,8 @@ type GeminiResponse = {
   candidates?: GeminiCandidate[];
   promptFeedback?: { blockReason?: string };
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  /** The model that actually answered, which an alias hides. */
+  modelVersion?: string;
   error?: { message?: string; status?: string };
 };
 
@@ -94,7 +96,11 @@ export class GeminiProvider implements AIProvider {
         inputTokens: body.usageMetadata?.promptTokenCount ?? 0,
         outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
       },
-      model: this.options.model,
+      // What Google says answered, not what was asked for. `gemini-flash-latest`
+      // is an alias that resolves to a concrete version, so echoing the
+      // configured name back would hide which model actually ran — and that is
+      // the one an admin needs when a reply changes character overnight.
+      model: body.modelVersion ?? this.options.model,
     };
   }
 
@@ -167,9 +173,12 @@ export async function geminiFetch(
   }
 
   if (!response.ok) {
-    // The provider's own message is not surfaced: it can echo the request, and
-    // the request contains the prompt. The status is enough to say what to fix.
-    throw new AIError(reasonForStatus(response.status));
+    // The provider's own *message* is never surfaced: it can echo the request,
+    // and the request contains the prompt. Its `status` is a fixed enum —
+    // RESOURCE_EXHAUSTED, PERMISSION_DENIED and so on — which carries no
+    // content and is the difference between "wait a minute" and "your quota is
+    // spent". Passed through only when it looks like one.
+    throw new AIError(reasonForStatus(response.status), safeStatus(body));
   }
 
   const blocked = body.promptFeedback?.blockReason;
@@ -181,6 +190,18 @@ export async function geminiFetch(
   }
 
   return body;
+}
+
+/**
+ * The provider's status enum, if it is one.
+ *
+ * The pattern is the guarantee: an all-caps identifier cannot be an echo of a
+ * prompt, so this can be shown to an admin without reading the body.
+ */
+function safeStatus(body: GeminiResponse): string | undefined {
+  const status = body.error?.status;
+  if (typeof status !== "string" || !/^[A-Z][A-Z_]{2,40}$/.test(status)) return undefined;
+  return `(${status})`;
 }
 
 /** The first candidate's text, or empty when there is none to read. */

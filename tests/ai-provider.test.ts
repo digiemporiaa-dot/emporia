@@ -94,7 +94,14 @@ describe("reading the reply", () => {
     const result = await provider().complete(request);
     expect(result.text).toBe("OK");
     expect(result.usage).toEqual({ inputTokens: 11, outputTokens: 7 });
-    expect(result.model).toBe("gemini-flash-latest");
+    // The version Google resolved the alias to, not the alias that was asked
+    // for — otherwise nobody can tell which model actually answered.
+    expect(result.model).toBe("gemini-2.5-flash-002");
+  });
+
+  it("falls back to the configured name when the provider names no version", async () => {
+    double.replyWithoutVersion("OK");
+    expect((await provider().complete(request)).model).toBe("gemini-flash-latest");
   });
 
   it("refuses a reply with no candidates rather than returning nothing", async () => {
@@ -147,6 +154,27 @@ describe("failures, mapped onto shared reasons", () => {
   ])("maps HTTP %i to %s", async (status, reason) => {
     double.failWith(status, JSON.stringify({ error: { message: "nope" } }));
     await expect(provider().complete(request)).rejects.toMatchObject({ reason });
+  });
+
+  it("passes through the provider's status enum, which helps and cannot leak", async () => {
+    double.failWith(
+      429,
+      JSON.stringify({ error: { status: "RESOURCE_EXHAUSTED", message: "quota" } }),
+    );
+    await expect(provider().complete(request)).rejects.toSatisfy((error: AIError) =>
+      error.publicMessage.includes("RESOURCE_EXHAUSTED"),
+    );
+  });
+
+  it("ignores a status that is not a plain enum", async () => {
+    // Anything that could carry content is dropped rather than shown.
+    double.failWith(
+      429,
+      JSON.stringify({ error: { status: "your prompt was: secret text", message: "x" } }),
+    );
+    await expect(provider().complete(request)).rejects.toSatisfy(
+      (error: AIError) => !error.publicMessage.includes("secret"),
+    );
   });
 
   it("never surfaces the provider's own message", async () => {
