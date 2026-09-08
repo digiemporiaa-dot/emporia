@@ -27,7 +27,7 @@ import type { InputJsonValue } from "../generated/prisma/internal/prismaNamespac
 const MARKER = "cms.homepageMigratedAt";
 
 /** The bands the old homepage rendered, with the copy it rendered them with. */
-const BANDS: { type: string; content: Record<string, unknown> }[] = [
+export const BANDS: { type: string; content: Record<string, unknown> }[] = [
   { type: "clientStrip", content: { label: "Selected clients", limit: 3 } },
   {
     type: "serviceGrid",

@@ -80,9 +80,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma7.config.ts ./prisma7.config.ts
 
-# `npm run db:seed` — i.e. `tsx prisma/seed.ts` — is how the first super admin
-# is created, so it has to run in the deployed image rather than only on a
-# developer's machine (docs/DEPLOYMENT.md §5). Beyond prisma/ and tsx, it needs:
+# The entrypoint runs `tsx prisma/sync.ts` on every boot, and `npm run db:seed`
+# — i.e. `tsx prisma/seed.ts` — is how the first super admin is created, so both
+# have to run in the deployed image rather than only on a developer's machine
+# (docs/DEPLOYMENT.md §4-5). Beyond prisma/ and tsx, they need:
 #   generated/     seed.ts imports ../generated/prisma/client.js, and the
 #                  Prisma 7 client generator emits TypeScript, not JavaScript —
 #                  the server bundle has it compiled in, but tsx needs source.
