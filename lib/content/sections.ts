@@ -18,25 +18,6 @@ import { BLOCK_SCHEMAS } from "@/lib/content/blocks";
  * simply editable now, and can carry an image and a background.
  */
 
-export const positioningSection = z.object({
-  eyebrow: z.string().optional(),
-  heading: z.string(),
-  paragraphs: z.array(z.string()),
-});
-
-export const processSection = z.object({
-  eyebrow: z.string().optional(),
-  heading: z.string(),
-  steps: z.array(z.object({ title: z.string(), text: z.string() })),
-});
-
-export const industriesSection = z.object({
-  eyebrow: z.string().optional(),
-  heading: z.string(),
-  body: z.string().optional(),
-  items: z.array(z.string()),
-});
-
 export const proseSection = z.object({
   heading: z.string().optional(),
   paragraphs: z.array(z.string()),
@@ -69,10 +50,11 @@ export const legalSection = z.object({
 /**
  * Every section type that can appear on a page.
  *
- * `cta` and `hero` used to be declared here. Both moved into BLOCK_SCHEMAS when
- * the builder gained blocks for them: each block schema is a superset of the
- * one this file held, so the existing rows on the homepage and elsewhere still
- * parse and still render — they are simply editable now too.
+ * `cta`, `hero`, `positioning`, `process` and `industries` used to be declared
+ * here. Each moved into BLOCK_SCHEMAS as the builder gained a block for it, and
+ * each block schema is a superset of the shape this file held — so every
+ * existing row on the homepage and elsewhere still parses and still renders.
+ * They are simply editable now too.
  *
  * Two families, deliberately kept distinct:
  *
@@ -87,9 +69,6 @@ export const legalSection = z.object({
  */
 export const SECTION_SCHEMAS = {
   ...BLOCK_SCHEMAS,
-  positioning: positioningSection,
-  process: processSection,
-  industries: industriesSection,
   prose: proseSection,
   values: valuesSection,
   roles: rolesSection,

@@ -193,6 +193,305 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
   const err = useErr(errors);
 
   switch (type) {
+    case "serviceGrid":
+    case "packageGrid":
+    case "blogGrid":
+    case "caseStudyGrid":
+    case "testimonials":
+      return (
+        <CollectionFields type={type} content={content} set={set} errors={errors} />
+      );
+
+    case "clientStrip":
+      return (
+        <div className="space-y-4">
+          <p className="text-xs text-ink-subtle">
+            Reads the client names off your published case studies. Nothing to write here — a name
+            changed on a case study is changed on the page.
+          </p>
+          <Field id="label" label="Label" error={err("label")}>
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["label"])}
+                placeholder="Selected clients"
+                onChange={(e) => set({ label: e.target.value })}
+              />
+            )}
+          </Field>
+          <Field id="limit" label="How many" error={err("limit")}>
+            {(aria) => (
+              <Input
+                {...aria}
+                type="number"
+                min={1}
+                max={24}
+                value={String(content["limit"] ?? 6)}
+                onChange={(e) => set({ limit: Number(e.target.value) })}
+              />
+            )}
+          </Field>
+        </div>
+      );
+
+    case "stats":
+      return (
+        <div className="space-y-4">
+          <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+            )}
+          </Field>
+          <Field id="heading" label="Heading" error={err("heading")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+            )}
+          </Field>
+
+          <Choice
+            id="stats-source"
+            label="Where the numbers come from"
+            hint="Case-study metrics are real results already recorded against published work."
+            value={str(content["source"]) || "entered"}
+            options={[
+              ["metrics", "Published case-study metrics"],
+              ["entered", "Typed here"],
+            ]}
+            onChange={(source) => set({ source })}
+          />
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="stats-limit" label="How many" error={err("limit")}>
+              {(aria) => (
+                <Input
+                  {...aria}
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={String(content["limit"] ?? 3)}
+                  onChange={(e) => set({ limit: Number(e.target.value) })}
+                />
+              )}
+            </Field>
+            <Choice
+              id="stats-tone"
+              label="Tone"
+              value={str(content["tone"]) || "dark"}
+              options={[
+                ["dark", "Dark band"],
+                ["light", "Light band"],
+              ]}
+              onChange={(tone) => set({ tone })}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-navy-800">
+            <input
+              type="checkbox"
+              checked={content["animate"] !== false}
+              onChange={(e) => set({ animate: e.target.checked })}
+              className="size-4 accent-[var(--color-brand-red)]"
+            />
+            Count up when the section scrolls into view
+          </label>
+
+          {str(content["source"]) === "metrics" ? (
+            <p className="rounded-md border border-line bg-surface-muted px-3 py-2 text-xs text-ink-subtle">
+              Reading published case-study metrics. Add or change a metric on the case study itself
+              and it changes here.
+            </p>
+          ) : (
+            <>
+              <ItemList
+                label="Stats"
+                values={items(content["items"])}
+                addLabel="Add stat"
+                blank={{ value: "", label: "" }}
+                max={12}
+                onChange={(next) => set({ items: next })}
+              >
+                {(item, patch) => (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <LabelledInput label="Prefix" value={str(item["prefix"])} onChange={(v) => patch({ prefix: v })} placeholder="+" />
+                      <LabelledInput label="Number" value={str(item["value"])} onChange={(v) => patch({ value: v })} placeholder="500" />
+                      <LabelledInput label="Suffix" value={str(item["suffix"])} onChange={(v) => patch({ suffix: v })} placeholder="%" />
+                    </div>
+                    <LabelledInput label="Label" value={str(item["label"])} onChange={(v) => patch({ label: v })} />
+                    <LabelledInput label="Note" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+                  </>
+                )}
+              </ItemList>
+              {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
+            </>
+          )}
+        </div>
+      );
+
+    case "featureCards":
+      return (
+        <div className="space-y-4">
+          <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+            )}
+          </Field>
+          <Field id="heading" label="Heading" error={err("heading")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+            )}
+          </Field>
+          <Field id="body" label="Intro" error={err("body")}>
+            {(aria) => (
+              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+            )}
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Choice
+              id="fc-style"
+              label="Card style"
+              value={str(content["cardStyle"]) || "border"}
+              options={CARD_STYLES}
+              onChange={(cardStyle) => set({ cardStyle })}
+            />
+            <Choice
+              id="fc-placement"
+              label="Icon placement"
+              value={str(content["iconPlacement"]) || "top"}
+              options={[
+                ["top", "Above the copy"],
+                ["left", "Beside the copy"],
+              ]}
+              onChange={(iconPlacement) => set({ iconPlacement })}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-navy-800">
+            <input
+              type="checkbox"
+              checked={content["numbered"] === true}
+              onChange={(e) => set({ numbered: e.target.checked })}
+              className="size-4 accent-[var(--color-brand-red)]"
+            />
+            Number the features instead of showing an icon
+          </label>
+
+          <ItemList
+            label="Features"
+            values={items(content["items"])}
+            addLabel="Add feature"
+            blank={{ icon: "sparkles", title: "", text: "", enabled: true }}
+            max={24}
+            onChange={(next) => set({ items: next })}
+          >
+            {(item, patch, index) => (
+              <>
+                <IconSelect id={`fc-icon-${index}`} value={str(item["icon"])} onChange={(v) => patch({ icon: v })} />
+                <MediaPicker
+                  name={`fc-media-${index}`}
+                  label="Image instead of an icon"
+                  accept="IMAGE"
+                  value={cardMedia?.[str(item["mediaId"])] ?? null}
+                  onChange={(picked) => patch({ mediaId: picked?.id ?? "" })}
+                />
+                <LabelledInput label="Badge" value={str(item["badge"])} onChange={(v) => patch({ badge: v })} />
+                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
+                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <LabelledInput label="Button label" value={str(item["ctaLabel"])} onChange={(v) => patch({ ctaLabel: v })} />
+                  <LabelledInput label="Button link" value={str(item["ctaHref"])} onChange={(v) => patch({ ctaHref: v })} placeholder="/contact" />
+                </div>
+                <EnabledToggle item={item} patch={patch} />
+              </>
+            )}
+          </ItemList>
+          {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
+        </div>
+      );
+
+    case "positioning":
+      return (
+        <div className="space-y-4">
+          <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+            )}
+          </Field>
+          <Field id="heading" label="Heading" required error={err("heading")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+            )}
+          </Field>
+          <StringList
+            label="Paragraphs"
+            values={list(content["paragraphs"])}
+            addLabel="Add paragraph"
+            max={8}
+            onChange={(next) => set({ paragraphs: next })}
+          />
+        </div>
+      );
+
+    case "process":
+      return (
+        <div className="space-y-4">
+          <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+            )}
+          </Field>
+          <Field id="heading" label="Heading" required error={err("heading")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+            )}
+          </Field>
+          <ItemList
+            label="Steps"
+            values={items(content["steps"])}
+            addLabel="Add step"
+            blank={{ title: "", text: "" }}
+            max={12}
+            onChange={(next) => set({ steps: next })}
+          >
+            {(item, patch) => (
+              <>
+                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
+                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+              </>
+            )}
+          </ItemList>
+        </div>
+      );
+
+    case "industries":
+      return (
+        <div className="space-y-4">
+          <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+            )}
+          </Field>
+          <Field id="heading" label="Heading" required error={err("heading")}>
+            {(aria) => (
+              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+            )}
+          </Field>
+          <Field id="body" label="Intro" error={err("body")}>
+            {(aria) => (
+              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+            )}
+          </Field>
+          <StringList
+            label="Industries"
+            values={list(content["items"])}
+            addLabel="Add industry"
+            max={40}
+            onChange={(next) => set({ items: next })}
+          />
+        </div>
+      );
+
     case "hero":
       return (
         <div className="space-y-4">
@@ -1567,5 +1866,176 @@ function SideImageFields({
         />
       </div>
     </fieldset>
+  );
+}
+
+/**
+ * The shared editor for every dynamic collection block.
+ *
+ * All five choose rows the same way — a mode, an optional hand-picked list, a
+ * limit — so they share one form. What differs between them is the label on the
+ * "how many" field and whether a layout choice exists, which is a table, not
+ * five editors.
+ *
+ * There is deliberately no field for a service's name or a package's price:
+ * those live on the entity, and a copy here would be a second version of the
+ * truth that drifts (CLAUDE.md 2 rule 5).
+ */
+const COLLECTION_LABELS: Record<
+  string,
+  { noun: string; layouts?: readonly Option[]; hint: string }
+> = {
+  serviceGrid: {
+    noun: "services",
+    layouts: [
+      ["index", "Editorial index"],
+      ["cards", "Cards"],
+    ],
+    hint: "Published services, in their own order.",
+  },
+  packageGrid: { noun: "packages", hint: "Published packages, with live prices." },
+  blogGrid: {
+    noun: "posts",
+    layouts: [
+      ["index", "List"],
+      ["cards", "Cards"],
+    ],
+    hint: "Published posts, newest first.",
+  },
+  caseStudyGrid: {
+    noun: "case studies",
+    layouts: [
+      ["editorial", "One large, the rest beneath"],
+      ["cards", "Cards"],
+    ],
+    hint: "Published case studies.",
+  },
+  testimonials: {
+    noun: "testimonials",
+    layouts: [
+      ["quotes", "Pull quotes"],
+      ["cards", "Cards"],
+    ],
+    hint: "Published testimonials.",
+  },
+};
+
+function CollectionFields({
+  type,
+  content,
+  set,
+  errors,
+}: {
+  type: string;
+  content: Content;
+  set: (patch: Content) => void;
+  errors: Record<string, string[]> | null;
+}) {
+  const err = useErr(errors);
+  const meta = COLLECTION_LABELS[type] ?? { noun: "items", hint: "" };
+  const mode = str(content["mode"]) || "latest";
+
+  return (
+    <div className="space-y-4">
+      <p className="rounded-md border border-line bg-surface-muted px-3 py-2 text-xs text-ink-subtle">
+        {meta.hint} Content comes from the records themselves, so nothing here can show something
+        unpublished — and a change made on the record reaches this section.
+      </p>
+
+      <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+        {(aria) => (
+          <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+        )}
+      </Field>
+      <Field id="heading" label="Heading" error={err("heading")}>
+        {(aria) => (
+          <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+        )}
+      </Field>
+      <Field id="body" label="Intro" error={err("body")}>
+        {(aria) => (
+          <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+        )}
+      </Field>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Choice
+          id="collection-mode"
+          label="Which ones"
+          value={mode}
+          options={[
+            ["latest", "Most recent"],
+            ["featured", "In their own order"],
+            ["manual", "Chosen by hand"],
+          ]}
+          onChange={(next) => set({ mode: next })}
+        />
+        <Field id="collection-limit" label={`How many ${meta.noun}`} error={err("limit")}>
+          {(aria) => (
+            <Input
+              {...aria}
+              type="number"
+              min={1}
+              max={24}
+              value={String(content["limit"] ?? 6)}
+              onChange={(e) => set({ limit: Number(e.target.value) })}
+            />
+          )}
+        </Field>
+      </div>
+
+      {mode === "manual" ? (
+        <StringList
+          label={`Chosen ${meta.noun}, by ID, in order`}
+          values={list(content["ids"])}
+          addLabel="Add one"
+          max={24}
+          onChange={(next) => set({ ids: next })}
+        />
+      ) : null}
+
+      {meta.layouts ? (
+        <Choice
+          id="collection-layout"
+          label="Layout"
+          value={str(content["layout"]) || (meta.layouts[0]?.[0] ?? "")}
+          options={meta.layouts}
+          onChange={(layout) => set({ layout })}
+        />
+      ) : null}
+
+      {type === "blogGrid" ? (
+        <Field
+          id="categorySlug"
+          label="Only this category"
+          hint="A category slug. Leave blank for every category."
+          error={err("categorySlug")}
+        >
+          {(aria) => (
+            <Input
+              {...aria}
+              value={str(content["categorySlug"])}
+              placeholder="seo"
+              onChange={(e) => set({ categorySlug: e.target.value })}
+            />
+          )}
+        </Field>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <LabelledInput
+          label="Link label"
+          value={str(content["linkLabel"])}
+          onChange={(v) => set({ linkLabel: v })}
+          placeholder="See everything"
+        />
+        <LabelledInput
+          label="Link URL"
+          value={str(content["linkHref"])}
+          onChange={(v) => set({ linkHref: v })}
+          placeholder="/services"
+        />
+      </div>
+    </div>
   );
 }

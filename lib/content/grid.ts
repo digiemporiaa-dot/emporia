@@ -105,6 +105,24 @@ export function resolveGrid(value: unknown): GridConfig {
   return gridConfig.parse({ desktop: desktop.success ? desktop.data : 3 });
 }
 
+/**
+ * Column classes only, without the gaps.
+ *
+ * For the bands drawn as a hairline grid — the stats strip, the package
+ * columns — where the "gap" is a one-pixel rule the background shows through
+ * and is not a spacing choice an editor should be making.
+ */
+export function gridColumnClasses(grid: GridConfig): string {
+  return [
+    "grid",
+    MOBILE[grid.mobile] ?? MOBILE[1],
+    TABLET[grid.tablet] ?? TABLET[2],
+    DESKTOP[grid.desktop] ?? DESKTOP[3],
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** The class list for a grid container. Every entry is a literal Tailwind class. */
 export function gridClasses(grid: GridConfig): string {
   const rows = ROW_GAP[grid.rowGap ?? grid.gap];

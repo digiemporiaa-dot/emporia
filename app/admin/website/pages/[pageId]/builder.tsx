@@ -27,7 +27,7 @@ import {
 } from "@/lib/content/blocks";
 import type { ActionResult } from "@/lib/errors";
 import { BlockFields, type Content } from "./block-fields";
-import { GridFields, LayoutFields, StyleFields } from "./style-fields";
+import { AdvancedFields, GridFields, LayoutFields, StyleFields } from "./style-fields";
 import {
   addSectionAction,
   changeSectionTypeAction,
@@ -80,7 +80,7 @@ type Props = {
   canEdit: boolean;
 };
 
-const GROUPS = ["Layout", "Text", "Media", "Data"] as const;
+const GROUPS = ["Layout", "Text", "Cards", "Media", "Dynamic", "Data"] as const;
 
 /**
  * Which tabs a block shows.
@@ -89,9 +89,21 @@ const GROUPS = ["Layout", "Text", "Media", "Data"] as const;
  * block carries. Grid is only offered where there is a grid to configure, so
  * the tab is absent rather than present and inert.
  */
-const HAS_GRID = new Set<BlockType>(["iconCards", "imageCards", "benefits", "logoGrid"]);
+const HAS_GRID = new Set<BlockType>([
+  "iconCards",
+  "imageCards",
+  "benefits",
+  "logoGrid",
+  "featureCards",
+  "stats",
+  "serviceGrid",
+  "packageGrid",
+  "blogGrid",
+  "caseStudyGrid",
+  "testimonials",
+]);
 
-const TABS = ["Content", "Layout", "Grid", "Style"] as const;
+const TABS = ["Content", "Layout", "Grid", "Style", "Advanced"] as const;
 type Tab = (typeof TABS)[number];
 
 function summarise(section: BuilderSection): string {
@@ -773,6 +785,7 @@ function SectionEditor({
           {tab === "Style" ? (
             <StyleFields content={content} set={set} backgroundMedia={backgroundMedia} />
           ) : null}
+          {tab === "Advanced" ? <AdvancedFields content={content} set={set} /> : null}
         </div>
       </div>
     </Dialog>

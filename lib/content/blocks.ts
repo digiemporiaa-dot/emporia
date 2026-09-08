@@ -272,6 +272,12 @@ export const ctaBlock = z.object({
   secondaryLabel: optionalText(60),
   secondaryHref: linkHref.optional(),
   tone: z.enum(["navy", "light"]).default("navy"),
+  /**
+   * `large` is the closing band the homepage ends on — bigger type, more air.
+   * A separate size rather than a separate block, so there is still one call to
+   * action in the product (CLAUDE.md 2 rule 10).
+   */
+  size: z.enum(["default", "large"]).default("default"),
   band: styleField,
 });
 
@@ -441,13 +447,223 @@ export const heroBlock = z.object({
     .max(6)
     .optional(),
 
-  layout: z.enum(["stacked", "text-image", "image-text", "centered", "split"]).default("stacked"),
+  /**
+   * `editorial` is the homepage's asymmetric type-led band — heading across
+   * eight columns, copy and buttons in the remaining four. It is a layout
+   * rather than a separate block so the homepage hero is the same thing every
+   * other hero is, and can be changed to any of the others.
+   */
+  layout: z
+    .enum(["stacked", "editorial", "text-image", "image-text", "centered", "split"])
+    .default("stacked"),
   mediaId: mediaRef,
   alt: optionalText(300),
   decorative: z.boolean().default(false),
   imageSize: z.enum(["auto", "sm", "md", "lg"]).default("auto"),
   imageRadius: cardRadius.default("lg"),
   height: z.enum(["auto", "sm", "md", "lg", "screen"]).default("auto"),
+  band: styleField,
+});
+
+
+// ---------------------------------------------------------------------------
+// Dynamic collection blocks
+// ---------------------------------------------------------------------------
+
+/**
+ * Blocks that render live business data.
+ *
+ * These deliberately store *no* content of their own beyond a heading and a
+ * selection rule. A service's name, a package's price and a case study's
+ * metrics stay in their own tables, where the rest of the product reads them —
+ * copying them into section JSON would mean a price shown on the homepage that
+ * no longer matches the one on the package page (CLAUDE.md 2 rule 5, and §7's
+ * rule that structured data stays structured).
+ *
+ * The consequence is that these blocks cannot show something unpublished:
+ * the query only ever returns published rows.
+ */
+const collectionBase = {
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  /** The "see everything" link under the band. */
+  linkLabel: optionalText(60),
+  linkHref: linkHref.optional(),
+  limit: z.coerce.number().int().min(1).max(24).default(6),
+  band: styleField,
+};
+
+/** How a dynamic block chooses its rows. */
+export const selectionMode = z.enum(["latest", "featured", "manual"]);
+
+/**
+ * Ids chosen by hand, in the order the editor arranged them.
+ *
+ * Not validated as cuids that exist: a row can be unpublished or deleted after
+ * it was picked, and the query drops what it cannot find rather than failing
+ * the page.
+ */
+const manualIds = z.array(z.string().trim().max(40)).max(24).default([]);
+
+export const serviceGridBlock = z.object({
+  ...collectionBase,
+  mode: selectionMode.default("latest"),
+  ids: manualIds,
+  /** `index` is the editorial list the homepage uses; `cards` is a grid. */
+  layout: z.enum(["index", "cards"]).default("index"),
+  grid: gridConfig.optional(),
+});
+
+export const packageGridBlock = z.object({
+  ...collectionBase,
+  mode: selectionMode.default("latest"),
+  ids: manualIds,
+  grid: gridConfig.optional(),
+});
+
+export const blogGridBlock = z.object({
+  ...collectionBase,
+  mode: selectionMode.default("latest"),
+  ids: manualIds,
+  /** Restrict to one category by slug. Empty means every category. */
+  categorySlug: optionalText(120),
+  layout: z.enum(["index", "cards"]).default("index"),
+  grid: gridConfig.optional(),
+});
+
+export const caseStudyGridBlock = z.object({
+  ...collectionBase,
+  mode: selectionMode.default("featured"),
+  ids: manualIds,
+  /** `editorial` is the homepage's one-large-then-two; `cards` is a plain grid. */
+  layout: z.enum(["editorial", "cards"]).default("cards"),
+  grid: gridConfig.optional(),
+});
+
+/** The quiet strip of client names. Reads case studies; shows only the names. */
+export const clientStripBlock = z.object({
+  label: optionalText(80),
+  limit: z.coerce.number().int().min(1).max(24).default(6),
+  band: styleField,
+});
+
+/**
+ * Testimonials.
+ *
+ * Reads the Testimonial table rather than holding quotes of its own: a
+ * testimonial is a record with an author and a company, and the same one
+ * appears on more than one page.
+ */
+export const testimonialsBlock = z.object({
+  ...collectionBase,
+  mode: selectionMode.default("featured"),
+  ids: manualIds,
+  layout: z.enum(["quotes", "cards"]).default("quotes"),
+  grid: gridConfig.optional(),
+});
+
+/**
+ * Stats.
+ *
+ * Two sources, chosen by `source`. `entered` is what an editor types here.
+ * `metrics` reads published case-study metrics — real numbers from live
+ * engagements, which is the only kind this product is willing to print
+ * (CLAUDE.md 16: campaign numbers come from the database or they do not
+ * appear).
+ */
+export const statsBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  source: z.enum(["entered", "metrics"]).default("entered"),
+  limit: z.coerce.number().int().min(1).max(12).default(3),
+  items: z
+    .array(
+      z.object({
+        prefix: optionalText(8),
+        value: trimmed(24).min(1, "Each stat needs a number."),
+        suffix: optionalText(8),
+        label: trimmed(120).min(1, "Each stat needs a label."),
+        text: optionalText(300),
+        icon: iconName.optional(),
+      }),
+    )
+    .max(12)
+    .default([]),
+  grid: gridConfig.optional(),
+  /** Counts up when it scrolls into view, unless the visitor asked for less motion. */
+  animate: z.boolean().default(true),
+  tone: z.enum(["light", "dark"]).default("dark"),
+  band: styleField,
+});
+
+/**
+ * Feature cards.
+ *
+ * The card block that carries a number as well as an icon or an image, for the
+ * "three reasons" band every marketing site eventually needs.
+ */
+export const featureCardsBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  grid: gridConfig.optional(),
+  cardStyle: cardStyle.default("border"),
+  /** Where the icon or number sits relative to the copy. */
+  iconPlacement: z.enum(["top", "left"]).default("top"),
+  numbered: z.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        icon: iconName.optional(),
+        mediaId: mediaRef,
+        alt: optionalText(300),
+        badge: optionalText(40),
+        title: trimmed(200).min(1, "Each feature needs a title."),
+        text: optionalText(800),
+        ctaLabel: optionalText(60),
+        ctaHref: linkHref.optional(),
+        enabled: z.boolean().default(true),
+      }),
+    )
+    .min(1, "Add at least one feature.")
+    .max(24),
+  band: styleField,
+});
+
+// ---------------------------------------------------------------------------
+// Bands promoted from the hand-composed pages
+// ---------------------------------------------------------------------------
+
+/**
+ * These three predate the builder and are used by the homepage. Their schemas
+ * are supersets of the loose shapes `sections.ts` held, on exactly the terms
+ * `hero` and `cta` moved before them: every stored row still parses, and the
+ * renderers are the same markup, so the pages using them do not move.
+ */
+export const positioningBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: trimmed(300).min(1, "Enter the heading."),
+  paragraphs: z.array(trimmed(2000)).max(8).default([]),
+  band: styleField,
+});
+
+export const processBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: trimmed(300).min(1, "Enter the heading."),
+  steps: z
+    .array(z.object({ title: trimmed(200), text: trimmed(1000) }))
+    .max(12)
+    .default([]),
+  band: styleField,
+});
+
+export const industriesBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: trimmed(300).min(1, "Enter the heading."),
+  body: optionalText(1200),
+  items: z.array(trimmed(120)).max(40).default([]),
   band: styleField,
 });
 
@@ -471,6 +687,17 @@ export const BLOCK_SCHEMAS = {
   benefits: benefitsBlock,
   logoGrid: logoGridBlock,
   fullWidthImage: fullWidthImageBlock,
+  featureCards: featureCardsBlock,
+  stats: statsBlock,
+  testimonials: testimonialsBlock,
+  clientStrip: clientStripBlock,
+  serviceGrid: serviceGridBlock,
+  packageGrid: packageGridBlock,
+  blogGrid: blogGridBlock,
+  caseStudyGrid: caseStudyGridBlock,
+  positioning: positioningBlock,
+  process: processBlock,
+  industries: industriesBlock,
 } as const;
 
 export type BlockType = keyof typeof BLOCK_SCHEMAS;
@@ -492,7 +719,7 @@ export type BlockDefinition = {
   label: string;
   description: string;
   /** Grouping in the Add Section modal. */
-  group: "Layout" | "Text" | "Media" | "Data";
+  group: "Layout" | "Text" | "Media" | "Cards" | "Dynamic" | "Data";
   defaults: Record<string, unknown>;
   /**
    * Named starting points for the same block.
@@ -589,7 +816,7 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     type: "logoGrid",
     label: "Logo grid",
     description: "A grid of client or partner logos, in one visual weight.",
-    group: "Media",
+    group: "Cards",
     defaults: {
       heading: "Who we work with",
       treatment: "muted",
@@ -710,7 +937,7 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     type: "iconCards",
     label: "Icon cards",
     description: "A grid of cards, each with an icon, a title and text.",
-    group: "Media",
+    group: "Cards",
     defaults: {
       grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" },
       cardStyle: "border",
@@ -729,7 +956,7 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     type: "imageCards",
     label: "Image cards",
     description: "A grid of cards, each with an image, a title and text.",
-    group: "Media",
+    group: "Cards",
     defaults: {
       grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" },
       cardStyle: "border",
@@ -741,6 +968,182 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
       ],
     },
     presets: CARD_GRID_PRESETS,
+  },
+  {
+    type: "clientStrip",
+    label: "Client strip",
+    description: "A quiet line of client names, read from published case studies.",
+    group: "Dynamic",
+    defaults: { label: "Selected clients", limit: 6 },
+  },
+  {
+    type: "serviceGrid",
+    label: "Services",
+    description: "Published services, as an editorial index or a grid of cards.",
+    group: "Dynamic",
+    defaults: {
+      eyebrow: "Services",
+      heading: "What we do",
+      mode: "latest",
+      layout: "index",
+      limit: 6,
+      linkLabel: "All services",
+      linkHref: "/services",
+    },
+    presets: [
+      { label: "Editorial index", defaults: { layout: "index" } },
+      { label: "Three cards", defaults: { layout: "cards", grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+      { label: "Four cards", defaults: { layout: "cards", grid: { desktop: 4, tablet: 2, mobile: 1, gap: "md" } } },
+    ],
+  },
+  {
+    type: "packageGrid",
+    label: "Packages",
+    description: "Published packages with their real prices, read from the database.",
+    group: "Dynamic",
+    defaults: {
+      eyebrow: "Packages",
+      heading: "Indicative starting points, not a menu.",
+      mode: "latest",
+      limit: 3,
+      linkLabel: "Compare packages",
+      linkHref: "/packages",
+    },
+    presets: CARD_GRID_PRESETS,
+  },
+  {
+    type: "caseStudyGrid",
+    label: "Case studies",
+    description: "Published work, either one large with the rest beneath or a plain grid.",
+    group: "Dynamic",
+    defaults: {
+      eyebrow: "Selected work",
+      mode: "featured",
+      layout: "editorial",
+      limit: 3,
+      linkLabel: "All case studies",
+      linkHref: "/case-studies",
+    },
+    presets: [
+      { label: "One large, two beneath", defaults: { layout: "editorial", limit: 3 } },
+      { label: "Three cards", defaults: { layout: "cards", limit: 3, grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+    ],
+  },
+  {
+    type: "blogGrid",
+    label: "Insights",
+    description: "Published posts, newest first or hand-picked.",
+    group: "Dynamic",
+    defaults: {
+      eyebrow: "Insights",
+      heading: "What we are working out.",
+      mode: "latest",
+      layout: "index",
+      limit: 3,
+      linkLabel: "All insights",
+      linkHref: "/blog",
+    },
+    presets: [
+      { label: "List", defaults: { layout: "index" } },
+      { label: "Three cards", defaults: { layout: "cards", grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+    ],
+  },
+  {
+    type: "testimonials",
+    label: "Testimonials",
+    description: "Published testimonials, as pull quotes or cards.",
+    group: "Dynamic",
+    defaults: { mode: "featured", layout: "quotes", limit: 2 },
+    presets: [
+      { label: "Pull quotes", defaults: { layout: "quotes", limit: 2 } },
+      { label: "Cards", defaults: { layout: "cards", limit: 3, grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+    ],
+  },
+  {
+    type: "stats",
+    label: "Stats",
+    description: "Big numbers, typed here or read from published case-study metrics.",
+    group: "Cards",
+    defaults: {
+      eyebrow: "Results",
+      heading: "Numbers from live engagements, not projections.",
+      source: "metrics",
+      limit: 3,
+      tone: "dark",
+      animate: true,
+      items: [],
+    },
+    presets: [
+      { label: "From case studies", defaults: { source: "metrics", tone: "dark" } },
+      {
+        label: "Typed here",
+        defaults: {
+          source: "entered",
+          tone: "light",
+          items: [
+            { value: "500", suffix: "+", label: "Clients" },
+            { value: "20", suffix: "+", label: "Countries" },
+            { value: "98", suffix: "%", label: "Retention" },
+          ],
+        },
+      },
+    ],
+  },
+  {
+    type: "featureCards",
+    label: "Feature cards",
+    description: "Cards with an icon, an image or a number, a title and copy.",
+    group: "Cards",
+    defaults: {
+      heading: "Why this works",
+      grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" },
+      cardStyle: "border",
+      iconPlacement: "top",
+      numbered: false,
+      items: [
+        { icon: "target", title: "First reason", text: "" },
+        { icon: "trending-up", title: "Second reason", text: "" },
+        { icon: "shield", title: "Third reason", text: "" },
+      ],
+    },
+    presets: [
+      { label: "Icon on top", defaults: { iconPlacement: "top", numbered: false } },
+      { label: "Icon on the left", defaults: { iconPlacement: "left", numbered: false } },
+      { label: "Numbered", defaults: { numbered: true, iconPlacement: "left" } },
+    ],
+  },
+  {
+    type: "positioning",
+    label: "Positioning",
+    description: "A statement on the left, paragraphs on the right.",
+    group: "Text",
+    defaults: { heading: "What we believe", paragraphs: ["Write the statement here."] },
+  },
+  {
+    type: "process",
+    label: "Process",
+    description: "A numbered sequence of steps on hairlines.",
+    group: "Text",
+    defaults: {
+      eyebrow: "How we work",
+      heading: "The sequence",
+      steps: [
+        { title: "First step", text: "" },
+        { title: "Second step", text: "" },
+      ],
+    },
+  },
+  {
+    type: "industries",
+    label: "Industries",
+    description: "A dense wrap of short labels beside a heading.",
+    group: "Text",
+    defaults: {
+      eyebrow: "Industries",
+      heading: "Where we work",
+      body: "",
+      items: ["First", "Second", "Third"],
+    },
   },
   {
     type: "table",

@@ -11,6 +11,7 @@ import {
   type RoleNameLiteral,
 } from "../lib/auth/permissions.js";
 import { DEFAULT_TEMPLATES } from "../lib/email/templates.js";
+import { migrateHomepage } from "./migrate-homepage.js";
 
 /**
  * Seed: roles, permissions and the initial super admin.
@@ -348,6 +349,9 @@ async function main(): Promise<void> {
   await seedSiteSettings();
   await seedEmailTemplates();
   await seedAutomations();
+  // Additive and idempotent: it inserts the homepage bands that became section
+  // types and touches nothing an editor has arranged (prisma/migrate-homepage).
+  console.log(`  ${await migrateHomepage(prisma)}`);
   console.log("Done.");
 }
 

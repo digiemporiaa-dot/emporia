@@ -5,6 +5,7 @@ import { toMoneyString } from "@/lib/money";
 import { resolveSectionImages, type SectionImages } from "@/lib/content/media";
 import { parseSections, type ParsedSection } from "@/lib/content/sections";
 import { seoSelect, type EntitySeo } from "@/lib/seo/select";
+import { resolveCollections } from "@/lib/content/collections";
 
 /**
  * Shared read queries for the public website.
@@ -45,6 +46,21 @@ export type PublishedPage = {
   images: Record<string, { id: string; url: string; alt: string | null; width: number | null; height: number | null }>;
   seo: EntitySeo | null;
 };
+
+/**
+ * A page plus the live business data its dynamic sections read.
+ *
+ * Resolved outside `publishedPageSections` on purpose. That function is cached
+ * under the pages tag; the collections are cached under their own tags, so a
+ * newly published service reaches the homepage without republishing the page.
+ * Nesting them would have tied one cache entry to five sets of content.
+ */
+export async function publishedPageWithCollections(slug: string) {
+  const page = await publishedPageSections(slug);
+  if (!page) return null;
+  const collections = await resolveCollections(page.sections);
+  return { page, collections };
+}
 
 /** Sections of a published CMS page, validated and ordered. */
 export const publishedPageSections = unstable_cache(

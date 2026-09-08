@@ -99,6 +99,22 @@ export const backgroundConfig = z.object({
 
 export type BackgroundConfig = z.infer<typeof backgroundConfig>;
 
+/**
+ * A fragment identifier.
+ *
+ * Restricted to what belongs in a URL fragment, which also means it cannot
+ * carry a quote or an angle bracket into the `id` attribute. Free-form CSS
+ * class names are deliberately not offered: "add a class" is an escape hatch
+ * into the design system, and the Style tab is the supported way to change how
+ * a section looks (CLAUDE.md 6).
+ */
+export const anchorId = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9-]{1,60}$/, "Lowercase letters, digits and hyphens, starting with a letter.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
 export const presentation = z.object({
   container: containerToken.optional(),
   paddingTop: spaceToken.optional(),
@@ -117,6 +133,21 @@ export const presentation = z.object({
    * (CLAUDE.md 12, AA contrast).
    */
   textTone: z.enum(["auto", "dark", "light"]).default("auto"),
+
+  /** Advanced. A link target for this section, used as `#anchor`. */
+  anchorId,
+  /**
+   * Device visibility.
+   *
+   * CSS, not JavaScript: the section is in the markup and hidden by a media
+   * query, so there is no layout shift and no hydration mismatch. It is
+   * genuinely hidden — `display: none` removes it from the accessibility tree
+   * too, so a screen reader on a phone does not read a section a sighted
+   * visitor cannot see.
+   */
+  hideDesktop: z.boolean().default(false),
+  hideTablet: z.boolean().default(false),
+  hideMobile: z.boolean().default(false),
 });
 
 export type Presentation = z.infer<typeof presentation>;
@@ -260,11 +291,23 @@ export type BandDefaults = {
   paddingTop: SpaceToken;
   paddingBottom: SpaceToken;
   container: ContainerToken;
+  /**
+   * Literal classes for a band whose historical padding is not on the token
+   * scale — the homepage hero's `pt-14 lg:pt-24` among them.
+   *
+   * Used only while the editor has set no padding of their own, and never
+   * offered as a choice: growing the picker with one-off values to preserve one
+   * band would make the scale meaningless. The moment someone picks a token,
+   * the token wins.
+   */
+  paddingClassName?: string;
 };
 
 export type ResolvedBand = {
   /** Applied to the outer element. */
   outerClassName: string;
+  /** `id` for the outer element, when the editor set an anchor. */
+  anchorId: string | undefined;
   /** Applied to the inner container, or null when the section is full width. */
   containerWidth: "narrow" | "page" | "wide" | null;
   contentClassName: string;
@@ -348,6 +391,11 @@ export function resolveBand(
       : null;
 
   const outerClassName = [
+    // Literal classes, as everywhere else here. `max-sm:` is below the tablet
+    // breakpoint, `sm:max-lg:` is the tablet band, `lg:` is desktop up.
+    style?.hideMobile ? "max-sm:hidden" : "",
+    style?.hideTablet ? "sm:max-lg:hidden" : "",
+    style?.hideDesktop ? "lg:hidden" : "",
     MARGIN_TOP[style?.marginTop ?? "none"],
     MARGIN_BOTTOM[style?.marginBottom ?? "none"],
     BORDER[style?.border ?? "none"],
@@ -359,9 +407,13 @@ export function resolveBand(
     .filter(Boolean)
     .join(" ");
 
+  const untouched = !style?.paddingTop && !style?.paddingBottom;
   const contentClassName = [
-    PADDING_TOP[style?.paddingTop ?? defaults.paddingTop],
-    PADDING_BOTTOM[style?.paddingBottom ?? defaults.paddingBottom],
+    untouched && defaults.paddingClassName
+      ? defaults.paddingClassName
+      : `${PADDING_TOP[style?.paddingTop ?? defaults.paddingTop]} ${
+          PADDING_BOTTOM[style?.paddingBottom ?? defaults.paddingBottom]
+        }`.trim(),
     style?.align ? ALIGN[style.align] : "",
     style?.verticalAlign ? VERTICAL_ALIGN[style.verticalAlign] : "",
   ]
@@ -370,6 +422,7 @@ export function resolveBand(
 
   return {
     outerClassName,
+    anchorId: style?.anchorId,
     containerWidth: CONTAINER_WIDTH[container],
     contentClassName,
     outerStyle,

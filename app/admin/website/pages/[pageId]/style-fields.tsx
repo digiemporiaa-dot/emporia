@@ -554,3 +554,82 @@ export function StyleFields({
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Advanced
+// ---------------------------------------------------------------------------
+
+/**
+ * The Advanced tab.
+ *
+ * Two things deliberately absent: a custom class name and any form of custom
+ * CSS or JavaScript. Both are escape hatches out of the design system, and both
+ * are how a CMS becomes a place to inject markup nobody reviewed (CLAUDE.md 11).
+ * Everything an editor legitimately needs is a control on the Layout or Style
+ * tab; anything missing there is a control to add, not a text box to open.
+ */
+export function AdvancedFields({
+  content,
+  set,
+}: {
+  content: Content;
+  set: (patch: Content) => void;
+}) {
+  const band = obj(content["band"]);
+  const patch = (next: Content) => set({ band: { ...band, ...next } });
+
+  return (
+    <div className="space-y-5">
+      <Field
+        id="band-anchor"
+        label="Anchor ID"
+        hint="Link straight to this section with #your-anchor. Lowercase letters, digits and hyphens."
+      >
+        {(aria) => (
+          <Input
+            {...aria}
+            value={str(band["anchorId"])}
+            placeholder="pricing"
+            onChange={(e) => patch({ anchorId: e.target.value })}
+          />
+        )}
+      </Field>
+
+      <fieldset className="space-y-2">
+        <legend className="mb-2 text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+          Device visibility
+        </legend>
+        <p className="mb-2 text-xs text-ink-subtle">
+          Hidden with a media query, not JavaScript, so the section never flashes on the way to
+          being hidden — and a screen reader on that device does not read it either.
+        </p>
+        {(
+          [
+            ["hideMobile", "Hide on mobile"],
+            ["hideTablet", "Hide on tablet"],
+            ["hideDesktop", "Hide on desktop"],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-2 text-sm text-navy-800">
+            <input
+              type="checkbox"
+              checked={band[key] === true}
+              onChange={(e) => patch({ [key]: e.target.checked })}
+              className="size-4 accent-[var(--color-brand-red)]"
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+
+      {band["hideMobile"] === true &&
+      band["hideTablet"] === true &&
+      band["hideDesktop"] === true ? (
+        <p role="alert" className="rounded-md border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
+          This section is hidden on every device. Use Hide on the section list instead — it keeps
+          the section out of the page without three rules to remember.
+        </p>
+      ) : null}
+    </div>
+  );
+}

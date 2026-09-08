@@ -32,9 +32,11 @@ describe("block library", () => {
   });
 
   it("does not treat a bespoke section type as a builder block", () => {
-    // `hero` and `cta` were promoted into the library; the hand-composed bands
-    // that remain are still not something you drop onto an arbitrary page.
-    for (const type of ["legal", "roles", "positioning", "prose", "values", "industries"]) {
+    // `hero`, `cta`, `positioning`, `process` and `industries` were promoted
+    // into the library as the homepage became a CMS page. What remains is
+    // page-specific — a legal clause list, an open-roles table — and still not
+    // something you would drop onto an arbitrary landing page.
+    for (const type of ["legal", "roles", "prose", "values"]) {
       expect(isBlockType(type)).toBe(false);
     }
   });

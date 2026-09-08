@@ -24,6 +24,20 @@ import {
   TableBlock,
   type BlockImages,
 } from "@/components/website/blocks";
+import {
+  BlogGridBlock,
+  CaseStudyGridBlock,
+  ClientStripBlock,
+  FeatureCardsBlock,
+  IndustriesBlock,
+  PackageGridBlock,
+  PositioningBlock,
+  ProcessBlock,
+  ServiceGridBlock,
+  StatsBlock,
+  TestimonialsBlock,
+} from "@/components/website/collection-blocks";
+import { EMPTY_COLLECTIONS, type PageCollections } from "@/lib/content/collections";
 
 /**
  * Renderer for CMS page sections.
@@ -57,6 +71,7 @@ export function PageSections({
   sections,
   title,
   images = {},
+  collections = EMPTY_COLLECTIONS,
 }: {
   sections: readonly ParsedSection[];
   /**
@@ -67,6 +82,12 @@ export function PageSections({
   title?: string;
   /** Images referenced by builder blocks, resolved by the query in one batch. */
   images?: BlockImages;
+  /**
+   * Live business data for the dynamic blocks, resolved once per page. Defaults
+   * to empty, so a caller with no dynamic sections passes nothing and those
+   * blocks simply render nothing.
+   */
+  collections?: PageCollections;
 }) {
   // A page assembled from builder blocks would otherwise ship with no <h1> at
   // all: an accessibility failure and an SEO one. Rendered only when nothing
@@ -220,6 +241,81 @@ export function PageSections({
 
           case "cta":
             return <CtaBlock key={section.id} content={section.content} images={images} />;
+
+          // --- bands lifted out of the homepage --------------------------
+          case "positioning":
+            return <PositioningBlock key={section.id} content={section.content} images={images} />;
+          case "process":
+            return <ProcessBlock key={section.id} content={section.content} images={images} />;
+          case "industries":
+            return <IndustriesBlock key={section.id} content={section.content} images={images} />;
+
+          // --- dynamic collections ---------------------------------------
+          case "clientStrip":
+            return (
+              <ClientStripBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "serviceGrid":
+            return (
+              <ServiceGridBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "packageGrid":
+            return (
+              <PackageGridBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "blogGrid":
+            return (
+              <BlogGridBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "caseStudyGrid":
+            return (
+              <CaseStudyGridBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "testimonials":
+            return (
+              <TestimonialsBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "stats":
+            return (
+              <StatsBlock
+                key={section.id}
+                content={section.content}
+                collections={collections}
+                images={images}
+              />
+            );
+          case "featureCards":
+            return <FeatureCardsBlock key={section.id} content={section.content} images={images} />;
 
           // --- builder blocks -------------------------------------------
           case "heading":

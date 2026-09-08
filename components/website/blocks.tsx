@@ -52,6 +52,14 @@ const PAD_XL = {
   container: "default",
 } as const;
 /** The hero opens wider at the top than it closes at the bottom. */
+/** The homepage's closing band, which sat wider than the standard CTA. */
+const PAD_CTA_LARGE = {
+  paddingTop: "3xl",
+  paddingBottom: "3xl",
+  container: "default",
+  paddingClassName: "py-16 lg:py-24",
+} as const;
+
 const PAD_HERO = {
   paddingTop: "2xl",
   paddingBottom: "lg",
@@ -853,6 +861,32 @@ export function ImageCardsBlock({
   );
 }
 
+/**
+ * A `Reveal` only when asked for.
+ *
+ * Adding motion to a band that never had it changes every page already using
+ * it, so the reveal is opt-in and the plain div is what everything else keeps
+ * getting. Respects `prefers-reduced-motion` through `Reveal` either way.
+ */
+function RevealIf({
+  active,
+  delay,
+  className,
+  children,
+}: {
+  active: boolean;
+  delay?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  if (!active) return <div className={className}>{children}</div>;
+  return (
+    <div className={className}>
+      <Reveal {...(delay === undefined ? {} : { delay })}>{children}</Reveal>
+    </div>
+  );
+}
+
 export function CtaBlock({
   content,
   images = {},
@@ -861,28 +895,52 @@ export function CtaBlock({
   images?: BlockImages;
 }) {
   const dark = content.tone === "navy";
+  const large = content.size === "large";
 
   return (
     <Band
       band={content.band}
       images={images}
-      defaults={PAD_XL}
+      defaults={large ? PAD_CTA_LARGE : PAD_XL}
       // The tone is a class, so an editor's background — which is an inline
       // style — wins over it rather than fighting it.
       className={dark ? "bg-navy-800 text-white" : "border-y border-line bg-surface-muted"}
     >
-      <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
-        <div className="lg:col-span-7">
-          <h2 className={cn("text-3xl", dark ? "text-white" : "text-navy-800")}>
+      <div className={cn("grid lg:grid-cols-12 lg:items-end", large ? "gap-8" : "gap-6")}>
+        {/*
+          The large variant is the homepage's closing band, which reveals on
+          scroll. The standard one does not, and gaining a reveal would be a
+          change to every other page already using a CTA.
+        */}
+        <RevealIf active={large} className="lg:col-span-7">
+          <h2
+            className={cn(
+              large ? "max-w-2xl text-4xl" : "text-3xl",
+              dark ? "text-white" : "text-navy-800",
+            )}
+          >
             {content.heading}
           </h2>
           {content.body ? (
-            <p className={cn("mt-4 max-w-xl", dark ? "text-navy-100" : "text-ink-muted")}>
+            <p
+              className={cn(
+                "max-w-xl",
+                large ? "mt-5 text-lg" : "mt-4",
+                dark ? "text-navy-100" : "text-ink-muted",
+              )}
+            >
               {content.body}
             </p>
           ) : null}
-        </div>
-        <div className="flex flex-wrap gap-3 lg:col-span-4 lg:col-start-9 lg:justify-end">
+        </RevealIf>
+        <RevealIf
+          active={large}
+          delay={0.1}
+          className={cn(
+            "flex flex-wrap gap-3 lg:col-span-4 lg:col-start-9 lg:justify-end",
+            large && "lg:text-right",
+          )}
+        >
           <CtaButton href={{ pathname: content.ctaHref }} size="lg">
             {content.ctaLabel}
           </CtaButton>
@@ -895,7 +953,7 @@ export function CtaBlock({
               {content.secondaryLabel}
             </CtaButton>
           ) : null}
-        </div>
+        </RevealIf>
       </div>
     </Band>
   );
@@ -1385,6 +1443,7 @@ export function HeroBlock({
   images?: BlockImages;
 }) {
   const image = content.mediaId ? images[content.mediaId] : undefined;
+  const editorial = content.layout === "editorial";
   const sideways =
     Boolean(image) &&
     (content.layout === "text-image" ||
@@ -1447,6 +1506,65 @@ export function HeroBlock({
       </div>
     </div>
   ) : null;
+
+  if (editorial) {
+    // The homepage's own hero, moved rather than rewritten: heading across
+    // eight columns, copy and buttons in the remaining four, facts on a
+    // hairline grid beneath.
+    return (
+      <Band
+        band={content.band}
+        images={images}
+        defaults={{ ...PAD_HERO, paddingClassName: "pt-14 pb-12 lg:pt-24 lg:pb-16" }}
+        className="border-b border-line"
+      >
+        <div className="grid gap-10 lg:grid-cols-12 lg:gap-8">
+          <div className="lg:col-span-8">
+            {content.eyebrow ? (
+              <HeroReveal>
+                <Eyebrow>{content.eyebrow}</Eyebrow>
+              </HeroReveal>
+            ) : null}
+            <HeroReveal delay={0.08}>
+              <h1 className="mt-4 max-w-4xl text-5xl text-navy-800">{content.heading}</h1>
+            </HeroReveal>
+          </div>
+
+          <div className="lg:col-span-4 lg:pt-16">
+            <HeroReveal delay={0.16}>
+              {content.body ? (
+                <p className="max-w-md text-lg leading-relaxed text-ink-muted">{content.body}</p>
+              ) : null}
+              <Buttons
+                label={content.ctaLabel}
+                href={content.ctaHref}
+                secondaryLabel={content.secondaryLabel}
+                secondaryHref={content.secondaryHref}
+                className="mt-7"
+              />
+            </HeroReveal>
+          </div>
+        </div>
+
+        {content.facts && content.facts.length > 0 ? (
+          <HeroReveal delay={0.28}>
+            <dl className="mt-14 grid grid-cols-2 gap-px overflow-hidden border-t border-line bg-line lg:grid-cols-4">
+              {content.facts.map((fact) => (
+                <div key={fact.label} className="bg-white px-1 pt-5 lg:px-0">
+                  <dt className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
+                    {fact.label}
+                  </dt>
+                  <dd className="mt-1.5 font-display text-xl text-navy-800">{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </HeroReveal>
+        ) : null}
+
+        {picture ? <div className="mt-10">{picture}</div> : null}
+      </Band>
+    );
+  }
 
   return (
     <Band
