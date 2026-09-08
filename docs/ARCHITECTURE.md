@@ -1281,6 +1281,38 @@ adding it — is **not** implemented; the flag is the foundation for it.
 > The admin list skeletons are rendered through an explicit `<Suspense>` inside
 > the list page instead, which keeps the loading state and the status code.
 
+### 17.1c SEO across entities
+
+CLAUDE.md 9 requires every indexable entity to carry the full SEO set through
+one reusable `Seo` relation. The relation was there from the start; what was
+missing was anywhere to edit most of it. Cities had no SEO fields at all,
+packages and service-city pages had a meta title and description and nothing
+else — so their social cards and indexability were unmanageable.
+
+`lib/services/seo.service.ts` serves every entity carrying the relation, and
+`components/admin/seo-fields.tsx` is the single definition of the form, shared
+by the page CMS and the catalog screens so they cannot drift into offering
+different halves of the same record.
+
+Two properties are deliberate:
+
+- **The entity name is a closed whitelist**, switched rather than indexed. It
+  arrives from a form field, and `db[whatever]` would let a caller reach any
+  table in the schema.
+- **SEO is gated on `seo.edit`, not the entity's own edit permission.** Tuning
+  metadata and rewriting a package's price are different responsibilities, and
+  the catalogue already separated them.
+
+The meta fields were removed from the entity forms when the panel was added.
+Two forms on one screen writing the same column silently revert each other, and
+an entity save by someone without `seo.edit` would otherwise wipe metadata they
+were never allowed to touch. The entity services now create an empty `Seo` row
+on create and never write to it again.
+
+Services, case studies, blog posts and blog categories carry the relation but
+have no admin CRUD at all — they are seed-only, so there is no screen to hang a
+panel on. They get one when they get a module.
+
 ### 17.2 The build-time database problem
 
 This is the one genuinely awkward interaction between Next and containers, and

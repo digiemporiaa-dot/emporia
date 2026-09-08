@@ -18,9 +18,6 @@ type PageValues = {
   positioning: string | null;
   ctaHeading: string | null;
   ctaBody: string | null;
-  metaTitle: string | null;
-  metaDescription: string | null;
-  canonical: string | null;
 };
 
 function Submit({ label }: { label: string }) {
@@ -164,31 +161,6 @@ export function ServiceCityPageForm({
             {(aria) => <Input {...aria} name="ctaBody" defaultValue={page?.ctaBody ?? ""} />}
           </Field>
         </div>
-      </fieldset>
-
-      <fieldset className="space-y-5 border-t border-line pt-6">
-        <legend className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
-          Metadata
-        </legend>
-        <Field id="metaTitle" label="Meta title">
-          {(aria) => <Input {...aria} name="metaTitle" defaultValue={page?.metaTitle ?? ""} />}
-        </Field>
-        <Field
-          id="metaDescription"
-          label="Meta description"
-          hint="At least 70 characters, and different from every other city page for this service."
-        >
-          {(aria) => (
-            <Textarea {...aria} name="metaDescription" rows={3} defaultValue={page?.metaDescription ?? ""} />
-          )}
-        </Field>
-        <Field
-          id="canonical"
-          label="Canonical override"
-          hint="Leave blank to derive it from the page URL, which is almost always correct."
-        >
-          {(aria) => <Input {...aria} name="canonical" defaultValue={page?.canonical ?? ""} />}
-        </Field>
       </fieldset>
 
       <div className="flex gap-2 border-t border-line pt-5">

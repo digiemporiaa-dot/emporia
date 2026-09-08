@@ -8,6 +8,8 @@ import * as pageService from "@/lib/services/serviceCityPage.service";
 import * as packageService from "@/lib/services/package.service";
 import { packageSchema } from "@/lib/validation/package";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
+import { isSeoEntity, updateEntitySeo } from "@/lib/services/seo.service";
+import { pageSeoSchema } from "@/lib/validation/seo";
 import { log } from "@/lib/logger";
 
 /**
@@ -98,9 +100,6 @@ export async function saveServiceCityPageAction(
       positioning: raw["positioning"] || null,
       ctaHeading: raw["ctaHeading"] || null,
       ctaBody: raw["ctaBody"] || null,
-      metaTitle: raw["metaTitle"] || null,
-      metaDescription: raw["metaDescription"] || null,
-      canonical: raw["canonical"] || null,
     });
 
     if (!parsed.success) {
@@ -230,8 +229,6 @@ export async function savePackageAction(
       isRecommended: raw["isRecommended"] === "on" || raw["isRecommended"] === "true",
       tagline: raw["tagline"] || null,
       serviceId: raw["serviceId"] || null,
-      metaTitle: raw["metaTitle"] || null,
-      metaDescription: raw["metaDescription"] || null,
       features: parseFeatures(formData.get("features")),
     });
 
@@ -253,6 +250,53 @@ export async function savePackageAction(
     return { ok: true, data: { id: pkg.id } };
   } catch (error) {
     actionLog.error({ err: error }, "savePackage failed");
+    return toActionFailure(error);
+  }
+}
+
+/**
+ * Save the SEO record for a catalog entity.
+ *
+ * One action for cities, packages and service-city pages: the shape is the
+ * same for all of them, and the service resolves the entity from a closed
+ * whitelist rather than trusting the form field as a model name.
+ */
+export async function saveEntitySeoAction(
+  _prev: ActionResult<{ id: string }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }> | null> {
+  try {
+    const actor = await requireActor();
+    const raw = fields(formData);
+
+    const entity = typeof raw["entity"] === "string" ? raw["entity"] : "";
+    const id = typeof raw["id"] === "string" ? raw["id"] : "";
+    if (!isSeoEntity(entity) || !id) {
+      return { ok: false, code: "VALIDATION", message: "Missing or unknown record." };
+    }
+
+    const parsed = pageSeoSchema.safeParse({
+      ...raw,
+      // Unchecked boxes are absent from FormData entirely, which is not the
+      // same as false unless it is made so here.
+      robotsIndex: raw["robotsIndex"] === "on",
+      robotsFollow: raw["robotsFollow"] === "on",
+    });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the SEO fields.",
+        details: parsed.error.flatten().fieldErrors,
+      };
+    }
+
+    await updateEntitySeo(actor, entity, id, parsed.data);
+
+    revalidatePath("/admin/catalog");
+    return { ok: true, data: { id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "save entity seo failed");
     return toActionFailure(error);
   }
 }

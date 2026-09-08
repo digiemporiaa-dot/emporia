@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
-import { requirePermission } from "@/lib/auth/rbac";
+import { can, requirePermission } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { getPackage } from "@/lib/services/package.service";
 import { isAppError } from "@/lib/errors";
 import { formatMoney, lineTotals } from "@/lib/money";
 import { Badge, Card, CardBody } from "@/components/ui";
 import { PackageForm } from "../package-form";
+
+import { getEntitySeo } from "@/lib/services/seo.service";
+import { EntitySeoPanel } from "@/components/admin/entity-seo-panel";
 
 export const metadata: Metadata = { title: "Edit package" };
 
@@ -41,6 +44,21 @@ export default async function EditPackagePage({
     unitPrice: pkg.price.toString(),
     taxRate: pkg.taxRate.toString(),
   });
+
+
+  // SEO lives in its own panel, gated on `seo.edit` rather than `catalog.edit`.
+  const seoRecord = await getEntitySeo(actor, "servicePackage", packageId);
+  const seoMediaIds = [seoRecord.seo?.ogImageId, seoRecord.seo?.twitterImageId].filter(
+    (value): value is string => Boolean(value),
+  );
+  const seoMedia =
+    seoMediaIds.length === 0
+      ? []
+      : await db.media.findMany({
+          where: { id: { in: seoMediaIds }, deletedAt: null },
+          select: { id: true, url: true, filename: true, type: true },
+        });
+  const seoMediaById = new Map(seoMedia.map((row) => [row.id, row]));
 
   return (
     <>
@@ -75,8 +93,6 @@ export default async function EditPackagePage({
               isRecommended: pkg.isRecommended,
               status: pkg.status,
               order: pkg.order,
-              metaTitle: pkg.seo?.metaTitle ?? null,
-              metaDescription: pkg.seo?.metaDescription ?? null,
               features: pkg.features.map((f) => ({
                 label: f.label,
                 detail: f.detail ?? "",
@@ -119,6 +135,22 @@ export default async function EditPackagePage({
           </Card>
         </aside>
       </div>
+
+      <EntitySeoPanel
+        entity="servicePackage"
+        id={packageId}
+        seo={seoRecord.seo}
+        ogImage={
+          seoRecord.seo?.ogImageId ? (seoMediaById.get(seoRecord.seo.ogImageId) ?? null) : null
+        }
+        twitterImage={
+          seoRecord.seo?.twitterImageId
+            ? (seoMediaById.get(seoRecord.seo.twitterImageId) ?? null)
+            : null
+        }
+        titleHint="Blank uses the package name."
+        canEdit={can(actor, "seo.edit")}
+      />
     </>
   );
 }

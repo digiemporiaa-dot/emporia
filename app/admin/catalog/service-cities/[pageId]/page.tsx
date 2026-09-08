@@ -11,6 +11,9 @@ import { ServiceCityPageForm } from "../page-form";
 import { PublishPanel } from "../publish-panel";
 import { LocalFaqs } from "../local-faqs";
 
+import { getEntitySeo } from "@/lib/services/seo.service";
+import { EntitySeoPanel } from "@/components/admin/entity-seo-panel";
+
 export const metadata: Metadata = { title: "Edit local page" };
 
 export default async function EditServiceCityPage({
@@ -39,6 +42,21 @@ export default async function EditServiceCityPage({
   const industries = Array.isArray(page.industries)
     ? page.industries.filter((i): i is string => typeof i === "string")
     : [];
+
+
+  // SEO lives in its own panel, gated on `seo.edit` rather than `catalog.edit`.
+  const seoRecord = await getEntitySeo(actor, "serviceCityPage", pageId);
+  const seoMediaIds = [seoRecord.seo?.ogImageId, seoRecord.seo?.twitterImageId].filter(
+    (value): value is string => Boolean(value),
+  );
+  const seoMedia =
+    seoMediaIds.length === 0
+      ? []
+      : await db.media.findMany({
+          where: { id: { in: seoMediaIds }, deletedAt: null },
+          select: { id: true, url: true, filename: true, type: true },
+        });
+  const seoMediaById = new Map(seoMedia.map((row) => [row.id, row]));
 
   return (
     <>
@@ -83,9 +101,6 @@ export default async function EditServiceCityPage({
               positioning: page.positioning,
               ctaHeading: page.ctaHeading,
               ctaBody: page.ctaBody,
-              metaTitle: page.seo?.metaTitle ?? null,
-              metaDescription: page.seo?.metaDescription ?? null,
-              canonical: page.seo?.canonical ?? null,
             }}
           />
 
@@ -111,6 +126,22 @@ export default async function EditServiceCityPage({
           )}
         </aside>
       </div>
+
+      <EntitySeoPanel
+        entity="serviceCityPage"
+        id={pageId}
+        seo={seoRecord.seo}
+        ogImage={
+          seoRecord.seo?.ogImageId ? (seoMediaById.get(seoRecord.seo.ogImageId) ?? null) : null
+        }
+        twitterImage={
+          seoRecord.seo?.twitterImageId
+            ? (seoMediaById.get(seoRecord.seo.twitterImageId) ?? null)
+            : null
+        }
+        titleHint="Blank is generated from the service and city."
+        canEdit={can(actor, "seo.edit")}
+      />
     </>
   );
 }

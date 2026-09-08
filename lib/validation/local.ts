@@ -32,9 +32,10 @@ export const serviceCityPageSchema = z.object({
   positioning: z.string().trim().max(2000).nullable().optional(),
   ctaHeading: z.string().trim().max(200).nullable().optional(),
   ctaBody: z.string().trim().max(2000).nullable().optional(),
-  metaTitle: z.string().trim().max(200).nullable().optional(),
-  metaDescription: z.string().trim().max(400).nullable().optional(),
-  canonical: z.string().trim().max(500).nullable().optional(),
+  // SEO is not here. It lives on the shared `Seo` relation and is edited by the
+  // SEO panel on the same screen, which offers the whole record rather than
+  // three of its fields. Two forms writing one column silently revert each
+  // other (CLAUDE.md 4).
 });
 
 export type ServiceCityPageInput = z.infer<typeof serviceCityPageSchema>;

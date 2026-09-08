@@ -85,13 +85,9 @@ export async function createPackage(actor: Actor, input: PackageInput) {
   const pkg = await withAudit(
     { actor, action: "CREATE", entityType: "ServicePackage", entityId: input.slug },
     async (tx) => {
-      const seo = await tx.seo.create({
-        data: {
-          metaTitle: input.metaTitle ?? null,
-          metaDescription: input.metaDescription ?? null,
-          schemaType: SchemaType.NONE,
-        },
-      });
+      // Created empty and linked; the SEO panel on the package's own screen
+      // fills it in.
+      const seo = await tx.seo.create({ data: { schemaType: SchemaType.NONE } });
 
       const created = await tx.servicePackage.create({
         data: {
@@ -159,15 +155,9 @@ export async function updatePackage(actor: Actor, id: string, input: PackageInpu
         },
       });
 
-      if (before.seo) {
-        await tx.seo.update({
-          where: { id: before.seo.id },
-          data: {
-            metaTitle: input.metaTitle ?? null,
-            metaDescription: input.metaDescription ?? null,
-          },
-        });
-      }
+      // SEO is not touched here. It has its own panel and its own permission
+      // (`seo.edit`), and a package edit by someone without it must not wipe
+      // the metadata (CLAUDE.md 4).
 
       // Features are ordered and replaced wholesale, which keeps the stored
       // order authoritative rather than reconciling a diff.

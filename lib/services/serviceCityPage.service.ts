@@ -165,14 +165,10 @@ export async function createPage(actor: Actor, input: ServiceCityPageInput) {
     async (tx) => {
       // The Seo row is created first and linked by id: Prisma will not accept a
       // nested relation create alongside scalar foreign keys in the same call.
-      const seo = await tx.seo.create({
-        data: {
-          metaTitle: input.metaTitle ?? null,
-          metaDescription: input.metaDescription ?? null,
-          canonical: input.canonical ?? null,
-          schemaType: SchemaType.LOCAL_BUSINESS,
-        },
-      });
+      // Created empty and linked: the SEO panel on the page's own screen fills
+      // it in. The schema type is set here because it is a property of what
+      // this entity *is*, not an editorial choice.
+      const seo = await tx.seo.create({ data: { schemaType: SchemaType.LOCAL_BUSINESS } });
 
       return tx.serviceCityPage.create({
         data: {
@@ -214,27 +210,9 @@ export async function updatePage(actor: Actor, id: string, input: ServiceCityPag
         },
       });
 
-      // Upsert the Seo record rather than assuming one exists.
-      if (before.seo) {
-        await tx.seo.update({
-          where: { id: before.seo.id },
-          data: {
-            metaTitle: input.metaTitle ?? null,
-            metaDescription: input.metaDescription ?? null,
-            canonical: input.canonical ?? null,
-          },
-        });
-      } else {
-        const seo = await tx.seo.create({
-          data: {
-            metaTitle: input.metaTitle ?? null,
-            metaDescription: input.metaDescription ?? null,
-            canonical: input.canonical ?? null,
-            schemaType: SchemaType.LOCAL_BUSINESS,
-          },
-        });
-        await tx.serviceCityPage.update({ where: { id }, data: { seoId: seo.id } });
-      }
+      // SEO is not touched here. It has its own panel and its own permission
+      // (`seo.edit`), and a page edit by someone without it must not wipe the
+      // metadata (CLAUDE.md 4).
 
       return updated;
     },

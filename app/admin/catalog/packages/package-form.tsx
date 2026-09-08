@@ -5,7 +5,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { AlertCircle } from "lucide-react";
-import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { Button, Field, Input, Select } from "@/components/ui";
 import { savePackageAction, type PackageActionState } from "../actions";
 
 type Feature = { label: string; detail: string; isIncluded: boolean };
@@ -23,8 +23,6 @@ type PackageValues = {
   isRecommended: boolean;
   status: string;
   order: number;
-  metaTitle: string | null;
-  metaDescription: string | null;
   features: Feature[];
 };
 
@@ -216,20 +214,6 @@ export function PackageForm({
         >
           <Plus size={14} aria-hidden="true" /> Add feature
         </Button>
-      </fieldset>
-
-      <fieldset className="space-y-5 border-t border-line pt-6">
-        <legend className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
-          Metadata
-        </legend>
-        <Field id="metaTitle" label="Meta title">
-          {(aria) => <Input {...aria} name="metaTitle" defaultValue={pkg?.metaTitle ?? ""} />}
-        </Field>
-        <Field id="metaDescription" label="Meta description">
-          {(aria) => (
-            <Textarea {...aria} name="metaDescription" rows={3} defaultValue={pkg?.metaDescription ?? ""} />
-          )}
-        </Field>
       </fieldset>
 
       <div className="border-t border-line pt-5">

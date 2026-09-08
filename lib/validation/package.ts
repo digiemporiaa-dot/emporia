@@ -42,8 +42,7 @@ export const packageSchema = z.object({
   isRecommended: z.boolean().default(false),
   status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).default("DRAFT"),
   order: z.coerce.number().int().min(0).max(9999).default(0),
-  metaTitle: z.string().trim().max(200).nullable().optional(),
-  metaDescription: z.string().trim().max(400).nullable().optional(),
+  // SEO lives on the shared `Seo` relation, edited by the SEO panel.
   features: z.array(packageFeatureSchema).max(40).default([]),
 });
 
