@@ -232,6 +232,30 @@ describeDb("page CMS service", () => {
     expect(untouched.order).toBe(0);
   });
 
+  it("records the create against the page's id, so its history is findable", async () => {
+    // Keyed to the slug, the create row vanished from the page's history and
+    // went stale the moment the page was renamed.
+    const page = track(await pageService.createPage(editor, { title: "Audited create" }));
+
+    const entries = await db.auditLog.findMany({
+      where: { entityType: "Page", entityId: page.id, action: "CREATE" },
+      select: { id: true },
+    });
+    expect(entries.length).toBe(1);
+
+    await pageService.updatePage(editor, page.id, {
+      title: "Audited create renamed",
+      slug: "audited-create-renamed",
+      status: "DRAFT",
+    });
+
+    const trail = await pageService.listPageAudit(
+      { ...editor, permissions: new Set([...editor.permissions, "audit.view"]) },
+      page.id,
+    );
+    expect(trail.map((row) => row.action)).toEqual(expect.arrayContaining(["CREATE", "UPDATE"]));
+  });
+
   it("writes an audit row for a publish", async () => {
     const page = track(await pageService.createPage(editor, { title: "Audited page" }));
     await pageService.setPageStatus(editor, page.id, "PUBLISHED");

@@ -194,6 +194,24 @@ Then sign in at `/auth/login` and go to `/admin`.
 > `demo.seededAt` in `SiteSetting` so you can identify it later, but cleaning it
 > out of a live database is work you should not have to do.
 
+### Who can edit the website
+
+The page CMS uses its own `pages.*` permissions, deliberately separate from
+`content.*` (which is the content *calendar*). Seeded to ADMIN,
+MARKETING_MANAGER and CONTENT_MANAGER; `pages.view` is in the read-only
+baseline. Editing a page's SEO additionally needs `seo.edit`, and the history
+panel needs `audit.view` — so a role can be given metadata control without
+content control, or the reverse.
+
+### Draft preview links
+
+A page can carry one unlisted preview link, for showing a draft to someone
+without an admin account. The token is 32 CSPRNG bytes and is the entire
+credential: anyone with the URL sees the page. It is noindex, absent from the
+sitemap, and revoked by rotating or clearing it from the page editor — both
+take effect immediately. If your content is sensitive enough that an unlisted
+URL is not acceptable, do not issue one; nothing else depends on the feature.
+
 ---
 
 ## 6. Integrations that need configuration outside the app

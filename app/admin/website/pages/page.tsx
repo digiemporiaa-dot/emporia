@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
@@ -9,6 +10,9 @@ import { Pagination } from "@/components/admin/pagination";
 import { PageFilters } from "./page-filters";
 import { PageStatusBadge } from "./page-status";
 import { PreviewLink, RowActions } from "./row-actions";
+import { TableSkeleton } from "../table-skeleton";
+import type { Actor } from "@/lib/actor/types";
+import type { PageListInput } from "@/lib/validation/page";
 
 export const metadata: Metadata = { title: "Pages" };
 export const dynamic = "force-dynamic";
@@ -28,13 +32,7 @@ export default async function PagesAdminPage({
   const parsed = pageListSchema.safeParse(raw);
   const params = parsed.success ? parsed.data : pageListSchema.parse({});
 
-  // listPages performs the permission check itself.
-  const result = await listPages(actor, params);
-
   const canCreate = can(actor, "pages.create");
-  const canEdit = can(actor, "pages.edit");
-  const canPublish = can(actor, "pages.publish");
-  const canDelete = can(actor, "pages.delete");
   const inBin = params.view === "deleted";
 
   return (
@@ -60,7 +58,30 @@ export default async function PagesAdminPage({
       <PageFilters params={params} />
 
       <div className="mt-4">
-        <TableWrap>
+        <Suspense key={JSON.stringify(params)} fallback={<TableSkeleton />}>
+          <PagesTable actor={actor} params={params} />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The rows themselves, so the filters stay interactive while the query runs.
+ */
+async function PagesTable({ actor, params }: { actor: Actor; params: PageListInput }) {
+  // listPages performs the permission check itself.
+  const result = await listPages(actor, params);
+
+  const canCreate = can(actor, "pages.create");
+  const canEdit = can(actor, "pages.edit");
+  const canPublish = can(actor, "pages.publish");
+  const canDelete = can(actor, "pages.delete");
+  const inBin = params.view === "deleted";
+
+  return (
+    <>
+        <TableWrap label="Pages">
           <Table>
             <THead>
               <TR>
@@ -133,15 +154,14 @@ export default async function PagesAdminPage({
           </Table>
         </TableWrap>
 
-        <Pagination
-          basePath="/admin/website/pages"
-          params={params}
-          page={result.page}
-          pages={result.pages}
-          total={result.total}
-          perPage={result.perPage}
-        />
-      </div>
+      <Pagination
+        basePath="/admin/website/pages"
+        params={params}
+        page={result.page}
+        pages={result.pages}
+        total={result.total}
+        perPage={result.perPage}
+      />
     </>
   );
 }

@@ -36,6 +36,7 @@ const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "link", href: "/admin/clients", label: "Clients", icon: "clients" }, permission: "clients.view" },
   { item: { kind: "link", href: "/admin/projects", label: "Projects", icon: "projects" }, permission: "projects.view" },
   { item: { kind: "link", href: "/admin/website/pages", label: "Website", icon: "pages" }, permission: "pages.view" },
+  { item: { kind: "link", href: "/admin/website/sections", label: "Sections", icon: "sections" }, permission: "pages.view" },
   { item: { kind: "link", href: "/admin/catalog", label: "Catalog", icon: "content" }, permission: "catalog.view" },
   { item: { kind: "link", href: "/admin/content", label: "Content", icon: "content" }, permission: "content.view" },
   { item: { kind: "link", href: "/admin/approvals", label: "Approvals", icon: "approvals" }, permission: "approvals.view" },

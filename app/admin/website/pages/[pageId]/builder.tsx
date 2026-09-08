@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
+  Blocks,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -12,6 +13,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Unlink,
 } from "lucide-react";
 import { Button, Dialog, useToast } from "@/components/ui";
 import type { PickedMedia } from "@/components/admin/media-picker";
@@ -20,6 +22,8 @@ import type { ActionResult } from "@/lib/errors";
 import { BlockFields, type Content } from "./block-fields";
 import {
   addSectionAction,
+  detachSectionAction,
+  insertReusableSectionAction,
   deleteSectionAction,
   duplicateSectionAction,
   reorderSectionsAction,
@@ -46,6 +50,15 @@ export type BuilderSection = {
   name: string | null;
   isVisible: boolean;
   content: unknown;
+  reusableSectionId: string | null;
+};
+
+export type InsertableReusable = {
+  id: string;
+  key: string;
+  name: string;
+  type: string;
+  isGlobal: boolean;
 };
 
 type Props = {
@@ -53,6 +66,8 @@ type Props = {
   sections: readonly BuilderSection[];
   /** Every image any section references, keyed by media id. */
   media: Record<string, PickedMedia>;
+  /** Published reusable sections available to place. */
+  reusables: readonly InsertableReusable[];
   canEdit: boolean;
 };
 
@@ -69,7 +84,7 @@ function summarise(section: BuilderSection): string {
   return "";
 }
 
-export function PageBuilder({ pageId, sections, media, canEdit }: Props) {
+export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Props) {
   const router = useRouter();
   const { push } = useToast();
   const [pending, startTransition] = React.useTransition();
@@ -159,7 +174,10 @@ export function PageBuilder({ pageId, sections, media, canEdit }: Props) {
       ) : (
         <ol className="space-y-2">
           {order.map((section, index) => {
-            const editable = isBlockType(section.type);
+            const linked = Boolean(section.reusableSectionId);
+            // A linked section is edited where it is authored; editing the copy
+            // here would be overwritten by the next save of the original.
+            const editable = isBlockType(section.type) && !linked;
             const summary = summarise(section);
             const warnings = blockWarnings(section.type, section.content);
 
@@ -196,7 +214,12 @@ export function PageBuilder({ pageId, sections, media, canEdit }: Props) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-navy-800">
                     {section.name ?? section.type}
-                    {!editable ? (
+                    {linked ? (
+                      <span className="ml-2 inline-flex items-center gap-1 text-2xs font-normal uppercase tracking-wide text-navy-700">
+                        <Blocks size={11} aria-hidden="true" />
+                        reusable
+                      </span>
+                    ) : !isBlockType(section.type) ? (
                       <span className="ml-2 text-2xs font-normal uppercase tracking-wide text-ink-subtle">
                         built-in
                       </span>
@@ -266,6 +289,20 @@ export function PageBuilder({ pageId, sections, media, canEdit }: Props) {
                     >
                       <Pencil size={14} aria-hidden="true" />
                     </IconButton>
+                    {linked ? (
+                      <IconButton
+                        label={`Unlink ${section.name ?? section.type} from its reusable section`}
+                        disabled={pending}
+                        onClick={() =>
+                          run(
+                            () => detachSectionAction(pageId, section.id),
+                            "Unlinked. This section is now independent.",
+                          )
+                        }
+                      >
+                        <Unlink size={14} aria-hidden="true" />
+                      </IconButton>
+                    ) : null}
                     <IconButton
                       label={`Delete ${section.name ?? section.type}`}
                       disabled={pending}
@@ -283,10 +320,15 @@ export function PageBuilder({ pageId, sections, media, canEdit }: Props) {
 
       {adding ? (
         <AddSectionDialog
+          reusables={reusables}
           onClose={() => setAdding(false)}
           onPick={(type) => {
             setAdding(false);
             run(() => addSectionAction(pageId, type), "Section added.");
+          }}
+          onPickReusable={(id) => {
+            setAdding(false);
+            run(() => insertReusableSectionAction(pageId, id), "Reusable section placed.");
           }}
         />
       ) : null}
@@ -364,15 +406,49 @@ function IconButton({
 }
 
 function AddSectionDialog({
+  reusables,
   onClose,
   onPick,
+  onPickReusable,
 }: {
+  reusables: readonly InsertableReusable[];
   onClose: () => void;
   onPick: (type: BlockType) => void;
+  onPickReusable: (id: string) => void;
 }) {
   return (
     <Dialog open onClose={onClose} title="Add a section" description="Pick a block to add to the end of the page.">
       <div className="space-y-5">
+        {reusables.length > 0 ? (
+          <div>
+            <p className="mb-2 text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
+              Reusable
+            </p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {reusables.map((reusable) => (
+                <li key={reusable.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPickReusable(reusable.id)}
+                    className="w-full rounded-md border border-line px-3 py-2.5 text-left hover:border-brand-red hover:bg-red-50/40"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium text-navy-800">{reusable.name}</span>
+                      {reusable.isGlobal ? (
+                        <span className="text-2xs uppercase tracking-wide text-navy-700">
+                          global
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-ink-subtle">
+                      Edited centrally — changes reach every page using it.
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {GROUPS.map((group) => {
           const blocks = BLOCK_LIBRARY.filter((block) => block.group === group);
           if (blocks.length === 0) return null;

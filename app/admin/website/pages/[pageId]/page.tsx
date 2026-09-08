@@ -3,18 +3,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
 import { can, requirePermission } from "@/lib/auth/rbac";
-import { getPage } from "@/lib/services/page.service";
+import { getPage, listPageAudit } from "@/lib/services/page.service";
 import { isAppError } from "@/lib/errors";
 import { PageStatusBadge } from "../page-status";
 import { PreviewLink } from "../row-actions";
 import { PageSettingsForm } from "./page-settings-form";
 import { PageBuilder } from "./builder";
 import { SeoPanel } from "./seo-panel";
+import { AuditTrail } from "./audit-trail";
 import { analysePage } from "@/lib/seo/analyzer";
 import { siteDefaults } from "@/lib/seo/defaults";
 import { absoluteUrl } from "@/lib/seo/urls";
 import { db } from "@/lib/db";
 import { mediaIdsIn } from "@/lib/content/blocks";
+import { listInsertable } from "@/lib/services/reusable-section.service";
 
 export const metadata: Metadata = { title: "Edit page" };
 
@@ -57,6 +59,9 @@ export default async function EditPagePage({
           select: { id: true, url: true, filename: true, type: true },
         });
   const mediaById = Object.fromEntries(mediaRows.map((row) => [row.id, row]));
+  const reusables = can(actor, "pages.edit") ? await listInsertable(actor) : [];
+  // Gated on audit.view, so a role without it simply does not see the section.
+  const audit = can(actor, "audit.view") ? await listPageAudit(actor, page.id) : null;
 
   // The report describes the page as saved, so a social image or an OG record
   // added elsewhere is reflected without the editor having to touch this form.
@@ -111,6 +116,7 @@ export default async function EditPagePage({
         pageId={page.id}
         sections={page.sections}
         media={mediaById}
+        reusables={reusables}
         canEdit={can(actor, "pages.edit")}
       />
 
@@ -126,6 +132,8 @@ export default async function EditPagePage({
         canEditSeo={can(actor, "seo.edit")}
         canEdit={can(actor, "pages.edit")}
       />
+
+      {audit ? <AuditTrail entries={audit} /> : null}
 
     </>
   );

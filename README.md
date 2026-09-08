@@ -152,6 +152,28 @@ removed later.
 >
 > The Docker image does exactly this.
 
+## The page CMS
+
+`/admin/website/pages` builds pages from fourteen blocks — heading, rich text,
+list, text list, icon, icon cards, image, image box, image and text, image
+cards, table, feature, call to action, FAQ — with drag-and-drop reordering
+(and Move up/down buttons, because reordering cannot be mouse-only).
+
+`/admin/website/sections` holds **reusable sections**: a band authored once and
+placed on many pages. Saving a published one updates every page it appears on,
+in one transaction; the admin says how many before you save. Deleting one leaves
+every page rendering — placements keep their content and simply stop updating.
+
+Each page carries an SEO panel (meta, canonical, Open Graph, Twitter, robots,
+schema type) and a 0–100 analyzer that reports twelve checks. It reports; it
+does not block publishing.
+
+A page can also be shared as an unlisted **draft preview** link for someone
+without an admin account. The link is revocable, never indexed, and never in the
+sitemap.
+
+Design notes are in [docs/ARCHITECTURE.md §17.1b](docs/ARCHITECTURE.md).
+
 ## Docker
 
 ```bash

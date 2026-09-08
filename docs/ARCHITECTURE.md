@@ -1225,6 +1225,62 @@ runner   → slim, non-root `nextjs` user, curl for the health probe,
 > runs — had nothing to execute with and every container reported unhealthy
 > while serving fine (docs/DEPLOYMENT.md §4).
 
+### 17.1b The page CMS
+
+Pages are assembled from **sections**, each a row in `PageSection` holding a
+`type` and a JSON `content`. Two families share that table:
+
+- **Builder blocks** (`lib/content/blocks.ts`) — fourteen general-purpose types
+  an editor can add, edit and reorder. Each owns a zod schema, a label and a set
+  of valid defaults.
+- **Bespoke bands** (`lib/content/sections.ts`) — `hero`, `positioning`,
+  `industries`, `roles`, `legal`. Hand-composed for the homepage, About, Careers
+  and the legal pages. They still render and are deliberately *not* offered in
+  the builder, which also refuses to edit one.
+
+`SECTION_SCHEMAS` is the union of both, and `parseSections` validates every row
+before render, dropping any that does not match its own schema. Bad CMS data
+degrades one band, never the page.
+
+**Content is parsed, not trusted.** A section save validates against that
+block's schema and stores the *parsed* value, so unknown keys are stripped and a
+row can never hold a shape the renderer has not agreed to.
+
+**Rich text is markdown-lite**, not HTML: `**bold**`, `*italic*`, `[text](/path)`,
+parsed to React elements by `lib/content/inline.ts`. Nothing in this path reaches
+`dangerouslySetInnerHTML`, so there is no sanitiser to keep current and no
+stored-XSS surface. External and `javascript:` links render as plain text.
+
+**Images are referenced by `mediaId` alone** and resolved in one batched query
+per page (`lib/content/media.ts`), so a replaced or re-described image is correct
+everywhere it appears instead of leaving stale URLs in section JSON.
+
+**Reusable sections** are authored once and placed on many pages. The
+relationship is a reference: `PageSection.reusableSectionId` plus a snapshot of
+the resolved type and content on the row itself. The snapshot means the public
+query needs no join, and that a reusable section which is later unpublished or
+deleted leaves every placement rendering its last known good state rather than
+blanking a band on eleven pages. Saving a *published* one rewrites every
+placement in the same transaction; saving a draft does not, so work in progress
+never reaches live pages. Deleting one detaches its placements. Unlinking a
+single placement makes it an ordinary section, which is how a one-off variation
+is made without forking or editing for everyone.
+
+`isGlobal` marks a site-standard band: it sorts first when placing one. Automatic
+placement — a global section the site inserts on every page without an editor
+adding it — is **not** implemented; the flag is the foundation for it.
+
+**Headings.** Builder blocks cap at `h2` so the document outline survives, and
+`PageSections` renders the page title as the `h1` when no section provides one.
+`hero` and `legal` provide their own, so the hand-composed pages are untouched.
+
+> **No `loading.tsx` above a route that calls `notFound()`.** This is 17.2's
+> trap in a second place: a segment loading boundary also wraps that segment's
+> children, and Next streams the shell before the child runs — so a dead
+> `/admin/website/pages/<id>` answered **200** with a skeleton instead of 404.
+> The admin list skeletons are rendered through an explicit `<Suspense>` inside
+> the list page instead, which keeps the loading state and the status code.
+
 ### 17.2 The build-time database problem
 
 This is the one genuinely awkward interaction between Next and containers, and

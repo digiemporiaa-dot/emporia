@@ -7,14 +7,31 @@ import { cn } from "@/lib/utils/cn";
  * the page itself scroll sideways.
  */
 
-export function TableWrap({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function TableWrap({
+  className,
+  label = "Table",
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { label?: string }) {
   return (
     <div
+      // A horizontally scrolling region has to be reachable by keyboard, or the
+      // columns past the right edge are mouse-only. Rows normally contain links
+      // that provide that focus, but an empty table has none — which is exactly
+      // when axe reports scrollable-region-focusable, and exactly when a
+      // keyboard user is most stuck. `tabIndex` plus a named region fixes both
+      // cases (WCAG 2.1.1; CLAUDE.md 12).
+      role="region"
+      aria-label={label}
+      tabIndex={0}
       // `relative` is load-bearing: it makes this the containing block for any
       // absolutely positioned descendant (an .sr-only label, for instance), so
       // such elements are clipped by this scroller instead of escaping to the
       // viewport and widening the whole page.
-      className={cn("relative w-full overflow-x-auto rounded-lg border border-line bg-white", className)}
+      className={cn(
+        "relative w-full overflow-x-auto rounded-lg border border-line bg-white",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red",
+        className,
+      )}
       {...props}
     />
   );

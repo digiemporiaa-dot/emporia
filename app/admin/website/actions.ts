@@ -10,6 +10,8 @@ import {
 } from "@/lib/validation/page";
 import * as pageService from "@/lib/services/page.service";
 import { pageSeoSchema } from "@/lib/validation/seo";
+import * as reusableService from "@/lib/services/reusable-section.service";
+import { reusableSectionDraftSchema } from "@/lib/validation/page";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -367,6 +369,121 @@ export async function revokePreviewTokenAction(
     return { ok: true, data: { id: pageId } };
   } catch (error) {
     actionLog.error({ err: error }, "revoke preview token failed");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reusable sections
+// ---------------------------------------------------------------------------
+
+const REUSABLE_PATH = "/admin/website/sections";
+
+export type ReusableActionState = ActionResult<{ id: string }> | null;
+
+export async function createReusableSectionAction(
+  _prev: ReusableActionState,
+  formData: FormData,
+): Promise<ReusableActionState> {
+  try {
+    const actor = await requireActor();
+    const raw = fields(formData);
+
+    const parsed = reusableSectionDraftSchema.safeParse({
+      name: raw["name"],
+      type: raw["type"],
+      isGlobal: raw["isGlobal"] === "on",
+    });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the form.",
+        details: parsed.error.flatten().fieldErrors,
+      };
+    }
+
+    const section = await reusableService.createReusableSection(actor, parsed.data);
+
+    revalidatePath(REUSABLE_PATH);
+    return { ok: true, data: { id: section.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "create reusable section failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function saveReusableSectionAction(
+  id: string,
+  input: { name: string; status: string; isGlobal: boolean; content: unknown },
+): Promise<ActionResult<{ id: string; placements: number }>> {
+  try {
+    const actor = await requireActor();
+
+    const status = publishStatusSchema.safeParse(input.status);
+    if (!status.success) {
+      return { ok: false, code: "VALIDATION", message: "Unknown status." };
+    }
+
+    const section = await reusableService.updateReusableSection(actor, id, {
+      name: input.name,
+      status: status.data,
+      isGlobal: input.isGlobal,
+      content: input.content,
+    });
+
+    revalidatePath(REUSABLE_PATH);
+    revalidatePath(`${REUSABLE_PATH}/${id}`);
+    return { ok: true, data: { id: section.id, placements: section._count.usages } };
+  } catch (error) {
+    actionLog.error({ err: error }, "save reusable section failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function deleteReusableSectionAction(
+  id: string,
+): Promise<ActionResult<{ detached: number }>> {
+  try {
+    const actor = await requireActor();
+    const result = await reusableService.deleteReusableSection(actor, id);
+
+    revalidatePath(REUSABLE_PATH);
+    return { ok: true, data: result };
+  } catch (error) {
+    actionLog.error({ err: error }, "delete reusable section failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function insertReusableSectionAction(
+  pageId: string,
+  reusableId: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const section = await reusableService.insertReusableSection(actor, pageId, reusableId);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: { id: section.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "insert reusable section failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function detachSectionAction(
+  pageId: string,
+  sectionId: string,
+): Promise<ActionResult<{ pageId: string }>> {
+  try {
+    const actor = await requireActor();
+    const result = await reusableService.detachSection(actor, sectionId);
+
+    revalidatePath(BUILDER_PATH(pageId));
+    return { ok: true, data: result };
+  } catch (error) {
+    actionLog.error({ err: error }, "detach section failed");
     return toActionFailure(error);
   }
 }

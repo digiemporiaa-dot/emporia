@@ -163,10 +163,19 @@ export async function createPage(actor: Actor, input: PageDraftInput) {
   const slug = input.slug ?? (await uniqueSlug(input.title, slugTaken));
   await assertSlugFree(slug);
 
-  const page = await withAudit(
-    { actor, action: "CREATE", entityType: "Page", entityId: slug },
-    (tx) => tx.page.create({ data: { title: input.title, slug, status: "DRAFT" } }),
-  );
+  // Audited under the generated id, not the slug: `withAudit` fixes entityId
+  // before the row exists, and a page's slug is mutable — keying its history to
+  // one makes the create unfindable by id and stale the moment it is renamed.
+  const page = await db.$transaction(async (tx) => {
+    const created = await tx.page.create({
+      data: { title: input.title, slug, status: "DRAFT" },
+    });
+    await record(
+      { actor, action: "CREATE", entityType: "Page", entityId: created.id, after: created },
+      tx,
+    );
+    return created;
+  });
 
   revalidateTag(PAGE_TAG);
   return page;
@@ -675,6 +684,41 @@ export async function getPageByPreviewToken(token: string) {
         orderBy: { order: "asc" },
         select: { id: true, type: true, order: true, content: true },
       },
+    },
+  });
+}
+
+/**
+ * Recent changes to a page, for the audit trail in the editor.
+ *
+ * Reads the AuditLog rows every mutation in this service already writes, so
+ * the trail cannot drift from what actually happened — there is no second
+ * bookkeeping path to forget to update. Includes rows for the page's SEO,
+ * which are recorded under their own entity type.
+ */
+export async function listPageAudit(actor: Actor, pageId: string, limit = 20) {
+  requirePermission(actor, "audit.view");
+
+  const sectionIds = (
+    await db.pageSection.findMany({ where: { pageId }, select: { id: true } })
+  ).map((section) => section.id);
+
+  return db.auditLog.findMany({
+    where: {
+      OR: [
+        { entityType: "Page", entityId: pageId },
+        { entityType: "PageSeo", entityId: pageId },
+        { entityType: "PageSection", entityId: { in: [pageId, ...sectionIds] } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      action: true,
+      entityType: true,
+      createdAt: true,
+      actor: { select: { name: true } },
     },
   });
 }

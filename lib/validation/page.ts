@@ -79,12 +79,29 @@ export const sectionOrderSchema = z
   .max(200);
 export type SectionOrderInput = z.infer<typeof sectionOrderSchema>;
 
+/**
+ * A reusable section's own key. Not `pageSlugSchema`: a reusable section has no
+ * URL, so the reserved-route list has nothing to say about it — `services` is a
+ * perfectly good name for a reusable band.
+ */
 export const reusableSectionSchema = z.object({
-  key: pageSlugSchema,
+  key: slugSchema,
   name: z.string().trim().min(2, "Name this section.").max(120),
   type: z.string().trim().min(1).max(60),
-  content: z.unknown(),
   status: publishStatusSchema.default("DRAFT"),
   isGlobal: z.boolean().default(false),
 });
+/** Creating one: the type is fixed at creation, content comes from defaults. */
+export const reusableSectionDraftSchema = z.object({
+  name: z.string().trim().min(2, "Name this section.").max(120),
+  type: z.string().trim().min(1).max(60),
+  isGlobal: z.boolean().default(false),
+});
+export type ReusableSectionDraftInput = z.infer<typeof reusableSectionDraftSchema>;
+
+export const reusableListSchema = pageParamsSchema.extend({
+  query: z.string().trim().max(120).optional(),
+  status: publishStatusSchema.optional(),
+});
+export type ReusableListInput = z.infer<typeof reusableListSchema>;
 export type ReusableSectionInput = z.infer<typeof reusableSectionSchema>;
