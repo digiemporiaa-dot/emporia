@@ -82,6 +82,7 @@ export default async function LeadDetailPage({
 }) {
   const { leadId } = await params;
   const actor = await requireActorPage("/admin/leads");
+  const aiReady = await isAIConfigured();
 
   let lead;
   try {
@@ -148,7 +149,7 @@ export default async function LeadDetailPage({
                 </p>
               </CardHeader>
               <CardBody>
-                {isAIConfigured() ? (
+                {aiReady ? (
                   <LeadAssist leadId={lead.id} computedScore={lead.score} />
                 ) : (
                   <AIUnavailable />

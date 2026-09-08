@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { requireActorPage } from "@/lib/actor";
 import { can, requirePermission } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
-import { ai, isAIConfigured } from "@/lib/ai";
+import { aiStatus } from "@/lib/services/ai-settings.service";
+import { providerLabel } from "@/lib/ai/catalog";
 import { AIUnavailable } from "@/components/admin/ai-draft";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
 import { ContentStudio, SEOStudio } from "./studio";
@@ -14,7 +15,8 @@ export default async function AIPage() {
   const actor = await requireActorPage("/admin/ai");
   requirePermission(actor, "ai.use");
 
-  const configured = isAIConfigured();
+  const status = await aiStatus();
+  const configured = status.enabled;
   const canContent = can(actor, "content.create");
   const canSeo = can(actor, "seo.edit");
 
@@ -43,7 +45,7 @@ export default async function AIPage() {
           Everything here produces a draft you edit and save yourself — nothing is written for you,
           and no figure comes from the model. Lead summaries live on the lead; the read of the
           analytics numbers lives on that page.
-          {configured ? ` Currently using ${ai().describe}.` : ""}
+          {configured ? ` Currently using ${providerLabel(status.provider ?? "")} ${status.model ?? ""}.` : ""}
         </p>
       </header>
 

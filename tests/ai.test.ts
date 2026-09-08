@@ -8,9 +8,10 @@ import {
   scoreLead,
   summarizeLead,
 } from "@/lib/services/ai.service";
-import { ai, isAIConfigured, resetAI } from "@/lib/ai";
+import { ai, isAIConfigured } from "@/lib/ai";
+import { AIError } from "@/lib/ai/errors";
 import { resetEnvCache } from "@/lib/config/env";
-import { ForbiddenError, IntegrationNotConfiguredError, ValidationError } from "@/lib/errors";
+import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { startAnthropicDouble, type AnthropicDouble } from "./support/anthropic-double";
 import type { Actor } from "@/lib/actor/types";
 
@@ -50,7 +51,6 @@ describeDb("ai assists", () => {
     process.env["AI_API_KEY"] = "test-key";
     process.env["AI_BASE_URL"] = double.url;
     resetEnvCache();
-    resetAI();
 
     const staff = await prisma.user.findFirstOrThrow({
       where: { type: "STAFF" },
@@ -168,7 +168,6 @@ describeDb("ai assists", () => {
 
     for (const key of ["AI_PROVIDER", "AI_API_KEY", "AI_BASE_URL"]) delete process.env[key];
     resetEnvCache();
-    resetAI();
   });
 
   // ── The provider itself ─────────────────────────────────────────────────
@@ -336,7 +335,11 @@ describeDb("ai assists", () => {
   it("refuses a reply that is not JSON at all", async () => {
     double.reply("Sorry, here is some prose instead of the object you wanted.");
 
-    await expect(summarizeLead(actor, leadId)).rejects.toBeInstanceOf(ValidationError);
+    // A reply that is not the shape asked for is an AI failure with its own
+    // reason, so a caller can tell it from a rejected key.
+    await expect(summarizeLead(actor, leadId)).rejects.toMatchObject({
+      reason: "AI_INVALID_RESPONSE",
+    });
   });
 
   // ── Authorization ───────────────────────────────────────────────────────
@@ -365,30 +368,26 @@ describeDb("ai assists", () => {
     delete process.env["AI_PROVIDER"];
     delete process.env["AI_API_KEY"];
     resetEnvCache();
-    resetAI();
 
-    expect(isAIConfigured()).toBe(false);
-    await expect(summarizeLead(actor, leadId)).rejects.toBeInstanceOf(
-      IntegrationNotConfiguredError,
-    );
+    expect(await isAIConfigured()).toBe(false);
+    // The typed AI failure, not a generic integration error: callers branch on
+    // `reason` to tell "no key" from "key rejected".
+    await expect(summarizeLead(actor, leadId)).rejects.toBeInstanceOf(AIError);
 
     process.env["AI_PROVIDER"] = "anthropic";
     process.env["AI_API_KEY"] = "test-key";
     resetEnvCache();
-    resetAI();
   });
 
   it("treats an unknown provider as unconfigured rather than guessing", async () => {
     process.env["AI_PROVIDER"] = "some-other-vendor";
     resetEnvCache();
-    resetAI();
 
-    expect(isAIConfigured()).toBe(false);
-    expect(ai().describe).toContain("No AI provider");
+    expect(await isAIConfigured()).toBe(false);
+    expect((await ai()).describe).toContain("No AI provider");
 
     process.env["AI_PROVIDER"] = "anthropic";
     resetEnvCache();
-    resetAI();
   });
 
   it("surfaces an API failure rather than a fabricated answer", async () => {

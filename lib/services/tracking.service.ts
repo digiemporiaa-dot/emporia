@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
-import { decryptSecret, encryptSecret, maskSecret } from "@/lib/tracking/secret";
+import { decryptSecret, encryptSecret, maskSecret } from "@/lib/security/secret";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type { Actor } from "@/lib/actor/types";
 import type { ConsentMode, TrackingSettingsInput } from "@/lib/validation/tracking";

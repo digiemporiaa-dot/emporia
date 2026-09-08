@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { IntegrationNotConfiguredError, ValidationError } from "@/lib/errors";
+import { AIError, reasonForStatus } from "@/lib/ai/errors";
+import { AI_DEFAULTS } from "@/lib/ai/catalog";
 import type {
   AIProvider,
   CompletionRequest,
@@ -11,17 +12,14 @@ import type {
 /**
  * Claude, through the official Anthropic SDK.
  *
- * The API key is read server-side from lib/config/env and never leaves this
- * process — no AI call is ever made from a browser (CLAUDE.md 2 rule 6).
+ * The model, the endpoint and the key all come from the saved configuration
+ * rather than from this file — the whole point of the settings screen is that
+ * changing a model is not a deploy. The key is read server-side per request and
+ * never leaves this process (CLAUDE.md 2 rule 6).
+ *
+ * Adaptive thinking is on by default on the Opus models, and `budget_tokens` is
+ * rejected there — the depth lever is `effort`, set per task below.
  */
-
-/**
- * Opus 5. Adaptive thinking is on by default on this model, and `budget_tokens`
- * is rejected — the depth lever is `effort`, set per task below.
- */
-const MODEL = "claude-opus-5";
-
-const DEFAULT_MAX_TOKENS = 4_000;
 
 /**
  * Drafting reads and rewrites; it does not need deep reasoning, and lower
@@ -36,26 +34,47 @@ const EFFORT: Record<string, "low" | "medium" | "high"> = {
   analyzeCRM: "high",
 };
 
+export type AnthropicOptions = {
+  apiKey: string;
+  model: string;
+  baseUrl?: string | null;
+  maxOutputTokens: number;
+  temperature?: number;
+  timeoutMs?: number;
+};
+
 export class AnthropicProvider implements AIProvider {
   readonly configured = true;
 
   private readonly client: Anthropic;
+  private readonly model: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(apiKey: string, baseUrl?: string | null) {
+  constructor(options: AnthropicOptions) {
+    const { apiKey, baseUrl, timeoutMs } = options;
     // The base URL is overridable so verification can point at a local double
     // and exercise this exact code rather than a stub.
-    this.client = new Anthropic(baseUrl ? { apiKey, baseURL: baseUrl } : { apiKey });
+    this.client = new Anthropic({
+      apiKey,
+      ...(baseUrl ? { baseURL: baseUrl } : {}),
+      timeout: timeoutMs ?? AI_DEFAULTS.timeoutMs,
+      // Retries are the caller's business: an assist button that silently takes
+      // three times as long to fail is worse than one that fails.
+      maxRetries: 0,
+    });
+    this.model = options.model;
+    this.maxOutputTokens = options.maxOutputTokens;
   }
 
   get describe(): string {
-    return `Anthropic ${MODEL}`;
+    return `Anthropic ${this.model}`;
   }
 
   async complete(request: CompletionRequest): Promise<CompletionResult> {
     const response = await this.send({
       system: request.system,
       prompt: request.prompt,
-      maxTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
+      maxTokens: request.maxTokens ?? this.maxOutputTokens,
       task: request.task,
     });
 
@@ -65,9 +84,7 @@ export class AnthropicProvider implements AIProvider {
       .join("\n")
       .trim();
 
-    if (!text) {
-      throw new ValidationError("The assistant returned nothing to show.");
-    }
+    if (!text) throw new AIError("AI_INVALID_RESPONSE");
 
     return {
       text,
@@ -85,7 +102,7 @@ export class AnthropicProvider implements AIProvider {
     const response = await this.send({
       system: request.system,
       prompt: request.prompt,
-      maxTokens: request.maxTokens ?? DEFAULT_MAX_TOKENS,
+      maxTokens: request.maxTokens ?? this.maxOutputTokens,
       task: request.task,
       // Constrains the reply to the schema, so nothing here has to pick JSON
       // out of a sentence.
@@ -102,7 +119,7 @@ export class AnthropicProvider implements AIProvider {
     try {
       parsed = JSON.parse(text);
     } catch {
-      throw new ValidationError("The assistant's answer could not be read.");
+      throw new AIError("AI_INVALID_RESPONSE");
     }
 
     return {
@@ -125,8 +142,22 @@ export class AnthropicProvider implements AIProvider {
     task: string;
     format?: { type: "json_schema"; schema: Record<string, unknown> };
   }) {
+    try {
+      return await this.request(input);
+    } catch (cause) {
+      throw asAIError(cause);
+    }
+  }
+
+  private async request(input: {
+    system: string;
+    prompt: string;
+    maxTokens: number;
+    task: string;
+    format?: { type: "json_schema"; schema: Record<string, unknown> };
+  }) {
     return this.client.messages.create({
-      model: MODEL,
+      model: this.model,
       max_tokens: input.maxTokens,
       // The instruction is stable per task and sits first, so it caches across
       // every call for that feature.
@@ -143,20 +174,39 @@ export class AnthropicProvider implements AIProvider {
 }
 
 /**
+ * The SDK's errors, mapped onto the shared reasons.
+ *
+ * A caller should not have to know which vendor answered to know whether the
+ * key was rejected or the account is rate limited.
+ */
+function asAIError(cause: unknown): AIError {
+  if (cause instanceof Anthropic.APIError && typeof cause.status === "number") {
+    return new AIError(reasonForStatus(cause.status));
+  }
+  if (cause instanceof Anthropic.APIConnectionTimeoutError) {
+    return new AIError("AI_REQUEST_TIMEOUT");
+  }
+  if (cause instanceof Error && (cause.name === "TimeoutError" || cause.name === "AbortError")) {
+    return new AIError("AI_REQUEST_TIMEOUT");
+  }
+  return new AIError("AI_PROVIDER_ERROR");
+}
+
+/**
  * No AI configured.
  *
- * Every call throws a typed error. The admin screens read `isAIConfigured()`
- * and hide the assist buttons, so nobody is offered a feature that cannot run —
- * and nothing invents an answer to stand in for one (CLAUDE.md 2 rule 5).
+ * Every call throws a typed error. The admin screens read `aiStatus()` and hide
+ * the assist buttons, so nobody is offered a feature that cannot run — and
+ * nothing invents an answer to stand in for one (CLAUDE.md 2 rule 5).
  */
 export class UnconfiguredAI implements AIProvider {
   readonly configured = false;
   readonly describe = "No AI provider configured";
 
+  constructor(private readonly reason: "AI_DISABLED" | "AI_NOT_CONFIGURED" = "AI_NOT_CONFIGURED") {}
+
   private fail(): never {
-    throw new IntegrationNotConfiguredError(
-      "AI is not configured. Set AI_PROVIDER and AI_API_KEY.",
-    );
+    throw new AIError(this.reason);
   }
 
   async complete(): Promise<CompletionResult> {

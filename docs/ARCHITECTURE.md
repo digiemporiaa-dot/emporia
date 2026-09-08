@@ -1321,6 +1321,58 @@ Specific guarantees:
 One provider abstraction (`lib/ai`), six assists (`lib/services/ai.service`),
 and a single rule that shapes both: **the model proposes, a person disposes.**
 
+### 16A.0 Configured from the admin, not from the environment
+
+Which provider answers, on which model, at which endpoint, with which key, at
+what temperature and token ceiling — all of it lives in the database and is
+edited at **Settings → AI and LLM**. Changing any of it takes effect on the next
+request: no code change, no rebuild, no redeploy.
+
+The configuration is a single `IntegrationSetting` row (`provider = "ai"`), the
+same table the tracking settings use. No new model, no migration, and one global
+configuration enforced by that table's unique key.
+
+Three reads, deliberately three functions:
+
+| function | caller | permission | API key |
+|---|---|---|---|
+| `getAISettings` | admin screen | `settings.view` | masked |
+| `activeAIConfig` | a provider request | none, server-only | decrypted |
+| `aiStatus` | "is the button offered" | none, cached | never selected |
+
+`ai()` resolves per request and is **not** memoised. Memoising was right when
+the configuration came from environment variables that could not change without
+a deploy; it is wrong now, because the point of the screen is that the next
+request uses what was just saved. The cost is one indexed row read against a
+network round trip to a language model.
+
+Resolution order: enabled saved settings with a usable key → the environment
+variables → AI off. A saved row that is enabled but unusable (a key that will
+not decrypt, a provider nothing implements) reports as unconfigured rather than
+falling through — falling through would answer from a different account than the
+screen shows.
+
+**The API key** is encrypted with `lib/security/secret.ts` (AES-256-GCM, keyed
+from `AUTH_SECRET`) — the same utility that holds the Conversions API token.
+There is no separate `SETTINGS_ENCRYPTION_KEY`: a key that must be set
+separately is a key someone forgets on the first deploy. It is write-only in the
+UI, never returned to the browser, never rendered into an input's value, and
+never in an audit row or a log line. Test Connection may use a key that has been
+typed but not saved; it is read from the input at the moment of sending, used
+for that one request, and never stored.
+
+**Failures are normalised.** Each provider maps its own errors onto the shared
+`AIErrorCode` list (`lib/ai/errors.ts`), so a caller need not know which vendor
+answered to tell a rejected key from a rate limit. No provider's own message is
+surfaced: the body can echo the request, and the request contains the prompt.
+
+**Every request has a timeout and a budget.** 45 seconds by default, and a
+per-task rate limit in `ai.service` so a held-down button cannot run up a
+provider bill.
+
+Adding OpenAI or OpenRouter later means a row in `lib/ai/catalog.ts` and a
+provider class — not edits across five files.
+
 **Nothing is written.** Every assist returns a draft. There is no code path by
 which the model writes to the database — a person reads the suggestion, edits
 it, and saves it through the ordinary service for that record, which applies

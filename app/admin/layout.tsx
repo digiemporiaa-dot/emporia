@@ -46,7 +46,7 @@ const NAV: readonly { item: NavItem; permission: Permission }[] = [
   { item: { kind: "link", href: "/admin/analytics", label: "Analytics", icon: "analytics" }, permission: "analytics.view" },
   { item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" }, permission: "automation.view" },
   { item: { kind: "link", href: "/admin/ai", label: "Assistant", icon: "ai" }, permission: "ai.use" },
-  { item: { kind: "link", href: "/admin/settings/email", label: "Settings", icon: "settings" }, permission: "emails.view" },
+  { item: { kind: "link", href: "/admin/settings", label: "Settings", icon: "settings" }, permission: "emails.view" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

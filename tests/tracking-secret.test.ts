@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decryptSecret, encryptSecret, maskSecret } from "@/lib/tracking/secret";
+import { decryptSecret, encryptSecret, maskSecret } from "@/lib/security/secret";
 
 /**
  * Encryption at rest for the Conversions API token.

@@ -43,6 +43,11 @@ export default async function AnalyticsPage({
 
   const seesMoney = can(actor, "invoices.view");
 
+  // Read once per render: the assist panel is offered only when a provider is
+  // actually configured, and that is now a database read rather than an
+  // environment variable.
+  const aiReady = await isAIConfigured();
+
   const [summary, dims, funnel, revenue] = await Promise.all([
     overview(actor, range),
     breakdowns(actor, range),
@@ -151,7 +156,7 @@ export default async function AnalyticsPage({
                 </p>
               </CardHeader>
               <CardBody>
-                {isAIConfigured() ? <CRMInsights range={params.range} /> : <AIUnavailable />}
+                {aiReady ? <CRMInsights range={params.range} /> : <AIUnavailable />}
               </CardBody>
             </Card>
           ) : null}

@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { NotFoundError, ValidationError } from "@/lib/errors";
+import { NotFoundError, RateLimitedError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
 import { visibilityFilter } from "@/lib/services/crm.service";
@@ -20,6 +20,7 @@ import {
   type LeadSummary,
   type SEODraft,
 } from "@/lib/validation/ai";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { log } from "@/lib/logger";
 import type { Actor } from "@/lib/actor/types";
 import type { AITask } from "@/lib/ai/types";
@@ -49,6 +50,33 @@ import type { z } from "zod";
  */
 
 const aiLog = log("ai");
+
+/**
+ * A spend guard on every assist.
+ *
+ * One place, applied by task, rather than a limit bolted onto each admin screen
+ * — a caller that forgets is a caller that can run up a provider bill with a
+ * held-down key. The window is generous enough that ordinary drafting never
+ * notices it and tight enough that a stuck loop stops.
+ *
+ * Analysis is the expensive one, so it gets its own smaller allowance.
+ */
+const BUDGET: Record<AITask, { limit: number; windowMs: number }> = {
+  summarizeLead: { limit: 30, windowMs: 60_000 },
+  scoreLead: { limit: 30, windowMs: 60_000 },
+  generateProposal: { limit: 15, windowMs: 60_000 },
+  generateContent: { limit: 20, windowMs: 60_000 },
+  generateSEOContent: { limit: 20, windowMs: 60_000 },
+  analyzeCRM: { limit: 6, windowMs: 60_000 },
+};
+
+async function guardBudget(actor: Actor, task: AITask): Promise<void> {
+  const budget = BUDGET[task];
+  const result = await checkRateLimit(`ai:${task}:${actor.userId}`, budget);
+  if (!result.allowed) {
+    throw new RateLimitedError(result.retryAfterSeconds);
+  }
+}
 
 /** Recorded after the call, whether or not the caller keeps the draft. */
 async function auditCall(
@@ -123,6 +151,7 @@ async function leadFacts(actor: Actor, leadId: string) {
 export async function summarizeLead(actor: Actor, leadId: string): Promise<Draft<LeadSummary>> {
   requirePermission(actor, "ai.use");
   requirePermission(actor, "leads.view");
+  await guardBudget(actor, "summarizeLead");
 
   const lead = await leadFacts(actor, leadId);
 
@@ -155,7 +184,7 @@ export async function summarizeLead(actor: Actor, leadId: string): Promise<Draft
     "Summarise this enquiry, give the single most useful next step, and list any questions worth asking before quoting.",
   ].join("\n");
 
-  const result = await ai().completeStructured({
+  const result = await (await ai()).completeStructured({
     task: "summarizeLead",
     system: SYSTEM_PROMPTS.summarizeLead,
     prompt,
@@ -178,6 +207,7 @@ export async function summarizeLead(actor: Actor, leadId: string): Promise<Draft
 export async function scoreLead(actor: Actor, leadId: string): Promise<Draft<LeadAssessment>> {
   requirePermission(actor, "ai.use");
   requirePermission(actor, "leads.view");
+  await guardBudget(actor, "scoreLead");
 
   const lead = await leadFacts(actor, leadId);
 
@@ -199,7 +229,7 @@ export async function scoreLead(actor: Actor, leadId: string): Promise<Draft<Lea
     "Assess how promising this looks and why. Do not restate the computed score as your own.",
   ].join("\n");
 
-  const result = await ai().completeStructured({
+  const result = await (await ai()).completeStructured({
     task: "scoreLead",
     system: SYSTEM_PROMPTS.scoreLead,
     prompt,
@@ -229,6 +259,7 @@ export async function generateProposal(
 ): Promise<Draft<string>> {
   requirePermission(actor, "ai.use");
   requirePermission(actor, "proposals.edit");
+  await guardBudget(actor, "generateProposal");
 
   const proposal = await db.proposal.findUnique({
     where: { id: input.proposalId },
@@ -273,7 +304,7 @@ export async function generateProposal(
     .filter(Boolean)
     .join("\n");
 
-  const result = await ai().complete({
+  const result = await (await ai()).complete({
     task: "generateProposal",
     system: SYSTEM_PROMPTS.generateProposal,
     prompt,
@@ -301,6 +332,7 @@ export async function generateContent(
 ): Promise<Draft<string>> {
   requirePermission(actor, "ai.use");
   requirePermission(actor, "content.create");
+  await guardBudget(actor, "generateContent");
 
   const client = input.clientId
     ? await db.client.findFirst({
@@ -323,7 +355,7 @@ export async function generateContent(
     .filter(Boolean)
     .join("\n");
 
-  const result = await ai().complete({
+  const result = await (await ai()).complete({
     task: "generateContent",
     system: SYSTEM_PROMPTS.generateContent,
     prompt,
@@ -359,6 +391,7 @@ export async function generateSEOContent(
 ): Promise<Draft<SEODraft>> {
   requirePermission(actor, "ai.use");
   requirePermission(actor, "seo.edit");
+  await guardBudget(actor, "generateSEOContent");
 
   const [service, city] = await Promise.all([
     db.service.findUnique({
@@ -393,7 +426,7 @@ export async function generateSEOContent(
     .filter(Boolean)
     .join("\n");
 
-  const result = await ai().completeStructured({
+  const result = await (await ai()).completeStructured({
     task: "generateSEOContent",
     system: SYSTEM_PROMPTS.generateSEOContent,
     prompt,
@@ -437,6 +470,7 @@ export async function analyzeCRM(
 ): Promise<Draft<CRMAnalysis>> {
   requirePermission(actor, "ai.use");
   requirePermission(actor, "analytics.view");
+  await guardBudget(actor, "analyzeCRM");
 
   const range = resolveRange(input.range);
   const [summary, dims] = await Promise.all([overview(actor, range), breakdowns(actor, range)]);
@@ -495,7 +529,7 @@ export async function analyzeCRM(
     .filter(Boolean)
     .join("\n");
 
-  const result = await ai().complete({
+  const result = await (await ai()).complete({
     task: "analyzeCRM",
     system: SYSTEM_PROMPTS.analyzeCRM,
     prompt,

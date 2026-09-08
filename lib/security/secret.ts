@@ -3,12 +3,13 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { env } from "@/lib/config/env";
 
 /**
- * Encryption at rest for integration secrets.
+ * Encryption at rest for credentials an admin enters through the UI.
  *
- * The Meta Conversions API token is a bearer credential: anyone holding it can
- * post conversions to the ad account. It is stored encrypted so a database
- * dump, a backup file or a stray query result does not hand it over in plain
- * text (CLAUDE.md 11).
+ * One utility for every such secret — the Meta Conversions API token, the AI
+ * provider's API key, and whatever comes next. Each is a bearer credential:
+ * anyone holding it can spend money in the account it belongs to. They are
+ * stored encrypted so a database dump, a backup file or a stray query result
+ * does not hand one over in plain text (CLAUDE.md 11).
  *
  * AES-256-GCM, which authenticates as well as encrypts — a tampered ciphertext
  * fails to decrypt rather than yielding a different token. The key is derived
@@ -17,9 +18,14 @@ import { env } from "@/lib/config/env";
  * server-only, and already the thing whose rotation invalidates sessions.
  *
  * The consequence is written down where it matters: rotating AUTH_SECRET makes
- * an existing stored token undecryptable. `decryptSecret` returns null rather
- * than throwing, so the app keeps working and the admin shows the token as
+ * an existing stored secret undecryptable. `decryptSecret` returns null rather
+ * than throwing, so the app keeps working and the admin shows the credential as
  * needing to be entered again.
+ *
+ * There is deliberately no second `SETTINGS_ENCRYPTION_KEY` to configure. A key
+ * that must be set separately is a key someone forgets on the first deploy, and
+ * AUTH_SECRET is already mandatory, already long enough, already server-only
+ * and already the thing whose rotation invalidates sessions.
  */
 
 const ALGORITHM = "aes-256-gcm";
