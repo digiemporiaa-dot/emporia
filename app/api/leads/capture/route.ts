@@ -6,7 +6,9 @@ import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { clientIpFrom } from "@/lib/auth";
 import { isAppError } from "@/lib/errors";
 import { log } from "@/lib/logger";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { sendCapiEvent } from "@/lib/tracking/capi";
+import { serverConsent } from "@/lib/tracking/consent-server";
 
 /**
  * Public popup submission.
@@ -19,8 +21,21 @@ import { headers } from "next/headers";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** The page the form was submitted from, for Meta's `event_source_url`. */
+function absoluteUrl(head: Headers, path: string): string | null {
+  const host = head.get("host");
+  if (!host) return null;
+  const proto = head.get("x-forwarded-proto") ?? "https";
+  try {
+    return new URL(path, `${proto}://${host}`).toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   const head = await headers();
+  const cookieStore = await cookies();
   const ip = clientIpFrom(head);
 
   const limit = await checkRateLimit(`lead:capture:${ip ?? "unknown"}`, {
@@ -74,6 +89,27 @@ export async function POST(request: Request): Promise<NextResponse> {
         packageId: context.packageId,
       },
     );
+
+    // The server-side copy of the conversion, sharing the browser's event id
+    // so Meta counts one lead rather than two. Consent is checked here as well
+    // as in the browser: sending the same data through a different pipe is not
+    // a way around a visitor who said no.
+    if (parsed.eventId) {
+      const consent = await serverConsent();
+      if (consent.marketing) {
+        await sendCapiEvent({
+          eventName: "Lead",
+          eventId: parsed.eventId,
+          sourceUrl: absoluteUrl(head, parsed.path),
+          clientIp: ip,
+          userAgent: head.get("user-agent"),
+          fbp: cookieStore.get("_fbp")?.value ?? null,
+          fbc: cookieStore.get("_fbc")?.value ?? null,
+          email: parsed.email,
+          phone: parsed.phone || null,
+        });
+      }
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

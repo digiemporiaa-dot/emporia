@@ -9,6 +9,7 @@ import { applyPayment } from "@/lib/finance/invoice";
 import { fromMinorUnits, payments as gateway } from "@/lib/payments";
 import { emailPaymentReceived } from "@/lib/services/alerts.service";
 import { runAutomations } from "@/lib/automation/engine";
+import { purchaseEventId, sendCapiEvent } from "@/lib/tracking/capi";
 import { log } from "@/lib/logger";
 import type { Actor } from "@/lib/actor/types";
 import type { PaymentGateway } from "@/generated/prisma/enums";
@@ -293,6 +294,18 @@ export async function handleWebhook(event: WebhookEvent): Promise<{
 
     await emailPaymentReceived(result.id);
 
+    // The server-side copy of the conversion. Deliberately after the payment
+    // is committed and the receipt is sent: reporting an ad conversion is the
+    // least important thing here, and `sendPurchaseConversion` swallows its
+    // own failures so it cannot affect either.
+    await sendPurchaseConversion({
+      gatewayPaymentId: event.paymentId,
+      clientId: invoice.clientId,
+      amount,
+      currency: invoice.currency,
+      receivedAt,
+    });
+
     await runAutomations("PAYMENT_RECEIVED", {
       paymentId: result.id,
       invoiceId: invoice.id,
@@ -309,6 +322,51 @@ export async function handleWebhook(event: WebhookEvent): Promise<{
       return { handled: false, reason: "Already recorded." };
     }
     throw error;
+  }
+}
+
+/**
+ * Report a captured payment to the Meta Conversions API.
+ *
+ * The event id is derived from the gateway's payment id, so a webhook retry
+ * sends the same id and Meta counts one purchase rather than two — and a
+ * browser-side Purchase event, were one ever added, can compute the same id
+ * and be deduplicated against this one without any coordination.
+ *
+ * There is no browser copy today: payment happens in the client portal, which
+ * loads no tracking at all. That is deliberate, and it is why the server-side
+ * copy is the one that matters.
+ */
+async function sendPurchaseConversion(input: {
+  gatewayPaymentId: string;
+  clientId: string;
+  /** Already a decimal string from `fromMinorUnits`. */
+  amount: string;
+  currency: string;
+  receivedAt: Date;
+}): Promise<void> {
+  try {
+    const contact = await db.clientContact.findFirst({
+      where: { clientId: input.clientId },
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+      select: { email: true, phone: true },
+    });
+
+    await sendCapiEvent({
+      eventName: "Purchase",
+      eventId: purchaseEventId(input.gatewayPaymentId),
+      eventTime: input.receivedAt,
+      email: contact?.email ?? null,
+      phone: contact?.phone ?? null,
+      // A string, straight from the Decimal column. Nothing here casts money
+      // to a number (CLAUDE.md 2 rule 1).
+      value: input.amount,
+      currency: input.currency,
+    });
+  } catch (error) {
+    // Already defensive inside `sendCapiEvent`; this catches the lookup too,
+    // because a reporting failure must never unwind a recorded payment.
+    payLog.warn({ err: error }, "purchase conversion not reported");
   }
 }
 

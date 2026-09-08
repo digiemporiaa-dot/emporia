@@ -3,6 +3,7 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
+import { trackMetaLead } from "@/components/website/tracking/loaders";
 
 /**
  * Popup host.
@@ -190,7 +191,13 @@ export function PopupHost() {
     setError(null);
 
     const form = new FormData(event.currentTarget);
+    // One id, generated here and used by both copies of this conversion: the
+    // pixel fires with it below, the server sends it to the Conversions API.
+    // Generating one per copy would double every lead instead of deduplicating
+    // it (lib/tracking/capi.ts).
+    const eventId = crypto.randomUUID();
     const payload = {
+      eventId,
       popupId: popup.id,
       path: pathname,
       name: String(form.get("name") ?? ""),
@@ -211,6 +218,9 @@ export function PopupHost() {
 
       if (data.ok) {
         setStatus("done");
+        // Silent when no pixel is loaded, which is the case whenever marketing
+        // consent was refused.
+        trackMetaLead(eventId);
       } else {
         setStatus("error");
         setError(data.message ?? "Please check the details and try again.");

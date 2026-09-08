@@ -976,6 +976,120 @@ Focus trap, `Esc` to close, focus restored to the trigger, `role="dialog"`,
 `aria-modal="true"`, labelled close control, and no popup at all under
 `prefers-reduced-motion` beyond an instant fade.
 
+
+---
+
+## 14A. Tracking, pixels and consent
+
+### 14A.1 One loader, one answer
+
+Every tracking script on the public site is loaded by
+`components/website/tracking/manager.tsx` and nowhere else. "Which pixels run
+on this page" is therefore a question answered by reading one file, not by
+grepping every route. A provider loads only when all four of these hold:
+
+1. **configured** — an ID is stored;
+2. **enabled** — its toggle is on. `publicTrackingConfig` omits the ID of a
+   disabled provider entirely, so the browser is never handed something it is
+   expected to ignore;
+3. **permitted** — consent allows its category;
+4. **not already loaded** — `loaders.ts` keeps a module-level registry, so a
+   re-render or a client-side navigation cannot initialise a pixel twice.
+   Double initialisation doubles page views and conversions, which corrupts the
+   numbers a campaign is judged on.
+
+Tag Manager owns what is configured inside it: when a GTM container is on, GA4
+and Google Ads are **not** also loaded directly. That is the classic way to
+double every conversion.
+
+### 14A.2 Storage
+
+Settings live in `IntegrationSetting`, one row per provider — the existing
+provider / `isEnabled` / `config` model, extended rather than duplicated
+(CLAUDE.md §2 rule 10). `PROVIDERS` in `tracking.service` is the list; adding a
+provider means adding a key there.
+
+Two reads, deliberately different functions rather than one with a flag:
+
+| function | caller | permission | token |
+|---|---|---|---|
+| `getTrackingSettings` | admin | `settings.view` | masked |
+| `publicTrackingConfig` | public site | none, cached | never selected |
+
+`publicTrackingConfig` cannot leak the Conversions API token because it never
+fetches it. That is the defence: a mistake in a component cannot expose what the
+query did not select.
+
+### 14A.3 The Conversions API token
+
+A bearer credential — anyone holding it can post conversions to the ad account.
+It is:
+
+- validated and saved by its **own** action and its **own** form, so it is never
+  a hidden field re-posted when someone edits an unrelated toggle;
+- encrypted at rest with AES-256-GCM (`lib/tracking/secret.ts`), keyed by a
+  SHA-256 of `AUTH_SECRET` — a value that is already required, already
+  server-only, and already the thing whose rotation invalidates sessions;
+- shown to an admin only as a mask (last four characters);
+- absent from every audit row, every log line and every public payload.
+
+Rotating `AUTH_SECRET` makes a stored token undecryptable. `decryptSecret`
+returns null rather than throwing, and the admin says so and asks for it again.
+
+### 14A.4 Consent
+
+Three modes — `IMPLIED`, `OPT_OUT`, `OPT_IN` — differing entirely in what
+happens *before* a visitor answers. `lib/tracking/consent.ts` is pure and free
+of both React and the database, so the rule that decides whether a pixel may
+fire is unit tested directly.
+
+The decision is stored in the `emporia_consent` cookie. It is deliberately not
+httpOnly: the manager has to read it before any request reaches the server. It
+holds a version, two booleans and a timestamp — no personal information.
+
+Changing the consent mode or the banner wording bumps the stored version, and a
+decision recorded against an older version no longer counts: the visitor agreed
+to something else, so they are asked again.
+
+GTM loads under every mode, because a container is not itself a tag. What it may
+then do is decided by Google Consent Mode: `applyGoogleConsent` sends `default`
+before the container arrives and `update` whenever the visitor changes their
+mind. Every other provider is gated by `PROVIDER_CATEGORY`, one list that
+answers "what does rejecting marketing actually stop?".
+
+### 14A.5 Server-side events
+
+`lib/tracking/capi.ts` sends the server copy of a conversion to Meta. It exists
+because the browser copy is increasingly lost, and because a payment is
+confirmed by a webhook that no browser is present for.
+
+Deduplication is what makes running both safe. Meta collapses two events sharing
+`event_name` and `event_id`, so each conversion is counted once. The ids are
+never generated per copy:
+
+| conversion | id | browser copy |
+|---|---|---|
+| `Lead` | a UUID minted by the form, sent to the server in the same request | `fbq('track','Lead',…,{eventID})` |
+| `Purchase` | `purchase:<gateway payment id>`, derived | none — the portal loads no tracking |
+
+Because the purchase id is derived, a retried webhook sends the same id and Meta
+records one purchase rather than two.
+
+Server-side sending is still tracking, so the routes that do it check consent
+first — moving the same data through a different pipe is not a way around a
+visitor who said no. Personal data is SHA-256 hashed before it leaves the
+process, the token goes in the request body rather than the URL, and every
+failure is swallowed: a conversion that cannot be reported must never fail the
+payment or the lead that caused it.
+
+### 14A.6 Content-Security-Policy
+
+The policy in `next.config.ts` names the script, connect and frame origins each
+provider needs, grouped by provider. Listing an origin only permits it — nothing
+loads until a setting is saved and enabled — so the whole set ships together
+rather than the policy being edited per launch. Without this every tag would
+fail silently.
+
 ---
 
 ## 15. Analytics
