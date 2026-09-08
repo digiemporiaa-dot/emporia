@@ -162,15 +162,43 @@ starting at once do not race each other.
 migrations from a one-off job instead. Use it knowingly; the default is right
 for almost everyone.
 
-**Seeding is not part of the entrypoint, deliberately.** A redeploy must never
-be able to overwrite live data with demo records.
+It then runs `npm run db:sync`. A schema migration is only half of a release:
+the other half is the data the new code assumes exists. That step brings the
+database in line with the deployed source — the permission catalogue, which
+permissions each system role holds, the lead source types, the email templates'
+variable lists, the two example automations, and the `home` page that `/`
+renders. Without it, a release that adds a permission 403s its own new screen
+for everybody until somebody remembers to run a command.
+
+It is safe to run unattended, and that is enforced by what it does *not* do:
+
+| It does | It never does |
+|---|---|
+| Upsert the permission catalogue | Create a user or set a password |
+| Reconcile the nine `isSystem` roles against the code | Touch a role you created yourself |
+| Create missing site settings | Update a site setting that exists |
+| Create missing email templates, refresh their variable lists | Rewrite a template's subject or body |
+| Create the two example automations, switched off | Re-enable or edit an automation |
+| Create the `home` page if no page has that slug | Overwrite, republish or resurrect one that does |
+| | Insert demo content of any kind |
+
+`SKIP_DB_SYNC=1` skips it. A failure here stops the boot on purpose: serving
+with permissions that do not match the deployed code is worse than not serving.
+
+**The seed proper is still not part of the entrypoint, deliberately.**
+`npm run db:seed` runs the same sync *and* creates the super admin — and with
+`SEED_SUPER_ADMIN_PASSWORD` set it resets that account's password every time,
+which is fine as a deliberate act and would be a serious surprise as a side
+effect of a redeploy.
 
 ---
 
 ## 5. First boot
 
-Once the first deploy is healthy, seed the configuration data by hand — a shell
-into the running container, or a one-off job on the same image:
+The deploy has already applied the migrations, synced the platform data and
+created a starter homepage, so the site is serving. What is left is an account
+to sign in with. Shell into the running container, or run a one-off job on the
+same image:
 
 ```bash
 docker exec -it <container> npm run db:seed
@@ -178,16 +206,32 @@ docker exec -it <container> npm run db:seed
 
 The runner image carries `tsx`, the generated Prisma client and the `lib/`
 modules `prisma/seed.ts` imports, precisely so this works in the deployed
-container rather than only on a developer's machine. It is not wired into the
-entrypoint, and should not be — see "What happens on every deploy" above.
+container rather than only on a developer's machine.
 
-That creates roles, the 99 permissions, the role→permission mapping, lead
-sources and the first super admin. It is idempotent: re-running it will not
-duplicate anything. The super admin is created **only** if
-`SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD` are set — credentials
-are never hardcoded.
+That runs the sync again (harmless) and creates the first super admin. It is
+idempotent: re-running it will not duplicate anything. The super admin is
+created **only** if `SEED_SUPER_ADMIN_EMAIL` and `SEED_SUPER_ADMIN_PASSWORD`
+are set — credentials are never hardcoded. Note that re-running it with those
+variables still set **resets that account's password** to whatever they hold.
 
 Then sign in at `/auth/login` and go to `/admin`.
+
+### The starter homepage
+
+`/` renders the CMS page whose slug is `home`, and `home` is a reserved slug, so
+it cannot be created from Admin → Website → Pages. The sync creates it on the
+first boot that finds none — published, so the front page serves rather than
+404ing.
+
+It is a starting point, not a finished page. The hero and the closing call to
+action carry placeholder copy to replace; everything between them is the dynamic
+bands, which read live records and render nothing at all until you publish
+services, case studies, packages, testimonials or posts. Nothing on it asserts
+anything about your business.
+
+Edit it like any other page: **Admin → Website → Pages → Home**. The slug being
+reserved does not stop you editing the page that already has it — only creating
+a second one. If you delete it, the sync will not put it back.
 
 > **Never run `npm run db:seed:demo` against production.** It inserts sample
 > services, packages, case studies and blog posts. It marks itself with

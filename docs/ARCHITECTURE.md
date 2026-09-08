@@ -1686,15 +1686,66 @@ No application volume. The app server filesystem is never permanent storage
 it checks process liveness and a `SELECT 1`, returns no detail on failure, and
 exists because both Compose and Coolify need a readiness signal.
 
-### 17.4 Migrations at deploy
+### 17.4 Migrations and platform data at deploy
 
 The container entrypoint runs `prisma migrate deploy` before starting the
 server. `migrate deploy` applies committed migrations only — it never generates
 or resets — and Prisma takes a Postgres advisory lock, so multiple instances
 starting together do not race.
 
-Seeding is **not** part of the entrypoint. `npm run db:seed` stays a manual
-command so a redeploy can never overwrite live data with demo records.
+It then runs `npm run db:sync`. **A schema migration is only half of a
+release.** The other half is the data the new code assumes exists: the
+permission catalogue, which permissions each system role holds, the email
+templates, the section types the homepage is made of. Leaving that to a manual
+command means a release that adds a permission 403s its own new screen for
+everybody until somebody remembers — and "somebody remembers" is not a
+deployment step. The original rule here (seeding stays manual) was aimed at
+demo records overwriting live data; splitting the seed keeps that protection
+while fixing the drift.
+
+`prisma/platform.ts` is the half the source tree owns, and it is written to be
+safe unattended:
+
+| Syncs | Refuses |
+|---|---|
+| Permission catalogue, upserted | Creating a user or setting a password |
+| The nine `isSystem` roles, reconciled against `ROLE_PERMISSIONS` | Touching a role it did not create |
+| Lead source types, upserted by slug | — |
+| Site settings, created if absent | Updating one that exists |
+| Email templates, created if absent; `variables` refreshed | Rewriting a subject or body |
+| The two example automations, created switched off | Re-enabling or editing one |
+| The `home` page, created if no page holds that slug | Overwriting, republishing or resurrecting one that does |
+| | Demo content of any kind |
+
+The one thing it *removes* is a role grant the code no longer declares, and only
+from those nine system roles. That is deliberate: a release that revokes access
+has to actually revoke it. When a roles editor is built it belongs on
+non-system roles, which the sync does not touch.
+
+`prisma/seed.ts` is the sync plus `seedSuperAdmin`, and stays manual for one
+reason: with `SEED_SUPER_ADMIN_PASSWORD` set it *resets* that account's
+password on every run. Deliberate as a command, unacceptable as a side effect
+of a redeploy. `prisma/seed-demo.ts` is untouched by any of this and stays as
+far from the entrypoint as it was.
+
+**The starter homepage.** `/` renders the CMS page with slug `home`, and `home`
+is in `RESERVED_SLUGS`, so the admin cannot create one — the reservation exists
+so nobody shadows a built-in route, and the page service exempts a page whose
+slug is *already* that, which is what keeps the real homepage editable. The
+consequence is that a database with no `home` row has a 404 front page and no
+way to fix it from the UI. `prisma/ensure-homepage.ts` is the only path that can
+create it, and it creates it only when no `Page` holds that slug at all —
+soft-deleted included, so a homepage someone deleted stays deleted. Its content
+is the same band set the migration adds to an existing homepage, with neutral
+wording: the migration carries the copy the old page was actually written with,
+which would be a claim about a business a fresh install knows nothing about
+(CLAUDE.md 2 rule 5). Only the hero and the closing CTA carry prose, and they
+say they are placeholders; everything between them reads live records and
+renders nothing until there is something published.
+
+`SKIP_MIGRATIONS=1` and `SKIP_DB_SYNC=1` opt out of either step. A failure in
+either stops the boot: serving against a schema or a permission set that does
+not match the running code is worse than not serving.
 
 ### 17.5 Environments and secrets
 
