@@ -77,17 +77,49 @@ function safeRate(value: string): string {
   return /^\d{1,3}(\.\d{1,3})?$/.test(value.trim()) ? value.trim() : "0";
 }
 
+/** Name, company and email, so two leads called Priya are tellable apart. */
+function leadLabel(lead: { name: string; company: string | null; email: string | null }): string {
+  const who = lead.company ? `${lead.company} — ${lead.name}` : lead.name;
+  return lead.email ? `${who} (${lead.email})` : who;
+}
+
+/**
+ * Why the lead list is empty, when it is.
+ *
+ * Three distinct causes, three different things to do about them. Saying
+ * nothing — which is what an empty dropdown does — was the reported bug.
+ */
+function leadHint(shown: number, beforeScoping: number | undefined): string | undefined {
+  if (shown > 0) return undefined;
+  if (beforeScoping === undefined || beforeScoping === 0) {
+    return "No open leads yet. Add a lead first, or address this proposal to an existing client below.";
+  }
+  const many = beforeScoping !== 1;
+  return `${beforeScoping} open lead${many ? "s" : ""} ${many ? "exist" : "exists"} but ${
+    many ? "none are" : "it is not"
+  } assigned to you. Ask for one to be assigned, or address this proposal to a client below.`;
+}
+
 export function ProposalEditor({
   proposal,
   catalog,
   leads,
   clients,
+  leadsBeforeScoping,
   currencyDefault = "INR",
 }: {
   proposal?: ProposalValues;
   catalog: readonly CatalogOption[];
-  leads: readonly { id: string; name: string; company: string | null }[];
+  leads: readonly { id: string; name: string; company: string | null; email: string | null }[];
   clients: readonly { id: string; name: string }[];
+  /**
+   * Live leads before the actor's own row-level scoping.
+   *
+   * Lets the empty state tell "there are no leads" from "none of them are
+   * assigned to you" — two different problems with two different fixes, and an
+   * empty dropdown says neither.
+   */
+  leadsBeforeScoping?: number;
   currencyDefault?: string;
 }) {
   const [state, formAction] = useActionState<SalesActionState, FormData>(saveProposalAction, null);
@@ -191,13 +223,17 @@ export function ProposalEditor({
             <Input {...aria} name="validUntil" type="date" defaultValue={proposal?.validUntil ?? ""} />
           )}
         </Field>
-        <Field id="leadId" label="For">
+        <Field
+          id="leadId"
+          label="For"
+          hint={proposal ? undefined : leadHint(leads.length, leadsBeforeScoping)}
+        >
           {(aria) => (
             <Select {...aria} name="leadId" defaultValue={proposal?.leadId ?? ""} disabled={Boolean(proposal)}>
-              <option value="">Choose a lead…</option>
+              <option value="">{leads.length === 0 ? "No leads available" : "Choose a lead…"}</option>
               {leads.map((lead) => (
                 <option key={lead.id} value={lead.id}>
-                  {lead.company ? `${lead.company} — ${lead.name}` : lead.name}
+                  {leadLabel(lead)}
                 </option>
               ))}
             </Select>
@@ -212,7 +248,11 @@ export function ProposalEditor({
           <input type="hidden" name="opportunityId" value={proposal.opportunityId ?? ""} />
         </>
       ) : (
-        <Field id="clientId" label="Or an existing client">
+        <Field
+          id="clientId"
+          label="Or an existing client"
+          hint={clients.length === 0 ? "No clients yet — a proposal can still go to a lead." : undefined}
+        >
           {(aria) => (
             <Select {...aria} name="clientId" defaultValue="">
               <option value="">Not an existing client</option>

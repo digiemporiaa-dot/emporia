@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { requirePermission } from "@/lib/auth/rbac";
-import { db } from "@/lib/db";
-import { listCatalog } from "@/lib/services/sales.service";
+import { listCatalog, proposalTargets } from "@/lib/services/sales.service";
 import { ProposalEditor } from "../proposal-editor";
 
 export const metadata: Metadata = { title: "New proposal" };
@@ -13,20 +12,9 @@ export default async function NewProposalPage() {
   const actor = await requireActorPage("/admin/sales/proposals/new");
   requirePermission(actor, "proposals.create");
 
-  const [catalog, leads, clients] = await Promise.all([
-    listCatalog(actor),
-    db.lead.findMany({
-      where: { deletedAt: null, status: { notIn: ["WON", "LOST"] } },
-      orderBy: { createdAt: "desc" },
-      take: 200,
-      select: { id: true, name: true, company: true },
-    }),
-    db.client.findMany({
-      where: { deletedAt: null },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-  ]);
+  // Both reads go through the service, which applies the CRM's row-level
+  // scoping. This page used to query `lead` directly and skip it.
+  const [catalog, targets] = await Promise.all([listCatalog(actor), proposalTargets(actor)]);
 
   return (
     <>
@@ -50,8 +38,9 @@ export default async function NewProposalPage() {
           unitPrice: item.unitPrice.toString(),
           taxRate: item.taxRate.toString(),
         }))}
-        leads={leads}
-        clients={clients}
+        leads={targets.leads}
+        clients={targets.clients}
+        leadsBeforeScoping={targets.leadsBeforeScoping}
       />
     </>
   );

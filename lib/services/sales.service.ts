@@ -1,7 +1,8 @@
 import "server-only";
 import { db, type DbClient } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
-import { requirePermission } from "@/lib/auth/rbac";
+import { can, requirePermission } from "@/lib/auth/rbac";
+import { visibilityFilter } from "@/lib/services/crm.service";
 import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { alertProposalAccepted, emailProposal } from "@/lib/services/alerts.service";
@@ -9,9 +10,12 @@ import { runAutomations } from "@/lib/automation/engine";
 import { priceDocument } from "@/lib/money";
 import { isEditable, transitionError } from "@/lib/sales/lifecycle";
 import { nextContractNumber, nextProposalNumber, uniqueClientSlug } from "@/lib/sales/numbering";
+import { log } from "@/lib/logger";
 import type { Actor } from "@/lib/actor/types";
 import type { ProposalStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
+
+const salesLog = log("sales");
 import type {
   CatalogItemInput,
   ContractInput,
@@ -1003,6 +1007,72 @@ export async function markContractSigned(actor: Actor, id: string, signedAt: Dat
 // ---------------------------------------------------------------------------
 // Clients
 // ---------------------------------------------------------------------------
+
+/**
+ * Who a new proposal can be addressed to.
+ *
+ * Lives here rather than as a raw query on the page for the reason every other
+ * read does: this one has to apply the CRM's row-level scoping, and a rule
+ * enforced in one component is a rule the next component forgets
+ * (CLAUDE.md 4). The New Proposal page previously queried `lead` directly and
+ * skipped `visibilityFilter` entirely, so a sales executive was offered every
+ * rep's leads by name and company.
+ *
+ * Returns the counts alongside the rows so the form can tell "there are no
+ * leads" from "none of them are yours" — an empty dropdown that explains
+ * nothing is how this was reported as a bug.
+ */
+export type ProposalTargets = {
+  leads: { id: string; name: string; company: string | null; email: string | null }[];
+  clients: { id: string; name: string }[];
+  /** Live leads before scoping, for the empty state's wording. */
+  leadsBeforeScoping: number;
+};
+
+export async function proposalTargets(actor: Actor): Promise<ProposalTargets> {
+  requirePermission(actor, "proposals.create");
+  requirePermission(actor, "leads.view");
+
+  const open: Prisma.LeadWhereInput = {
+    deletedAt: null,
+    // A won or lost lead is not something you write a new proposal against.
+    status: { notIn: ["WON", "LOST"] },
+  };
+
+  try {
+    const [leads, clients, leadsBeforeScoping] = await Promise.all([
+      db.lead.findMany({
+        where: { ...open, AND: [visibilityFilter(actor)] },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        select: { id: true, name: true, company: true, email: true },
+      }),
+      // Clients are not row-scoped anywhere in the admin; `clients.view` is the
+      // gate, so an actor without it is offered none rather than all.
+      can(actor, "clients.view")
+        ? db.client.findMany({
+            where: { deletedAt: null },
+            orderBy: { name: "asc" },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+      db.lead.count({ where: open }),
+    ]);
+
+    salesLog.info(
+      { leads: leads.length, clients: clients.length, leadsBeforeScoping, actorId: actor.userId },
+      "proposal targets read",
+    );
+
+    return { leads, clients, leadsBeforeScoping };
+  } catch (error) {
+    // Logged and rethrown, never swallowed: a caught-and-emptied list is how an
+    // outage looks identical to "you have no leads", which is what made this
+    // hard to diagnose the first time.
+    salesLog.error({ err: error, actorId: actor.userId }, "proposal targets read failed");
+    throw error;
+  }
+}
 
 export async function listClients(actor: Actor) {
   requirePermission(actor, "clients.view");
