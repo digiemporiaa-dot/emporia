@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ICON_NAMES } from "@/lib/content/icons";
 
 /**
  * Page builder blocks.
@@ -140,6 +141,106 @@ export const featureBlock = z.object({
   ctaHref: linkHref.optional(),
 });
 
+export const iconName = z.enum(ICON_NAMES);
+
+export const listBlock = z.object({
+  heading: optionalText(200),
+  style: z.enum(["bulleted", "numbered"]).default("bulleted"),
+  items: z.array(trimmed(300)).min(1, "Add at least one item.").max(20),
+});
+
+export const textListBlock = z.object({
+  heading: optionalText(200),
+  items: z
+    .array(
+      z.object({
+        title: trimmed(160).min(1, "Each item needs a title."),
+        text: optionalText(600),
+      }),
+    )
+    .min(1, "Add at least one item.")
+    .max(20),
+});
+
+export const iconBlock = z.object({
+  icon: iconName.default("sparkles"),
+  heading: trimmed(200).min(2, "Enter a heading."),
+  body: optionalText(1200),
+  align: alignment.default("left"),
+});
+
+export const iconCardsBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  columns: z.union([z.literal(2), z.literal(3), z.literal(4)]).default(3),
+  items: z
+    .array(
+      z.object({
+        icon: iconName.default("sparkles"),
+        title: trimmed(160).min(1, "Each card needs a title."),
+        text: optionalText(500),
+        href: linkHref.optional(),
+      }),
+    )
+    .min(1, "Add at least one card.")
+    .max(12),
+});
+
+export const imageCardsBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  columns: z.union([z.literal(2), z.literal(3)]).default(3),
+  items: z
+    .array(
+      z.object({
+        mediaId: z
+          .string()
+          .cuid()
+          .optional()
+          .or(z.literal("").transform(() => undefined)),
+        alt: optionalText(300),
+        title: trimmed(160).min(1, "Each card needs a title."),
+        text: optionalText(500),
+        href: linkHref.optional(),
+      }),
+    )
+    .min(1, "Add at least one card.")
+    .max(12),
+});
+
+/**
+ * Call to action.
+ *
+ * This type predates the builder — the homepage and two other pages already
+ * have `cta` sections — so the schema is a superset of the original
+ * `{ heading, body?, ctaLabel, ctaHref }`: every existing row still parses, and
+ * the new fields are optional with defaults that reproduce how those rows
+ * already render. Promoting the type rather than adding a second one keeps a
+ * single CTA in the product (CLAUDE.md 2 rule 10).
+ */
+export const ctaBlock = z.object({
+  heading: trimmed(200).min(2, "Enter a heading."),
+  body: optionalText(800),
+  ctaLabel: trimmed(60).min(1, "Enter the button label."),
+  ctaHref: linkHref,
+  secondaryLabel: optionalText(60),
+  secondaryHref: linkHref.optional(),
+  tone: z.enum(["navy", "light"]).default("navy"),
+});
+
+export const faqBlock = z.object({
+  heading: optionalText(200),
+  items: z
+    .array(
+      z.object({
+        question: trimmed(300).min(3, "Enter the question."),
+        answer: trimmed(3000).min(3, "Enter the answer."),
+      }),
+    )
+    .min(1, "Add at least one question.")
+    .max(30),
+});
+
 export const BLOCK_SCHEMAS = {
   heading: headingBlock,
   richText: richTextBlock,
@@ -148,6 +249,13 @@ export const BLOCK_SCHEMAS = {
   imageText: imageTextBlock,
   table: tableBlock,
   feature: featureBlock,
+  list: listBlock,
+  textList: textListBlock,
+  icon: iconBlock,
+  iconCards: iconCardsBlock,
+  imageCards: imageCardsBlock,
+  cta: ctaBlock,
+  faq: faqBlock,
 } as const;
 
 export type BlockType = keyof typeof BLOCK_SCHEMAS;
@@ -224,6 +332,81 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     defaults: { heading: "Heading beside the image", imagePosition: "left" },
   },
   {
+    type: "list",
+    label: "List",
+    description: "A bulleted or numbered list of short points.",
+    group: "Text",
+    defaults: { style: "bulleted", items: ["First point", "Second point"] },
+  },
+  {
+    type: "textList",
+    label: "Text list",
+    description: "A list where each point has its own title and explanation.",
+    group: "Text",
+    defaults: {
+      items: [
+        { title: "First point", text: "" },
+        { title: "Second point", text: "" },
+      ],
+    },
+  },
+  {
+    type: "icon",
+    label: "Icon",
+    description: "A single icon above a heading and a short paragraph.",
+    group: "Text",
+    defaults: { icon: "sparkles", heading: "A point worth making", align: "left" },
+  },
+  {
+    type: "cta",
+    label: "Call to action",
+    description: "A band with a heading and up to two buttons.",
+    group: "Text",
+    defaults: {
+      heading: "Ready to talk?",
+      ctaLabel: "Start a conversation",
+      ctaHref: "/contact",
+      tone: "navy",
+    },
+  },
+  {
+    type: "faq",
+    label: "FAQ",
+    description: "Questions and answers, expandable.",
+    group: "Text",
+    defaults: {
+      items: [{ question: "What does this cost?", answer: "Write the answer here." }],
+    },
+  },
+  {
+    type: "iconCards",
+    label: "Icon cards",
+    description: "A grid of cards, each with an icon, a title and text.",
+    group: "Media",
+    defaults: {
+      columns: 3,
+      items: [
+        { icon: "search", title: "First card", text: "" },
+        { icon: "target", title: "Second card", text: "" },
+        { icon: "trending-up", title: "Third card", text: "" },
+      ],
+    },
+  },
+  {
+    type: "imageCards",
+    label: "Image cards",
+    description: "A grid of cards, each with an image, a title and text.",
+    group: "Media",
+    defaults: {
+      columns: 3,
+      items: [
+        { title: "First card", text: "" },
+        { title: "Second card", text: "" },
+        { title: "Third card", text: "" },
+      ],
+    },
+  },
+  {
     type: "table",
     label: "Table",
     description: "A data table with a header row.",
@@ -249,8 +432,22 @@ export function blockDefinition(type: BlockType): BlockDefinition {
 /** Every mediaId referenced by a block, for batch resolution at read time. */
 export function mediaIdsIn(type: string, content: unknown): string[] {
   if (!isBlockType(type) || content === null || typeof content !== "object") return [];
-  const value = (content as Record<string, unknown>)["mediaId"];
-  return typeof value === "string" && value.length > 0 ? [value] : [];
+  const value = content as Record<string, unknown>;
+  const ids: string[] = [];
+
+  const push = (candidate: unknown) => {
+    if (typeof candidate === "string" && candidate.length > 0) ids.push(candidate);
+  };
+
+  push(value["mediaId"]);
+  // Image cards hold one per card rather than one for the block.
+  if (Array.isArray(value["items"])) {
+    for (const item of value["items"]) {
+      if (item && typeof item === "object") push((item as Record<string, unknown>)["mediaId"]);
+    }
+  }
+
+  return ids;
 }
 
 /** Blocks that are not worth rendering without an image. */
@@ -276,6 +473,21 @@ export function blockWarnings(type: string, content: unknown): string[] {
     const empty = rows.every((row) => row.every((cell) => String(cell ?? "").trim() === ""));
     if (rows.length > 0 && empty) warnings.push("Every cell is empty");
   }
+  if (type === "imageCards" && Array.isArray(value["items"])) {
+    const missing = value["items"].filter(
+      (item) => !(item && typeof item === "object" && (item as Record<string, unknown>)["mediaId"]),
+    ).length;
+    if (missing > 0) warnings.push(`${missing} card${missing === 1 ? "" : "s"} without an image`);
+  }
+  if (type === "cta") {
+    if (value["secondaryLabel"] && !value["secondaryHref"]) {
+      warnings.push("Second button has no link");
+    }
+    if (value["secondaryHref"] && !value["secondaryLabel"]) {
+      warnings.push("Second link has no button label");
+    }
+  }
+
   const label = value["ctaLabel"];
   const href = value["ctaHref"];
   if (label && !href) warnings.push("Button has no link");

@@ -51,7 +51,7 @@ export type BuilderSection = {
 type Props = {
   pageId: string;
   sections: readonly BuilderSection[];
-  /** Thumbnails and picker state for sections that reference an image. */
+  /** Every image any section references, keyed by media id. */
   media: Record<string, PickedMedia>;
   canEdit: boolean;
 };
@@ -297,7 +297,12 @@ export function PageBuilder({ pageId, sections, media, canEdit }: Props) {
           pageId={pageId}
           section={editing}
           type={editing.type}
-          media={media[editing.id] ?? null}
+          media={
+            media[
+              String(((editing.content ?? {}) as Record<string, unknown>)["mediaId"] ?? "")
+            ] ?? null
+          }
+          cardMedia={media}
           onClose={() => setEditingId(null)}
           onSaved={() => {
             setEditingId(null);
@@ -405,6 +410,7 @@ function SectionEditor({
   section,
   type,
   media,
+  cardMedia,
   onClose,
   onSaved,
 }: {
@@ -412,6 +418,7 @@ function SectionEditor({
   section: BuilderSection;
   type: BlockType;
   media: PickedMedia | null;
+  cardMedia: Readonly<Record<string, PickedMedia>>;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -476,7 +483,14 @@ function SectionEditor({
 
         <hr className="border-line" />
 
-        <BlockFields type={type} content={content} set={set} errors={errors} media={media} />
+        <BlockFields
+          type={type}
+          content={content}
+          set={set}
+          errors={errors}
+          media={media}
+          cardMedia={cardMedia}
+        />
       </div>
     </Dialog>
   );

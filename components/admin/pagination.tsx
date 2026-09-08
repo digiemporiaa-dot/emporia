@@ -49,7 +49,7 @@ export function Pagination({
       </p>
       <div className="flex items-center gap-2">
         {page <= 1 ? (
-          <span className="rounded-sm border border-line px-2.5 py-1 text-ink-subtle/60">
+          <span aria-disabled="true" className="rounded-sm border border-line px-2.5 py-1 text-ink-subtle">
             Previous
           </span>
         ) : (
@@ -66,7 +66,9 @@ export function Pagination({
         </span>
 
         {page >= pages ? (
-          <span className="rounded-sm border border-line px-2.5 py-1 text-ink-subtle/60">Next</span>
+          <span aria-disabled="true" className="rounded-sm border border-line px-2.5 py-1 text-ink-subtle">
+            Next
+          </span>
         ) : (
           <Link
             href={href(page + 1)}

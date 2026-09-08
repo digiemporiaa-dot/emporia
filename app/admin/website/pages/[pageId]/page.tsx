@@ -39,27 +39,20 @@ export default async function EditPagePage({
     throw error;
   }
 
-  // Thumbnails for sections that reference an image, so the editor opens with
-  // the current selection shown rather than an empty picker. One batched query.
-  const mediaBySection = new Map<string, string>();
+  // Thumbnails for every image any section references — image cards hold one
+  // per card, so this cannot stop at the first. One batched query.
+  const referenced = new Set<string>();
   for (const section of page.sections) {
-    const [mediaId] = mediaIdsIn(section.type, section.content);
-    if (mediaId) mediaBySection.set(section.id, mediaId);
+    for (const id of mediaIdsIn(section.type, section.content)) referenced.add(id);
   }
   const mediaRows =
-    mediaBySection.size === 0
+    referenced.size === 0
       ? []
       : await db.media.findMany({
-          where: { id: { in: [...new Set(mediaBySection.values())] }, deletedAt: null },
+          where: { id: { in: [...referenced] }, deletedAt: null },
           select: { id: true, url: true, filename: true, type: true },
         });
-  const byId = new Map(mediaRows.map((row) => [row.id, row]));
-  const sectionMedia = Object.fromEntries(
-    [...mediaBySection.entries()].flatMap(([sectionId, mediaId]) => {
-      const row = byId.get(mediaId);
-      return row ? [[sectionId, row] as const] : [];
-    }),
-  );
+  const mediaById = Object.fromEntries(mediaRows.map((row) => [row.id, row]));
 
   return (
     <>
@@ -89,7 +82,7 @@ export default async function EditPagePage({
       <PageBuilder
         pageId={page.id}
         sections={page.sections}
-        media={sectionMedia}
+        media={mediaById}
         canEdit={can(actor, "pages.edit")}
       />
 

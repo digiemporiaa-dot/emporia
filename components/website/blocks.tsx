@@ -2,8 +2,10 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Container, CtaButton, Eyebrow } from "@/components/website/primitives";
-import { Reveal } from "@/components/website/motion";
+import { Reveal, Stagger, StaggerItem } from "@/components/website/motion";
 import { parseInline, type Span } from "@/lib/content/inline";
+import { Plus } from "lucide-react";
+import { BlockIcon } from "@/components/website/icon";
 import type { BlockContent } from "@/lib/content/blocks";
 import { cn } from "@/lib/utils/cn";
 
@@ -340,6 +342,280 @@ export function FeatureBlock({
             </Reveal>
           </div>
         ) : null}
+      </div>
+    </Container>
+  );
+}
+
+/**
+ * Grid column counts.
+ *
+ * Written out rather than interpolated, because Tailwind scans source text for
+ * class names — a template literal produces a class that is never generated.
+ * Every grid collapses to one column on mobile and steps up from `sm`.
+ */
+const COLUMNS: Record<number, string> = {
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-2 lg:grid-cols-3",
+  4: "sm:grid-cols-2 lg:grid-cols-4",
+};
+
+function BandHeader({ eyebrow, heading }: { eyebrow?: string; heading?: string }) {
+  if (!eyebrow && !heading) return null;
+  return (
+    <Reveal className="mb-8 max-w-2xl">
+      {eyebrow ? <Eyebrow className="mb-3">{eyebrow}</Eyebrow> : null}
+      {heading ? <h2 className="text-2xl text-navy-800">{heading}</h2> : null}
+    </Reveal>
+  );
+}
+
+export function ListBlock({ content }: { content: BlockContent<"list"> }) {
+  const Tag = content.style === "numbered" ? "ol" : "ul";
+
+  return (
+    <Container className="py-10 lg:py-14">
+      <div className="max-w-2xl">
+        {content.heading ? (
+          <Reveal>
+            <h2 className="mb-5 text-2xl text-navy-800">{content.heading}</h2>
+          </Reveal>
+        ) : null}
+        <Reveal delay={0.06}>
+          <Tag className={content.style === "numbered" ? "space-y-3" : "space-y-2.5"}>
+            {content.items.map((item, index) => (
+              <li key={`${index}-${item.slice(0, 16)}`} className="flex gap-3">
+                {content.style === "numbered" ? (
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 shrink-0 font-mono text-sm tabular-nums text-brand-red-text"
+                  >
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-red"
+                  />
+                )}
+                <span className="text-lg leading-relaxed text-ink-muted">{item}</span>
+              </li>
+            ))}
+          </Tag>
+        </Reveal>
+      </div>
+    </Container>
+  );
+}
+
+export function TextListBlock({ content }: { content: BlockContent<"textList"> }) {
+  return (
+    <Container className="py-10 lg:py-14">
+      <div className="max-w-3xl">
+        {content.heading ? (
+          <Reveal>
+            <h2 className="mb-6 text-2xl text-navy-800">{content.heading}</h2>
+          </Reveal>
+        ) : null}
+        {/* A definition list: each point is a term and its explanation, which is
+            exactly what a <dl> describes. */}
+        <Stagger>
+          <dl className="border-t border-line">
+            {content.items.map((item, index) => (
+              // The wrapper is StaggerItem's own div, not an extra one inside
+              // it: HTML allows exactly one <div> grouping a dt/dd pair inside
+              // a <dl>, and two levels makes the list invalid — axe reports it
+              // as a serious violation and the pair stops being announced as a
+              // term and its description.
+              <StaggerItem
+                key={`${index}-${item.title}`}
+                className="grid gap-1.5 border-b border-line py-5 lg:grid-cols-12 lg:gap-6"
+              >
+                <dt className="font-display text-lg text-navy-800 lg:col-span-4">{item.title}</dt>
+                {item.text ? (
+                  <dd className="leading-relaxed text-ink-muted lg:col-span-8">{item.text}</dd>
+                ) : (
+                  <dd className="lg:col-span-8" />
+                )}
+              </StaggerItem>
+            ))}
+          </dl>
+        </Stagger>
+      </div>
+    </Container>
+  );
+}
+
+export function IconBlock({ content }: { content: BlockContent<"icon"> }) {
+  const centred = content.align === "center";
+
+  return (
+    <Container className="py-10 lg:py-14">
+      <Reveal>
+        <div className={cn("max-w-2xl", centred && "mx-auto text-center")}>
+          <span
+            className={cn(
+              "inline-flex size-11 items-center justify-center rounded-lg bg-red-50 text-brand-red-text",
+              centred && "mx-auto",
+            )}
+          >
+            <BlockIcon name={content.icon} />
+          </span>
+          <h2 className="mt-4 text-2xl text-navy-800">{content.heading}</h2>
+          {content.body ? <RichBody body={content.body} className="mt-3" /> : null}
+        </div>
+      </Reveal>
+    </Container>
+  );
+}
+
+/** Card title, linked when the card has a destination. */
+function CardTitle({ title, href }: { title: string; href?: string | undefined }) {
+  if (!href) return <h3 className="font-display text-lg text-navy-800">{title}</h3>;
+  return (
+    <h3 className="font-display text-lg">
+      <Link
+        href={{ pathname: href }}
+        className="text-navy-800 underline-offset-4 hover:text-brand-red-text hover:underline"
+      >
+        {title}
+      </Link>
+    </h3>
+  );
+}
+
+export function IconCardsBlock({ content }: { content: BlockContent<"iconCards"> }) {
+  return (
+    <Container className="py-12 lg:py-16">
+      <BandHeader eyebrow={content.eyebrow} heading={content.heading} />
+      <Stagger className={cn("grid gap-5", COLUMNS[content.columns])}>
+        {content.items.map((item, index) => (
+          <StaggerItem key={`${index}-${item.title}`}>
+            <div className="h-full rounded-lg border border-line bg-white p-5">
+              <span className="inline-flex size-10 items-center justify-center rounded-md bg-red-50 text-brand-red-text">
+                <BlockIcon name={item.icon} size={20} />
+              </span>
+              <div className="mt-3.5">
+                <CardTitle title={item.title} href={item.href} />
+                {item.text ? <p className="mt-1.5 text-ink-muted">{item.text}</p> : null}
+              </div>
+            </div>
+          </StaggerItem>
+        ))}
+      </Stagger>
+    </Container>
+  );
+}
+
+export function ImageCardsBlock({
+  content,
+  images,
+}: {
+  content: BlockContent<"imageCards">;
+  images: BlockImages;
+}) {
+  return (
+    <Container className="py-12 lg:py-16">
+      <BandHeader eyebrow={content.eyebrow} heading={content.heading} />
+      <Stagger className={cn("grid gap-5", COLUMNS[content.columns])}>
+        {content.items.map((item, index) => {
+          const image = item.mediaId ? images[item.mediaId] : undefined;
+          return (
+            <StaggerItem key={`${index}-${item.title}`}>
+              <article className="h-full overflow-hidden rounded-lg border border-line bg-white">
+                {image ? (
+                  <Image
+                    src={image.url}
+                    alt={item.alt ?? image.alt ?? ""}
+                    width={image.width ?? 800}
+                    height={image.height ?? 600}
+                    sizes="(min-width: 1024px) 380px, (min-width: 640px) 45vw, 100vw"
+                    className="aspect-[4/3] w-full object-cover"
+                  />
+                ) : null}
+                <div className="p-5">
+                  <CardTitle title={item.title} href={item.href} />
+                  {item.text ? <p className="mt-1.5 text-ink-muted">{item.text}</p> : null}
+                </div>
+              </article>
+            </StaggerItem>
+          );
+        })}
+      </Stagger>
+    </Container>
+  );
+}
+
+export function CtaBlock({ content }: { content: BlockContent<"cta"> }) {
+  const dark = content.tone === "navy";
+
+  return (
+    <section className={dark ? "bg-navy-800 text-white" : "border-y border-line bg-surface-muted"}>
+      <Container className="py-14 lg:py-18">
+        <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
+          <div className="lg:col-span-7">
+            <h2 className={cn("text-3xl", dark ? "text-white" : "text-navy-800")}>
+              {content.heading}
+            </h2>
+            {content.body ? (
+              <p className={cn("mt-4 max-w-xl", dark ? "text-navy-100" : "text-ink-muted")}>
+                {content.body}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-3 lg:col-span-4 lg:col-start-9 lg:justify-end">
+            <CtaButton href={{ pathname: content.ctaHref }} size="lg">
+              {content.ctaLabel}
+            </CtaButton>
+            {content.secondaryLabel && content.secondaryHref ? (
+              <CtaButton
+                href={{ pathname: content.secondaryHref }}
+                size="lg"
+                variant={dark ? "onDark" : "outline"}
+              >
+                {content.secondaryLabel}
+              </CtaButton>
+            ) : null}
+          </div>
+        </div>
+      </Container>
+    </section>
+  );
+}
+
+export function FaqBlock({ content }: { content: BlockContent<"faq"> }) {
+  return (
+    <Container className="py-12 lg:py-16">
+      <div className="max-w-3xl">
+        {content.heading ? (
+          <Reveal>
+            <h2 className="mb-6 text-2xl text-navy-800">{content.heading}</h2>
+          </Reveal>
+        ) : null}
+        {/*
+          Native <details>/<summary>: keyboard operable, announced as expandable
+          and correctly toggled by assistive technology, and it works before
+          JavaScript loads. A hand-rolled accordion would need all of that
+          rebuilt and would still be worse (CLAUDE.md 12).
+        */}
+        <div className="border-t border-line">
+          {content.items.map((item, index) => (
+            <details key={`${index}-${item.question.slice(0, 24)}`} className="group border-b border-line">
+              <summary className="flex cursor-pointer list-none items-start justify-between gap-4 py-4 text-left font-display text-lg text-navy-800 marker:hidden hover:text-brand-red-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red">
+                <span>{item.question}</span>
+                <span
+                  aria-hidden="true"
+                  className="mt-1.5 shrink-0 text-ink-subtle transition-transform duration-(--duration-fast) group-open:rotate-45"
+                >
+                  <Plus size={18} />
+                </span>
+              </summary>
+              <div className="pb-5">
+                <RichBody body={item.answer} />
+              </div>
+            </details>
+          ))}
+        </div>
       </div>
     </Container>
   );

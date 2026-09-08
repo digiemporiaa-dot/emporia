@@ -40,13 +40,6 @@ export const industriesSection = z.object({
   items: z.array(z.string()),
 });
 
-export const ctaSection = z.object({
-  heading: z.string(),
-  body: z.string().optional(),
-  ctaLabel: z.string(),
-  ctaHref: z.string(),
-});
-
 export const proseSection = z.object({
   heading: z.string().optional(),
   paragraphs: z.array(z.string()),
@@ -79,6 +72,11 @@ export const legalSection = z.object({
 /**
  * Every section type that can appear on a page.
  *
+ * `cta` used to be declared here. It moved into BLOCK_SCHEMAS when the builder
+ * gained a call-to-action block: the block's schema is a superset of the one
+ * this file held, so the existing rows on the homepage and elsewhere still
+ * parse and still render — they are simply editable now too.
+ *
  * Two families, deliberately kept distinct:
  *
  *   BLOCK_SCHEMAS   general-purpose builder blocks, offered in Add Section
@@ -96,7 +94,6 @@ export const SECTION_SCHEMAS = {
   positioning: positioningSection,
   process: processSection,
   industries: industriesSection,
-  cta: ctaSection,
   prose: proseSection,
   values: valuesSection,
   roles: rolesSection,

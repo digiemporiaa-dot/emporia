@@ -3,7 +3,14 @@ import { Container, CtaButton, Eyebrow, IndexNumber } from "@/components/website
 import { HeroReveal, Reveal, Stagger, StaggerItem } from "@/components/website/motion";
 import type { ParsedSection } from "@/lib/content/sections";
 import {
+  CtaBlock,
+  FaqBlock,
   FeatureBlock,
+  IconBlock,
+  IconCardsBlock,
+  ImageCardsBlock,
+  ListBlock,
+  TextListBlock,
   HeadingBlock,
   ImageBlock,
   ImageBoxBlock,
@@ -230,25 +237,7 @@ export function PageSections({
           }
 
           case "cta":
-            return (
-              <section key={section.id} className="bg-navy-800 text-white">
-                <Container className="py-14 lg:py-18">
-                  <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
-                    <div className="lg:col-span-7">
-                      <h2 className="text-3xl">{section.content.heading}</h2>
-                      {section.content.body ? (
-                        <p className="mt-4 max-w-xl text-navy-100">{section.content.body}</p>
-                      ) : null}
-                    </div>
-                    <div className="lg:col-span-4 lg:col-start-9 lg:text-right">
-                      <CtaButton href={{ pathname: section.content.ctaHref }} size="lg">
-                        {section.content.ctaLabel}
-                      </CtaButton>
-                    </div>
-                  </div>
-                </Container>
-              </section>
-            );
+            return <CtaBlock key={section.id} content={section.content} />;
 
           // --- builder blocks -------------------------------------------
           case "heading":
@@ -265,6 +254,18 @@ export function PageSections({
             return <TableBlock key={section.id} content={section.content} />;
           case "feature":
             return <FeatureBlock key={section.id} content={section.content} images={images} />;
+          case "list":
+            return <ListBlock key={section.id} content={section.content} />;
+          case "textList":
+            return <TextListBlock key={section.id} content={section.content} />;
+          case "icon":
+            return <IconBlock key={section.id} content={section.content} />;
+          case "iconCards":
+            return <IconCardsBlock key={section.id} content={section.content} />;
+          case "imageCards":
+            return <ImageCardsBlock key={section.id} content={section.content} images={images} />;
+          case "faq":
+            return <FaqBlock key={section.id} content={section.content} />;
 
           // Homepage-only section types are composed bespokely on that route.
           default:
