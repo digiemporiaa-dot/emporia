@@ -9,6 +9,7 @@ import type { PickedMedia } from "@/components/admin/media-picker";
 import type { BlockType } from "@/lib/content/blocks";
 import { BlockFields, type Content } from "../../pages/[pageId]/block-fields";
 import { deleteReusableSectionAction, saveReusableSectionAction } from "../../actions";
+import type { TaxonomyOptions } from "@/lib/content/taxonomy";
 
 /**
  * Editing a reusable section.
@@ -41,11 +42,14 @@ export function ReusableEditor({
   section,
   media,
   usages,
+  taxonomy,
   canDelete,
 }: {
   section: Section;
   media: Readonly<Record<string, PickedMedia>>;
   usages: readonly Usage[];
+  /** A reusable section can be a dynamic block too, so it needs the pickers. */
+  taxonomy: TaxonomyOptions;
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -54,9 +58,9 @@ export function ReusableEditor({
   const [name, setName] = React.useState(section.name);
   const [status, setStatus] = React.useState(section.status);
   const [isGlobal, setIsGlobal] = React.useState(section.isGlobal);
-  const [content, setContent] = React.useState<Content>(
-    () => ({ ...((section.content ?? {}) as Content) }),
-  );
+  const [content, setContent] = React.useState<Content>(() => ({
+    ...((section.content ?? {}) as Content),
+  }));
   const [errors, setErrors] = React.useState<Record<string, string[]> | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -115,7 +119,11 @@ export function ReusableEditor({
           <Field id="name" label="Name" required>
             {(aria) => <Input {...aria} value={name} onChange={(e) => setName(e.target.value)} />}
           </Field>
-          <Field id="status" label="Status" hint="Only a published section can be placed on a page.">
+          <Field
+            id="status"
+            label="Status"
+            hint="Only a published section can be placed on a page."
+          >
             {(aria) => (
               <Select
                 {...aria}
@@ -154,6 +162,7 @@ export function ReusableEditor({
           errors={errors}
           media={singleMedia}
           cardMedia={media}
+          taxonomy={taxonomy}
         />
 
         {section.placements > 0 && status === "PUBLISHED" ? (

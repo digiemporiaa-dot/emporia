@@ -508,12 +508,24 @@ export const selectionMode = z.enum(["latest", "featured", "manual"]);
  */
 const manualIds = z.array(z.string().trim().max(40)).max(24).default([]);
 
+/**
+ * Filters are stored as slugs, not ids.
+ *
+ * The summaries the blocks select from already carry slugs for their relations,
+ * the editor shows names and stores the slug behind them, and a slug is legible
+ * in the stored JSON. Renaming one breaks the filter — but renaming a slug also
+ * breaks a public URL, so it is a rare and deliberate act either way.
+ *
+ * A blank filter matches everything (see `matches` in lib/content/collections).
+ */
 export const serviceGridBlock = z.object({
   ...collectionBase,
   mode: selectionMode.default("latest"),
   ids: manualIds,
   /** `index` is the editorial list the homepage uses; `cards` is a grid. */
   layout: z.enum(["index", "cards"]).default("index"),
+  /** Services have no taxonomy to filter by, so this offers order only. */
+  sort: z.enum(["order", "name"]).default("order"),
   grid: gridConfig.optional(),
 });
 
@@ -521,6 +533,9 @@ export const packageGridBlock = z.object({
   ...collectionBase,
   mode: selectionMode.default("latest"),
   ids: manualIds,
+  /** Restrict to the packages under one service. Empty means every service. */
+  serviceSlug: optionalText(120),
+  recommendedOnly: z.boolean().default(false),
   grid: gridConfig.optional(),
 });
 
@@ -530,6 +545,9 @@ export const blogGridBlock = z.object({
   ids: manualIds,
   /** Restrict to one category by slug. Empty means every category. */
   categorySlug: optionalText(120),
+  /** Restrict to one tag by slug. Empty means every tag. */
+  tagSlug: optionalText(120),
+  sort: z.enum(["newest", "oldest"]).default("newest"),
   layout: z.enum(["index", "cards"]).default("index"),
   grid: gridConfig.optional(),
 });
@@ -540,6 +558,8 @@ export const caseStudyGridBlock = z.object({
   ids: manualIds,
   /** `editorial` is the homepage's one-large-then-two; `cards` is a plain grid. */
   layout: z.enum(["editorial", "cards"]).default("cards"),
+  serviceSlug: optionalText(120),
+  citySlug: optionalText(120),
   grid: gridConfig.optional(),
 });
 
@@ -562,6 +582,13 @@ export const testimonialsBlock = z.object({
   mode: selectionMode.default("featured"),
   ids: manualIds,
   layout: z.enum(["quotes", "cards"]).default("quotes"),
+  serviceSlug: optionalText(120),
+  citySlug: optionalText(120),
+  /**
+   * Only testimonials rated at least this. A testimonial with no rating is
+   * excluded once this is set — "no rating" is not evidence of a good one.
+   */
+  minRating: z.coerce.number().int().min(1).max(5).optional(),
   grid: gridConfig.optional(),
 });
 
@@ -695,13 +722,15 @@ export const leadFormBlock = z.object({
   /** Small print under the button. Not a consent checkbox: see the renderer. */
   consentText: optionalText(400),
   /**
-   * Attaches every lead from this form to a service.
+   * Attaches every lead from this form to a service, by slug.
    *
    * Read from the *stored* block on submit, never from the request body — a
    * form that let the browser name its own service would let anyone file a lead
-   * against any service, and the reporting is built on that field.
+   * against any service, and the reporting is built on that field. A slug
+   * rather than an id for the same reason the collection filters use one: it is
+   * legible in the stored JSON and it is what the editor's picker offers.
    */
-  serviceId: trimmed(40).optional(),
+  serviceSlug: optionalText(120),
   layout: z.enum(["stacked", "beside"]).default("stacked"),
   band: styleField,
 });

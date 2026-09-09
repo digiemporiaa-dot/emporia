@@ -184,12 +184,22 @@ export function SeoPanel({
               Open Graph
             </legend>
             <div className="space-y-4">
-              <Field id="ogTitle" label="OG title" hint="Blank uses the meta title." error={err("ogTitle")}>
+              <Field
+                id="ogTitle"
+                label="OG title"
+                hint="Blank uses the meta title."
+                error={err("ogTitle")}
+              >
                 {(aria) => <Input {...aria} name="ogTitle" defaultValue={seo?.ogTitle ?? ""} />}
               </Field>
               <Field id="ogDescription" label="OG description" error={err("ogDescription")}>
                 {(aria) => (
-                  <Textarea {...aria} name="ogDescription" rows={2} defaultValue={seo?.ogDescription ?? ""} />
+                  <Textarea
+                    {...aria}
+                    name="ogDescription"
+                    rows={2}
+                    defaultValue={seo?.ogDescription ?? ""}
+                  />
                 )}
               </Field>
               <MediaPicker name="ogImageId" label="OG image" accept="IMAGE" value={ogImage} />
@@ -199,7 +209,9 @@ export function SeoPanel({
                 hint="Required by the design system whenever an image is set."
                 error={err("ogImageAlt")}
               >
-                {(aria) => <Input {...aria} name="ogImageAlt" defaultValue={seo?.ogImageAlt ?? ""} />}
+                {(aria) => (
+                  <Input {...aria} name="ogImageAlt" defaultValue={seo?.ogImageAlt ?? ""} />
+                )}
               </Field>
             </div>
           </fieldset>
@@ -209,15 +221,36 @@ export function SeoPanel({
               Twitter
             </legend>
             <div className="space-y-4">
-              <Field id="twitterTitle" label="Twitter title" hint="Blank uses the OG title." error={err("twitterTitle")}>
-                {(aria) => <Input {...aria} name="twitterTitle" defaultValue={seo?.twitterTitle ?? ""} />}
-              </Field>
-              <Field id="twitterDescription" label="Twitter description" error={err("twitterDescription")}>
+              <Field
+                id="twitterTitle"
+                label="Twitter title"
+                hint="Blank uses the OG title."
+                error={err("twitterTitle")}
+              >
                 {(aria) => (
-                  <Textarea {...aria} name="twitterDescription" rows={2} defaultValue={seo?.twitterDescription ?? ""} />
+                  <Input {...aria} name="twitterTitle" defaultValue={seo?.twitterTitle ?? ""} />
                 )}
               </Field>
-              <MediaPicker name="twitterImageId" label="Twitter image" accept="IMAGE" value={twitterImage} />
+              <Field
+                id="twitterDescription"
+                label="Twitter description"
+                error={err("twitterDescription")}
+              >
+                {(aria) => (
+                  <Textarea
+                    {...aria}
+                    name="twitterDescription"
+                    rows={2}
+                    defaultValue={seo?.twitterDescription ?? ""}
+                  />
+                )}
+              </Field>
+              <MediaPicker
+                name="twitterImageId"
+                label="Twitter image"
+                accept="IMAGE"
+                value={twitterImage}
+              />
             </div>
           </fieldset>
 
@@ -281,7 +314,11 @@ function ScorePanel({ report }: { report: SeoReport }) {
   // The colour is a second signal; the number and the wording carry it alone,
   // so nothing depends on distinguishing red from amber (CLAUDE.md 12).
   const tone =
-    report.counts.fail > 0 ? "text-brand-red-text" : report.counts.warn > 0 ? "text-warning" : "text-success";
+    report.counts.fail > 0
+      ? "text-brand-red-text"
+      : report.counts.warn > 0
+        ? "text-warning"
+        : "text-success";
 
   return (
     <div className="rounded-lg border border-line bg-white p-4">

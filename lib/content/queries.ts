@@ -207,7 +207,10 @@ export type TestimonialSummary = {
   authorRole: string | null;
   company: string | null;
   quote: string;
+  /** Null means no rating was given, which is not the same as one star. */
+  rating: number | null;
   service: { slug: string; name: string } | null;
+  city: { slug: string; name: string } | null;
 };
 
 export const publishedTestimonials = unstable_cache(
@@ -222,7 +225,9 @@ export const publishedTestimonials = unstable_cache(
         authorRole: true,
         company: true,
         quote: true,
+        rating: true,
         service: { select: { slug: true, name: true } },
+        city: { select: { slug: true, name: true } },
       },
     }),
   ["published-testimonials"],
@@ -238,6 +243,8 @@ export type PostSummary = {
   publishedAt: string | null;
   readingMinutes: number;
   category: { slug: string; name: string } | null;
+  /** Slugs only: enough to filter a block by, and cheap to carry. */
+  tags: string[];
 };
 
 export const publishedPosts = unstable_cache(
@@ -254,12 +261,14 @@ export const publishedPosts = unstable_cache(
         publishedAt: true,
         readingMinutes: true,
         category: { select: { slug: true, name: true } },
+        tags: { select: { tag: { select: { slug: true } } } },
       },
     });
 
     return rows.map((row) => ({
       ...row,
       publishedAt: row.publishedAt?.toISOString() ?? null,
+      tags: row.tags.map((link) => link.tag.slug),
     }));
   },
   ["published-posts"],

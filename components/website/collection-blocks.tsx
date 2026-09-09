@@ -9,7 +9,7 @@ import { BlockIcon } from "@/components/website/icon";
 import { ICON_NAMES, type IconName } from "@/lib/content/icons";
 import { RichBody } from "@/components/website/blocks";
 import { gridClasses, gridColumnClasses, resolveGrid } from "@/lib/content/grid";
-import { select, type PageCollections } from "@/lib/content/collections";
+import { byName, byOldest, matches, select, type PageCollections } from "@/lib/content/collections";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils/cn";
 import type { BlockContent } from "@/lib/content/blocks";
@@ -159,7 +159,9 @@ export function ServiceGridBlock({
   collections: PageCollections;
   images?: BlockImages;
 }) {
-  const services = select(collections.services, content.mode, content.ids, content.limit);
+  const services = select(collections.services, content.mode, content.ids, content.limit, {
+    sort: content.sort === "name" ? byName : undefined,
+  });
   // An empty state beats an empty band: a page with no published services
   // simply does not show this section (CLAUDE.md 2 rule 5).
   if (services.length === 0) return null;
@@ -236,7 +238,11 @@ export function PackageGridBlock({
   collections: PageCollections;
   images?: BlockImages;
 }) {
-  const packages = select(collections.packages, content.mode, content.ids, content.limit);
+  const packages = select(collections.packages, content.mode, content.ids, content.limit, {
+    where: (pkg) =>
+      matches(content.serviceSlug, pkg.service?.slug) &&
+      (!content.recommendedOnly || pkg.isRecommended),
+  });
   if (packages.length === 0) return null;
 
   const grid = resolveGrid({ grid: content.grid, columns: 3 });
@@ -297,10 +303,12 @@ export function BlogGridBlock({
   collections: PageCollections;
   images?: BlockImages;
 }) {
-  const filtered = content.categorySlug
-    ? collections.posts.filter((post) => post.category?.slug === content.categorySlug)
-    : collections.posts;
-  const posts = select(filtered, content.mode, content.ids, content.limit);
+  const posts = select(collections.posts, content.mode, content.ids, content.limit, {
+    where: (post) =>
+      matches(content.categorySlug, post.category?.slug) &&
+      (!content.tagSlug || post.tags.includes(content.tagSlug)),
+    sort: content.sort === "oldest" ? byOldest : undefined,
+  });
   if (posts.length === 0) return null;
 
   const grid = resolveGrid(content);
@@ -378,7 +386,11 @@ export function CaseStudyGridBlock({
   collections: PageCollections;
   images?: BlockImages;
 }) {
-  const studies = select(collections.caseStudies, content.mode, content.ids, content.limit);
+  const studies = select(collections.caseStudies, content.mode, content.ids, content.limit, {
+    where: (study) =>
+      matches(content.serviceSlug, study.service?.slug) &&
+      matches(content.citySlug, study.city?.slug),
+  });
   if (studies.length === 0) return null;
 
   const grid = resolveGrid(content);
@@ -492,7 +504,14 @@ export function TestimonialsBlock({
   collections: PageCollections;
   images?: BlockImages;
 }) {
-  const quotes = select(collections.testimonials, content.mode, content.ids, content.limit);
+  const quotes = select(collections.testimonials, content.mode, content.ids, content.limit, {
+    where: (quote) =>
+      matches(content.serviceSlug, quote.service?.slug) &&
+      matches(content.citySlug, quote.city?.slug) &&
+      // An unrated testimonial is excluded once a minimum is set: no rating is
+      // not evidence of a good one.
+      (content.minRating === undefined || (quote.rating ?? 0) >= content.minRating),
+  });
   if (quotes.length === 0) return null;
 
   const grid = resolveGrid({ grid: content.grid, columns: 2 });
@@ -519,12 +538,7 @@ export function TestimonialsBlock({
           ))}
         </div>
       ) : (
-        <div
-          className={cn(
-            content.heading ? "mt-10" : "",
-            "grid gap-12 lg:grid-cols-2 lg:gap-16",
-          )}
-        >
+        <div className={cn(content.heading ? "mt-10" : "", "grid gap-12 lg:grid-cols-2 lg:gap-16")}>
           {quotes.map((quote, index) => (
             <Reveal key={quote.id} delay={index * 0.08}>
               <figure className={index === 1 ? "lg:pt-16" : undefined}>
@@ -592,18 +606,16 @@ export function StatsBlock({
       ? // One headline metric per case study, not every metric of the first
         // one: three numbers from three engagements says more than three from
         // the same client.
-        collections.caseStudies
-          .slice(0, content.limit)
-          .flatMap((study) =>
-            study.metrics.slice(0, 1).map((metric) => ({
-              prefix: undefined as string | undefined,
-              value: metric.value,
-              suffix: metric.unit ?? undefined,
-              label: metric.label,
-              text: study.clientName,
-              icon: undefined as string | undefined,
-            })),
-          )
+        collections.caseStudies.slice(0, content.limit).flatMap((study) =>
+          study.metrics.slice(0, 1).map((metric) => ({
+            prefix: undefined as string | undefined,
+            value: metric.value,
+            suffix: metric.unit ?? undefined,
+            label: metric.label,
+            text: study.clientName,
+            icon: undefined as string | undefined,
+          })),
+        )
       : content.items.slice(0, content.limit);
 
   if (items.length === 0) return null;
@@ -649,10 +661,7 @@ export function StatsBlock({
             // restored with flex ordering rather than invalid markup.
             <div
               key={`${index}-${item.label}`}
-              className={cn(
-                "flex flex-col px-1 py-6 sm:px-6",
-                dark ? "bg-navy-800" : "bg-white",
-              )}
+              className={cn("flex flex-col px-1 py-6 sm:px-6", dark ? "bg-navy-800" : "bg-white")}
             >
               <dt className={cn("order-2 mt-3 text-sm", dark ? "text-navy-100" : "text-ink-muted")}>
                 {item.label}
@@ -719,9 +728,7 @@ export function FeatureCardsBlock({
       {content.eyebrow || content.heading || content.body ? (
         <Reveal className="mb-8 max-w-2xl">
           {content.eyebrow ? <Eyebrow className="mb-3">{content.eyebrow}</Eyebrow> : null}
-          {content.heading ? (
-            <h2 className="text-2xl text-navy-800">{content.heading}</h2>
-          ) : null}
+          {content.heading ? <h2 className="text-2xl text-navy-800">{content.heading}</h2> : null}
           {content.body ? <RichBody body={content.body} className="mt-4" /> : null}
         </Reveal>
       ) : null}
@@ -808,10 +815,7 @@ export function PositioningBlock({
           <Reveal delay={0.1}>
             <div className="space-y-5">
               {content.paragraphs.map((paragraph) => (
-                <p
-                  key={paragraph.slice(0, 32)}
-                  className="text-lg leading-relaxed text-ink-muted"
-                >
+                <p key={paragraph.slice(0, 32)} className="text-lg leading-relaxed text-ink-muted">
                   {paragraph}
                 </p>
               ))}

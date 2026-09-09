@@ -79,11 +79,12 @@ describeDb("page form capture", () => {
   const pages: string[] = [];
   const leads: string[] = [];
   let serviceId = "";
+  const serviceSlug = `form-service-${SUFFIX}`;
 
   beforeAll(async () => {
     const service = await db.service.create({
       data: {
-        slug: `form-service-${SUFFIX}`,
+        slug: serviceSlug,
         name: "Search",
         shortDescription: "A published service to attach leads to.",
         status: "PUBLISHED",
@@ -137,7 +138,7 @@ describeDb("page form capture", () => {
   });
 
   it("takes the service from the stored block, not from the caller", async () => {
-    const { pageId, sectionId } = await makeForm({ serviceId });
+    const { pageId, sectionId } = await makeForm({ serviceSlug });
     pages.push(pageId);
 
     const result = await capturePageFormLead(
@@ -154,16 +155,17 @@ describeDb("page form capture", () => {
   });
 
   it("ignores a configured service that is not published", async () => {
+    const draftSlug = `draft-service-${SUFFIX}`;
     const draft = await db.service.create({
       data: {
-        slug: `draft-service-${SUFFIX}`,
+        slug: draftSlug,
         name: "Draft",
         shortDescription: "Not published.",
         status: "DRAFT",
       },
       select: { id: true },
     });
-    const { pageId, sectionId } = await makeForm({ serviceId: draft.id });
+    const { pageId, sectionId } = await makeForm({ serviceSlug: draftSlug });
     pages.push(pageId);
 
     const result = await capturePageFormLead(
