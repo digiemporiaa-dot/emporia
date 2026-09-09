@@ -33,7 +33,9 @@ const list = (value: unknown): string[] => (Array.isArray(value) ? value.map(str
 const grid = (value: unknown): string[][] =>
   Array.isArray(value) ? value.map((row) => list(row)) : [];
 const items = (value: unknown): Content[] =>
-  Array.isArray(value) ? value.map((item) => (item && typeof item === "object" ? { ...(item as Content) } : {})) : [];
+  Array.isArray(value)
+    ? value.map((item) => (item && typeof item === "object" ? { ...(item as Content) } : {}))
+    : [];
 
 function useErr(errors: Record<string, string[]> | null) {
   return (name: string) => errors?.[name]?.[0];
@@ -133,9 +135,7 @@ function TableEditor({ content, set, errors }: FieldProps) {
           // table can never render ragged.
           set({
             headers: next,
-            rows: rows.map((row) =>
-              Array.from({ length: next.length }, (_, i) => row[i] ?? ""),
-            ),
+            rows: rows.map((row) => Array.from({ length: next.length }, (_, i) => row[i] ?? "")),
           });
         }}
       />
@@ -146,7 +146,12 @@ function TableEditor({ content, set, errors }: FieldProps) {
         <div className="space-y-2">
           {rows.map((row, r) => (
             <div key={r} className="flex items-start gap-2">
-              <div className="grid flex-1 gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(1, headers.length)}, minmax(0, 1fr))` }}>
+              <div
+                className="grid flex-1 gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.max(1, headers.length)}, minmax(0, 1fr))`,
+                }}
+              >
                 {Array.from({ length: Math.max(1, headers.length) }, (_, c) => (
                   <Input
                     key={c}
@@ -173,7 +178,9 @@ function TableEditor({ content, set, errors }: FieldProps) {
             size="sm"
             variant="secondary"
             className="mt-2"
-            onClick={() => set({ rows: [...rows, Array.from({ length: headers.length }, () => "")] })}
+            onClick={() =>
+              set({ rows: [...rows, Array.from({ length: headers.length }, () => "")] })
+            }
           >
             <Plus size={13} aria-hidden="true" />
             Add row
@@ -198,9 +205,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
     case "blogGrid":
     case "caseStudyGrid":
     case "testimonials":
-      return (
-        <CollectionFields type={type} content={content} set={set} errors={errors} />
-      );
+      return <CollectionFields type={type} content={content} set={set} errors={errors} />;
 
     case "clientStrip":
       return (
@@ -239,12 +244,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
 
@@ -313,12 +326,35 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                 {(item, patch) => (
                   <>
                     <div className="grid gap-3 sm:grid-cols-3">
-                      <LabelledInput label="Prefix" value={str(item["prefix"])} onChange={(v) => patch({ prefix: v })} placeholder="+" />
-                      <LabelledInput label="Number" value={str(item["value"])} onChange={(v) => patch({ value: v })} placeholder="500" />
-                      <LabelledInput label="Suffix" value={str(item["suffix"])} onChange={(v) => patch({ suffix: v })} placeholder="%" />
+                      <LabelledInput
+                        label="Prefix"
+                        value={str(item["prefix"])}
+                        onChange={(v) => patch({ prefix: v })}
+                        placeholder="+"
+                      />
+                      <LabelledInput
+                        label="Number"
+                        value={str(item["value"])}
+                        onChange={(v) => patch({ value: v })}
+                        placeholder="500"
+                      />
+                      <LabelledInput
+                        label="Suffix"
+                        value={str(item["suffix"])}
+                        onChange={(v) => patch({ suffix: v })}
+                        placeholder="%"
+                      />
                     </div>
-                    <LabelledInput label="Label" value={str(item["label"])} onChange={(v) => patch({ label: v })} />
-                    <LabelledInput label="Note" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+                    <LabelledInput
+                      label="Label"
+                      value={str(item["label"])}
+                      onChange={(v) => patch({ label: v })}
+                    />
+                    <LabelledInput
+                      label="Note"
+                      value={str(item["text"])}
+                      onChange={(v) => patch({ text: v })}
+                    />
                   </>
                 )}
               </ItemList>
@@ -333,17 +369,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Intro" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
 
@@ -387,7 +436,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch, index) => (
               <>
-                <IconSelect id={`fc-icon-${index}`} value={str(item["icon"])} onChange={(v) => patch({ icon: v })} />
+                <IconSelect
+                  id={`fc-icon-${index}`}
+                  value={str(item["icon"])}
+                  onChange={(v) => patch({ icon: v })}
+                />
                 <MediaPicker
                   name={`fc-media-${index}`}
                   label="Image instead of an icon"
@@ -395,12 +448,33 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                   value={cardMedia?.[str(item["mediaId"])] ?? null}
                   onChange={(picked) => patch({ mediaId: picked?.id ?? "" })}
                 />
-                <LabelledInput label="Badge" value={str(item["badge"])} onChange={(v) => patch({ badge: v })} />
-                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
-                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+                <LabelledInput
+                  label="Badge"
+                  value={str(item["badge"])}
+                  onChange={(v) => patch({ badge: v })}
+                />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["text"])}
+                  onChange={(v) => patch({ text: v })}
+                />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <LabelledInput label="Button label" value={str(item["ctaLabel"])} onChange={(v) => patch({ ctaLabel: v })} />
-                  <LabelledInput label="Button link" value={str(item["ctaHref"])} onChange={(v) => patch({ ctaHref: v })} placeholder="/contact" />
+                  <LabelledInput
+                    label="Button label"
+                    value={str(item["ctaLabel"])}
+                    onChange={(v) => patch({ ctaLabel: v })}
+                  />
+                  <LabelledInput
+                    label="Button link"
+                    value={str(item["ctaHref"])}
+                    onChange={(v) => patch({ ctaHref: v })}
+                    placeholder="/contact"
+                  />
                 </div>
                 <EnabledToggle item={item} patch={patch} />
               </>
@@ -415,12 +489,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <StringList
@@ -438,12 +520,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <ItemList
@@ -456,8 +546,16 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch) => (
               <>
-                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
-                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["text"])}
+                  onChange={(v) => patch({ text: v })}
+                />
               </>
             )}
           </ItemList>
@@ -469,17 +567,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Intro" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <StringList
@@ -497,25 +608,62 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
-          <Field id="heading" label="Heading" required hint="This is the page's h1." error={err("heading")}>
+          <Field
+            id="heading"
+            label="Heading"
+            required
+            hint="This is the page's h1."
+            error={err("heading")}
+          >
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Body" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={4} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={4}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <LabelledInput label="Button label" value={str(content["ctaLabel"])} onChange={(v) => set({ ctaLabel: v })} />
-            <LabelledInput label="Button link" value={str(content["ctaHref"])} onChange={(v) => set({ ctaHref: v })} placeholder="/contact" />
-            <LabelledInput label="Second button label" value={str(content["secondaryLabel"])} onChange={(v) => set({ secondaryLabel: v })} />
-            <LabelledInput label="Second button link" value={str(content["secondaryHref"])} onChange={(v) => set({ secondaryHref: v })} placeholder="/case-studies" />
+            <LabelledInput
+              label="Button label"
+              value={str(content["ctaLabel"])}
+              onChange={(v) => set({ ctaLabel: v })}
+            />
+            <LabelledInput
+              label="Button link"
+              value={str(content["ctaHref"])}
+              onChange={(v) => set({ ctaHref: v })}
+              placeholder="/contact"
+            />
+            <LabelledInput
+              label="Second button label"
+              value={str(content["secondaryLabel"])}
+              onChange={(v) => set({ secondaryLabel: v })}
+            />
+            <LabelledInput
+              label="Second button link"
+              value={str(content["secondaryHref"])}
+              onChange={(v) => set({ secondaryHref: v })}
+              placeholder="/case-studies"
+            />
           </div>
 
           <fieldset className="grid gap-4 sm:grid-cols-2">
@@ -562,7 +710,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               onChange={(picked) => set({ mediaId: picked?.id ?? "" })}
               hint="Optional. A hero with no image is a valid hero; a background image lives under Style."
             />
-            <LabelledInput label="Alt text" value={str(content["alt"])} onChange={(v) => set({ alt: v })} />
+            <LabelledInput
+              label="Alt text"
+              value={str(content["alt"])}
+              onChange={(v) => set({ alt: v })}
+            />
             <label className="flex items-center gap-2 text-xs text-navy-800">
               <input
                 type="checkbox"
@@ -605,8 +757,16 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch) => (
               <div className="grid gap-3 sm:grid-cols-2">
-                <LabelledInput label="Label" value={str(item["label"])} onChange={(v) => patch({ label: v })} />
-                <LabelledInput label="Value" value={str(item["value"])} onChange={(v) => patch({ value: v })} />
+                <LabelledInput
+                  label="Label"
+                  value={str(item["label"])}
+                  onChange={(v) => patch({ label: v })}
+                />
+                <LabelledInput
+                  label="Value"
+                  value={str(item["value"])}
+                  onChange={(v) => patch({ value: v })}
+                />
               </div>
             )}
           </ItemList>
@@ -618,12 +778,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field
@@ -633,7 +801,12 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
             error={err("body")}
           >
             {(aria) => (
-              <Textarea {...aria} rows={6} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={6}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <StringList
@@ -644,10 +817,28 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
             onChange={(next) => set({ bullets: next })}
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            <LabelledInput label="Button label" value={str(content["ctaLabel"])} onChange={(v) => set({ ctaLabel: v })} />
-            <LabelledInput label="Button link" value={str(content["ctaHref"])} onChange={(v) => set({ ctaHref: v })} placeholder="/contact" />
-            <LabelledInput label="Second button label" value={str(content["secondaryLabel"])} onChange={(v) => set({ secondaryLabel: v })} />
-            <LabelledInput label="Second button link" value={str(content["secondaryHref"])} onChange={(v) => set({ secondaryHref: v })} placeholder="/services" />
+            <LabelledInput
+              label="Button label"
+              value={str(content["ctaLabel"])}
+              onChange={(v) => set({ ctaLabel: v })}
+            />
+            <LabelledInput
+              label="Button link"
+              value={str(content["ctaHref"])}
+              onChange={(v) => set({ ctaHref: v })}
+              placeholder="/contact"
+            />
+            <LabelledInput
+              label="Second button label"
+              value={str(content["secondaryLabel"])}
+              onChange={(v) => set({ secondaryLabel: v })}
+            />
+            <LabelledInput
+              label="Second button link"
+              value={str(content["secondaryHref"])}
+              onChange={(v) => set({ secondaryHref: v })}
+              placeholder="/services"
+            />
           </div>
           <SideImageFields content={content} set={set} media={media} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -680,12 +871,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field
@@ -695,7 +894,12 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
             error={err("body")}
           >
             {(aria) => (
-              <Textarea {...aria} rows={4} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={4}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
 
@@ -733,7 +937,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch, index) => (
               <>
-                <IconSelect id={`benefit-icon-${index}`} value={str(item["icon"])} onChange={(v) => patch({ icon: v })} />
+                <IconSelect
+                  id={`benefit-icon-${index}`}
+                  value={str(item["icon"])}
+                  onChange={(v) => patch({ icon: v })}
+                />
                 <MediaPicker
                   name={`benefit-media-${index}`}
                   label="Marker image"
@@ -742,9 +950,22 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                   onChange={(picked) => patch({ mediaId: picked?.id ?? "" })}
                   hint="Optional. Replaces the icon for this point."
                 />
-                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
-                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
-                <LabelledInput label="Link" value={str(item["href"])} onChange={(v) => patch({ href: v })} placeholder="/services" />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["text"])}
+                  onChange={(v) => patch({ text: v })}
+                />
+                <LabelledInput
+                  label="Link"
+                  value={str(item["href"])}
+                  onChange={(v) => patch({ href: v })}
+                  placeholder="/services"
+                />
                 <EnabledToggle item={item} patch={patch} />
               </>
             )}
@@ -752,8 +973,17 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <LabelledInput label="Button label" value={str(content["ctaLabel"])} onChange={(v) => set({ ctaLabel: v })} />
-            <LabelledInput label="Button link" value={str(content["ctaHref"])} onChange={(v) => set({ ctaHref: v })} placeholder="/contact" />
+            <LabelledInput
+              label="Button label"
+              value={str(content["ctaLabel"])}
+              onChange={(v) => set({ ctaLabel: v })}
+            />
+            <LabelledInput
+              label="Button link"
+              value={str(content["ctaHref"])}
+              onChange={(v) => set({ ctaHref: v })}
+              placeholder="/contact"
+            />
           </div>
 
           <SideImageFields content={content} set={set} media={media} />
@@ -765,17 +995,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Intro" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <Choice
@@ -812,8 +1055,17 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                   value={str(item["name"])}
                   onChange={(v) => patch({ name: v })}
                 />
-                <LabelledInput label="Alt text" value={str(item["alt"])} onChange={(v) => patch({ alt: v })} />
-                <LabelledInput label="Link" value={str(item["href"])} onChange={(v) => patch({ href: v })} placeholder="/case-studies" />
+                <LabelledInput
+                  label="Alt text"
+                  value={str(item["alt"])}
+                  onChange={(v) => patch({ alt: v })}
+                />
+                <LabelledInput
+                  label="Link"
+                  value={str(item["href"])}
+                  onChange={(v) => patch({ href: v })}
+                  placeholder="/case-studies"
+                />
                 <EnabledToggle item={item} patch={patch} />
               </>
             )}
@@ -832,7 +1084,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
             value={media}
             onChange={(picked) => set({ mediaId: picked?.id ?? "" })}
           />
-          <LabelledInput label="Alt text" value={str(content["alt"])} onChange={(v) => set({ alt: v })} />
+          <LabelledInput
+            label="Alt text"
+            value={str(content["alt"])}
+            onChange={(v) => set({ alt: v })}
+          />
           <label className="flex items-center gap-2 text-xs text-navy-800">
             <input
               type="checkbox"
@@ -883,22 +1139,44 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
 
           <Field id="fw-eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="fw-heading" label="Heading over the image" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="fw-body" label="Text over the image" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <LabelledInput label="Button label" value={str(content["ctaLabel"])} onChange={(v) => set({ ctaLabel: v })} />
-            <LabelledInput label="Button link" value={str(content["ctaHref"])} onChange={(v) => set({ ctaHref: v })} placeholder="/contact" />
+            <LabelledInput
+              label="Button label"
+              value={str(content["ctaLabel"])}
+              onChange={(v) => set({ ctaLabel: v })}
+            />
+            <LabelledInput
+              label="Button link"
+              value={str(content["ctaHref"])}
+              onChange={(v) => set({ ctaHref: v })}
+              placeholder="/contact"
+            />
           </div>
           <Choice
             id="fw-align"
@@ -919,12 +1197,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="text" label="Heading" required error={err("text")}>
             {(aria) => (
-              <Input {...aria} value={str(content["text"])} onChange={(e) => set({ text: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["text"])}
+                onChange={(e) => set({ text: e.target.value })}
+              />
             )}
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -947,7 +1233,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
             </Field>
             <Field id="align" label="Alignment" error={err("align")}>
               {(aria) => (
-                <Select {...aria} value={str(content["align"]) || "left"} onChange={(e) => set({ align: e.target.value })}>
+                <Select
+                  {...aria}
+                  value={str(content["align"]) || "left"}
+                  onChange={(e) => set({ align: e.target.value })}
+                >
                   <option value="left">Left</option>
                   <option value="center">Centred</option>
                 </Select>
@@ -962,12 +1252,21 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Body" required hint={RICH_TEXT_HINT} error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={10} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={10}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
         </div>
@@ -978,17 +1277,36 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <ImageField {...props} />
           {err("mediaId") ? <p className="text-xs text-brand-red-text">{err("mediaId")}</p> : null}
-          <Field id="alt" label="Alt text" hint="Leave blank for a purely decorative image." error={err("alt")}>
-            {(aria) => <Input {...aria} value={str(content["alt"])} onChange={(e) => set({ alt: e.target.value })} />}
+          <Field
+            id="alt"
+            label="Alt text"
+            hint="Leave blank for a purely decorative image."
+            error={err("alt")}
+          >
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["alt"])}
+                onChange={(e) => set({ alt: e.target.value })}
+              />
+            )}
           </Field>
           <Field id="caption" label="Caption" error={err("caption")}>
             {(aria) => (
-              <Input {...aria} value={str(content["caption"])} onChange={(e) => set({ caption: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["caption"])}
+                onChange={(e) => set({ caption: e.target.value })}
+              />
             )}
           </Field>
           <Field id="width" label="Width" error={err("width")}>
             {(aria) => (
-              <Select {...aria} value={str(content["width"]) || "container"} onChange={(e) => set({ width: e.target.value })}>
+              <Select
+                {...aria}
+                value={str(content["width"]) || "container"}
+                onChange={(e) => set({ width: e.target.value })}
+              >
                 <option value="container">Page width</option>
                 <option value="wide">Wide</option>
                 <option value="full">Full bleed</option>
@@ -1004,14 +1322,31 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           <ImageField {...props} />
           {err("mediaId") ? <p className="text-xs text-brand-red-text">{err("mediaId")}</p> : null}
           <Field id="alt" label="Alt text" error={err("alt")}>
-            {(aria) => <Input {...aria} value={str(content["alt"])} onChange={(e) => set({ alt: e.target.value })} />}
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["alt"])}
+                onChange={(e) => set({ alt: e.target.value })}
+              />
+            )}
           </Field>
           <Field id="title" label="Title" required error={err("title")}>
-            {(aria) => <Input {...aria} value={str(content["title"])} onChange={(e) => set({ title: e.target.value })} />}
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["title"])}
+                onChange={(e) => set({ title: e.target.value })}
+              />
+            )}
           </Field>
           <Field id="text" label="Text" error={err("text")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["text"])} onChange={(e) => set({ text: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["text"])}
+                onChange={(e) => set({ text: e.target.value })}
+              />
             )}
           </Field>
           <CtaFields content={content} set={set} errors={errors} />
@@ -1024,7 +1359,13 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           <ImageField {...props} />
           {err("mediaId") ? <p className="text-xs text-brand-red-text">{err("mediaId")}</p> : null}
           <Field id="alt" label="Alt text" error={err("alt")}>
-            {(aria) => <Input {...aria} value={str(content["alt"])} onChange={(e) => set({ alt: e.target.value })} />}
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["alt"])}
+                onChange={(e) => set({ alt: e.target.value })}
+              />
+            )}
           </Field>
           <Field id="imagePosition" label="Image position" error={err("imagePosition")}>
             {(aria) => (
@@ -1040,17 +1381,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           </Field>
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Body" hint={RICH_TEXT_HINT} error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={6} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={6}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <CtaFields content={content} set={set} errors={errors} />
@@ -1062,7 +1416,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field
@@ -1072,7 +1430,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
             error={err("caption")}
           >
             {(aria) => (
-              <Input {...aria} value={str(content["caption"])} onChange={(e) => set({ caption: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["caption"])}
+                onChange={(e) => set({ caption: e.target.value })}
+              />
             )}
           </Field>
           <TableEditor {...props} />
@@ -1084,17 +1446,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Body" hint={RICH_TEXT_HINT} error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={5} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={5}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <StringList
@@ -1105,7 +1480,13 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           />
           <ImageField {...props} label="Image (optional)" />
           <Field id="alt" label="Alt text" error={err("alt")}>
-            {(aria) => <Input {...aria} value={str(content["alt"])} onChange={(e) => set({ alt: e.target.value })} />}
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["alt"])}
+                onChange={(e) => set({ alt: e.target.value })}
+              />
+            )}
           </Field>
           <CtaFields content={content} set={set} errors={errors} />
         </div>
@@ -1116,12 +1497,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="style" label="Style" error={err("style")}>
             {(aria) => (
-              <Select {...aria} value={str(content["style"]) || "bulleted"} onChange={(e) => set({ style: e.target.value })}>
+              <Select
+                {...aria}
+                value={str(content["style"]) || "bulleted"}
+                onChange={(e) => set({ style: e.target.value })}
+              >
                 <option value="bulleted">Bulleted</option>
                 <option value="numbered">Numbered</option>
               </Select>
@@ -1143,7 +1532,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <ItemList
@@ -1156,8 +1549,16 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch) => (
               <>
-                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
-                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["text"])}
+                  onChange={(v) => patch({ text: v })}
+                />
               </>
             )}
           </ItemList>
@@ -1171,17 +1572,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           <IconSelect id="icon" value={str(content["icon"])} onChange={(v) => set({ icon: v })} />
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Body" hint={RICH_TEXT_HINT} error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={4} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={4}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <Field id="align" label="Alignment" error={err("align")}>
             {(aria) => (
-              <Select {...aria} value={str(content["align"]) || "left"} onChange={(e) => set({ align: e.target.value })}>
+              <Select
+                {...aria}
+                value={str(content["align"]) || "left"}
+                onChange={(e) => set({ align: e.target.value })}
+              >
                 <option value="left">Left</option>
                 <option value="center">Centred</option>
               </Select>
@@ -1195,17 +1609,30 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Intro" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
 
@@ -1258,7 +1685,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch, index) => (
               <>
-                <IconSelect id={`card-icon-${index}`} value={str(item["icon"])} onChange={(v) => patch({ icon: v })} />
+                <IconSelect
+                  id={`card-icon-${index}`}
+                  value={str(item["icon"])}
+                  onChange={(v) => patch({ icon: v })}
+                />
                 <MediaPicker
                   name={`card-icon-media-${index}`}
                   label="Icon image"
@@ -1267,14 +1698,44 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                   onChange={(picked) => patch({ mediaId: picked?.id ?? "" })}
                   hint="Optional. Replaces the icon above — for a logo or a custom mark."
                 />
-                <LabelledInput label="Eyebrow" value={str(item["eyebrow"])} onChange={(v) => patch({ eyebrow: v })} />
-                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
-                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
-                <LabelledInput label="Badge" value={str(item["badge"])} onChange={(v) => patch({ badge: v })} />
-                <LabelledInput label="Link" value={str(item["href"])} onChange={(v) => patch({ href: v })} placeholder="/services" />
+                <LabelledInput
+                  label="Eyebrow"
+                  value={str(item["eyebrow"])}
+                  onChange={(v) => patch({ eyebrow: v })}
+                />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["text"])}
+                  onChange={(v) => patch({ text: v })}
+                />
+                <LabelledInput
+                  label="Badge"
+                  value={str(item["badge"])}
+                  onChange={(v) => patch({ badge: v })}
+                />
+                <LabelledInput
+                  label="Link"
+                  value={str(item["href"])}
+                  onChange={(v) => patch({ href: v })}
+                  placeholder="/services"
+                />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <LabelledInput label="Button label" value={str(item["buttonLabel"])} onChange={(v) => patch({ buttonLabel: v })} />
-                  <LabelledInput label="Button link" value={str(item["buttonHref"])} onChange={(v) => patch({ buttonHref: v })} placeholder="/contact" />
+                  <LabelledInput
+                    label="Button label"
+                    value={str(item["buttonLabel"])}
+                    onChange={(v) => patch({ buttonLabel: v })}
+                  />
+                  <LabelledInput
+                    label="Button link"
+                    value={str(item["buttonHref"])}
+                    onChange={(v) => patch({ buttonHref: v })}
+                    placeholder="/contact"
+                  />
                 </div>
                 <EnabledToggle item={item} patch={patch} />
               </>
@@ -1289,12 +1750,20 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
             {(aria) => (
-              <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["eyebrow"])}
+                onChange={(e) => set({ eyebrow: e.target.value })}
+              />
             )}
           </Field>
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <CardTreatmentFields content={content} set={set} />
@@ -1323,15 +1792,49 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                   onChange={(picked) => patch({ hoverMediaId: picked?.id ?? "" })}
                   hint="Optional. Swapped in on hover; decorative, so it carries no alt."
                 />
-                <LabelledInput label="Alt text" value={str(item["alt"])} onChange={(v) => patch({ alt: v })} />
-                <LabelledInput label="Eyebrow" value={str(item["eyebrow"])} onChange={(v) => patch({ eyebrow: v })} />
-                <LabelledInput label="Title" value={str(item["title"])} onChange={(v) => patch({ title: v })} />
-                <LabelledTextarea label="Text" value={str(item["text"])} onChange={(v) => patch({ text: v })} />
-                <LabelledInput label="Badge" value={str(item["badge"])} onChange={(v) => patch({ badge: v })} />
-                <LabelledInput label="Link" value={str(item["href"])} onChange={(v) => patch({ href: v })} placeholder="/case-studies" />
+                <LabelledInput
+                  label="Alt text"
+                  value={str(item["alt"])}
+                  onChange={(v) => patch({ alt: v })}
+                />
+                <LabelledInput
+                  label="Eyebrow"
+                  value={str(item["eyebrow"])}
+                  onChange={(v) => patch({ eyebrow: v })}
+                />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["text"])}
+                  onChange={(v) => patch({ text: v })}
+                />
+                <LabelledInput
+                  label="Badge"
+                  value={str(item["badge"])}
+                  onChange={(v) => patch({ badge: v })}
+                />
+                <LabelledInput
+                  label="Link"
+                  value={str(item["href"])}
+                  onChange={(v) => patch({ href: v })}
+                  placeholder="/case-studies"
+                />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <LabelledInput label="Button label" value={str(item["buttonLabel"])} onChange={(v) => patch({ buttonLabel: v })} />
-                  <LabelledInput label="Button link" value={str(item["buttonHref"])} onChange={(v) => patch({ buttonHref: v })} placeholder="/contact" />
+                  <LabelledInput
+                    label="Button label"
+                    value={str(item["buttonLabel"])}
+                    onChange={(v) => patch({ buttonLabel: v })}
+                  />
+                  <LabelledInput
+                    label="Button link"
+                    value={str(item["buttonHref"])}
+                    onChange={(v) => patch({ buttonHref: v })}
+                    placeholder="/contact"
+                  />
                 </div>
                 <EnabledToggle item={item} patch={patch} />
               </>
@@ -1346,30 +1849,52 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="heading" label="Heading" required error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <Field id="body" label="Body" error={err("body")}>
             {(aria) => (
-              <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+              <Textarea
+                {...aria}
+                rows={3}
+                value={str(content["body"])}
+                onChange={(e) => set({ body: e.target.value })}
+              />
             )}
           </Field>
           <CtaFields content={content} set={set} errors={errors} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field id="secondaryLabel" label="Second button label" error={err("secondaryLabel")}>
               {(aria) => (
-                <Input {...aria} value={str(content["secondaryLabel"])} onChange={(e) => set({ secondaryLabel: e.target.value })} />
+                <Input
+                  {...aria}
+                  value={str(content["secondaryLabel"])}
+                  onChange={(e) => set({ secondaryLabel: e.target.value })}
+                />
               )}
             </Field>
             <Field id="secondaryHref" label="Second button link" error={err("secondaryHref")}>
               {(aria) => (
-                <Input {...aria} value={str(content["secondaryHref"])} onChange={(e) => set({ secondaryHref: e.target.value })} placeholder="/packages" />
+                <Input
+                  {...aria}
+                  value={str(content["secondaryHref"])}
+                  onChange={(e) => set({ secondaryHref: e.target.value })}
+                  placeholder="/packages"
+                />
               )}
             </Field>
           </div>
           <Field id="tone" label="Tone" error={err("tone")}>
             {(aria) => (
-              <Select {...aria} value={str(content["tone"]) || "navy"} onChange={(e) => set({ tone: e.target.value })}>
+              <Select
+                {...aria}
+                value={str(content["tone"]) || "navy"}
+                onChange={(e) => set({ tone: e.target.value })}
+              >
                 <option value="navy">Navy band</option>
                 <option value="light">Light band</option>
               </Select>
@@ -1383,7 +1908,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
         <div className="space-y-4">
           <Field id="heading" label="Heading" error={err("heading")}>
             {(aria) => (
-              <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+              <Input
+                {...aria}
+                value={str(content["heading"])}
+                onChange={(e) => set({ heading: e.target.value })}
+              />
             )}
           </Field>
           <ItemList
@@ -1396,7 +1925,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           >
             {(item, patch) => (
               <>
-                <LabelledInput label="Question" value={str(item["question"])} onChange={(v) => patch({ question: v })} />
+                <LabelledInput
+                  label="Question"
+                  value={str(item["question"])}
+                  onChange={(v) => patch({ question: v })}
+                />
                 <LabelledTextarea
                   label="Answer"
                   rows={4}
@@ -1410,7 +1943,683 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
           {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
         </div>
       );
+
+    case "leadForm":
+      return <LeadFormFields content={content} set={set} errors={errors} />;
+
+    case "stickyCta":
+      return (
+        <div className="space-y-4">
+          <Field id="text" label="Message" error={err("text")}>
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["text"])}
+                onChange={(e) => set({ text: e.target.value })}
+              />
+            )}
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="channel" label="What the button does" error={err("channel")}>
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["channel"]) || "link"}
+                  onChange={(e) => set({ channel: e.target.value })}
+                >
+                  <option value="link">Go to a page</option>
+                  <option value="whatsapp">Open WhatsApp</option>
+                  <option value="phone">Call</option>
+                </Select>
+              )}
+            </Field>
+            <Field
+              id="target"
+              label={
+                str(content["channel"]) === "link" || !content["channel"] ? "Page" : "Phone number"
+              }
+              hint={
+                str(content["channel"]) === "link" || !content["channel"]
+                  ? "A path on this site, e.g. /contact"
+                  : "International format, e.g. +91 98765 43210"
+              }
+              error={err("target")}
+            >
+              {(aria) => (
+                <Input
+                  {...aria}
+                  value={str(content["target"])}
+                  onChange={(e) => set({ target: e.target.value })}
+                />
+              )}
+            </Field>
+          </div>
+          <Field id="buttonLabel" label="Button label" error={err("buttonLabel")}>
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["buttonLabel"])}
+                onChange={(e) => set({ buttonLabel: e.target.value })}
+              />
+            )}
+          </Field>
+          {str(content["channel"]) === "whatsapp" ? (
+            <Field id="prefill" label="Pre-filled message" error={err("prefill")}>
+              {(aria) => (
+                <Input
+                  {...aria}
+                  value={str(content["prefill"])}
+                  onChange={(e) => set({ prefill: e.target.value })}
+                />
+              )}
+            </Field>
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field id="position" label="Position" error={err("position")}>
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["position"]) || "bottom"}
+                  onChange={(e) => set({ position: e.target.value })}
+                >
+                  <option value="bottom">Bottom of the screen</option>
+                  <option value="top">Top of the screen</option>
+                </Select>
+              )}
+            </Field>
+            <Field
+              id="showAfterScroll"
+              label="Show after"
+              hint="Percent of the page scrolled. 0 shows it straight away."
+              error={err("showAfterScroll")}
+            >
+              {(aria) => (
+                <Input
+                  {...aria}
+                  type="number"
+                  min={0}
+                  max={90}
+                  value={str(content["showAfterScroll"]) || "0"}
+                  onChange={(e) => set({ showAfterScroll: e.target.value })}
+                />
+              )}
+            </Field>
+            <label className="flex items-end gap-2 pb-2.5 text-sm text-navy-800">
+              <input
+                type="checkbox"
+                checked={content["dismissible"] !== false}
+                onChange={(e) => set({ dismissible: e.target.checked })}
+                className="h-4 w-4 accent-brand-red"
+              />
+              Can be dismissed
+            </label>
+          </div>
+        </div>
+      );
+
+    case "team":
+      return (
+        <div className="space-y-4">
+          <HeaderFields content={content} set={set} errors={errors} />
+          <ItemList
+            label="People"
+            values={items(content["items"])}
+            addLabel="Add person"
+            blank={{ name: "", role: "", bio: "" }}
+            max={24}
+            onChange={(next) => set({ items: next })}
+          >
+            {(item, patch, index) => (
+              <>
+                <MediaPicker
+                  name={`team-media-${index}`}
+                  label="Photograph"
+                  accept="IMAGE"
+                  value={cardMedia?.[str(item["mediaId"])] ?? null}
+                  onChange={(picked) => patch({ mediaId: picked?.id ?? "" })}
+                />
+                <LabelledInput
+                  label="Name"
+                  value={str(item["name"])}
+                  onChange={(v) => patch({ name: v })}
+                />
+                <LabelledInput
+                  label="Role"
+                  value={str(item["role"])}
+                  onChange={(v) => patch({ role: v })}
+                />
+                <LabelledTextarea
+                  label="Bio"
+                  value={str(item["bio"])}
+                  onChange={(v) => patch({ bio: v })}
+                />
+                <LabelledInput
+                  label="Links to"
+                  placeholder="/about"
+                  value={str(item["linkHref"])}
+                  onChange={(v) => patch({ linkHref: v })}
+                />
+              </>
+            )}
+          </ItemList>
+          {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
+        </div>
+      );
+
+    case "gallery":
+      return (
+        <div className="space-y-4">
+          <HeaderFields content={content} set={set} errors={errors} withBody={false} />
+          <ItemList
+            label="Images"
+            values={items(content["items"])}
+            addLabel="Add image"
+            blank={{ mediaId: "", alt: "", caption: "" }}
+            max={48}
+            onChange={(next) => set({ items: next })}
+          >
+            {(item, patch, index) => (
+              <>
+                <MediaPicker
+                  name={`gallery-media-${index}`}
+                  label="Image"
+                  accept="IMAGE"
+                  value={cardMedia?.[str(item["mediaId"])] ?? null}
+                  onChange={(picked) => patch({ mediaId: picked?.id ?? "" })}
+                />
+                <LabelledInput
+                  label="Alt text"
+                  value={str(item["alt"])}
+                  onChange={(v) => patch({ alt: v })}
+                />
+                <LabelledInput
+                  label="Caption"
+                  value={str(item["caption"])}
+                  onChange={(v) => patch({ caption: v })}
+                />
+              </>
+            )}
+          </ItemList>
+          {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
+        </div>
+      );
+
+    case "video":
+      return (
+        <div className="space-y-4">
+          <HeaderFields content={content} set={set} errors={errors} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="provider" label="Where it is hosted" error={err("provider")}>
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["provider"]) || "youtube"}
+                  onChange={(e) => set({ provider: e.target.value })}
+                >
+                  <option value="youtube">YouTube</option>
+                  <option value="vimeo">Vimeo</option>
+                </Select>
+              )}
+            </Field>
+            <Field
+              id="video"
+              label="Video URL"
+              hint="Paste the link from the address bar. The embed is built for you."
+              error={err("video")}
+            >
+              {(aria) => (
+                <Input
+                  {...aria}
+                  value={str(content["video"])}
+                  onChange={(e) => set({ video: e.target.value })}
+                />
+              )}
+            </Field>
+          </div>
+          <Field
+            id="title"
+            label="Accessible title"
+            hint="Read out by screen readers in place of the video frame."
+            error={err("title")}
+          >
+            {(aria) => (
+              <Input
+                {...aria}
+                value={str(content["title"])}
+                onChange={(e) => set({ title: e.target.value })}
+              />
+            )}
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="ratio" label="Shape" error={err("ratio")}>
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["ratio"]) || "16:9"}
+                  onChange={(e) => set({ ratio: e.target.value })}
+                >
+                  <option value="16:9">Widescreen</option>
+                  <option value="4:3">Classic</option>
+                  <option value="1:1">Square</option>
+                </Select>
+              )}
+            </Field>
+            <Field id="width" label="Width" error={err("width")}>
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["width"]) || "container"}
+                  onChange={(e) => set({ width: e.target.value })}
+                >
+                  <option value="container">Container</option>
+                  <option value="wide">Wide</option>
+                  <option value="full">Full width</option>
+                </Select>
+              )}
+            </Field>
+          </div>
+        </div>
+      );
+
+    case "tabs":
+      return (
+        <div className="space-y-4">
+          <HeaderFields content={content} set={set} errors={errors} withBody={false} />
+          <ItemList
+            label="Tabs"
+            values={items(content["items"])}
+            addLabel="Add tab"
+            blank={{ label: "", body: "" }}
+            max={12}
+            onChange={(next) => set({ items: next })}
+          >
+            {(item, patch) => (
+              <>
+                <LabelledInput
+                  label="Tab label"
+                  value={str(item["label"])}
+                  onChange={(v) => patch({ label: v })}
+                />
+                <LabelledTextarea
+                  label="Content"
+                  rows={5}
+                  value={str(item["body"])}
+                  onChange={(v) => patch({ body: v })}
+                  hint="Blank line for a new paragraph."
+                />
+              </>
+            )}
+          </ItemList>
+          {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
+        </div>
+      );
+
+    case "timeline":
+      return (
+        <div className="space-y-4">
+          <HeaderFields content={content} set={set} errors={errors} withBody={false} />
+          <ItemList
+            label="Steps"
+            values={items(content["items"])}
+            addLabel="Add step"
+            blank={{ marker: "", title: "", body: "" }}
+            max={24}
+            onChange={(next) => set({ items: next })}
+          >
+            {(item, patch) => (
+              <>
+                <LabelledInput
+                  label="Marker"
+                  placeholder="01, or a year"
+                  value={str(item["marker"])}
+                  onChange={(v) => patch({ marker: v })}
+                />
+                <LabelledInput
+                  label="Title"
+                  value={str(item["title"])}
+                  onChange={(v) => patch({ title: v })}
+                />
+                <LabelledTextarea
+                  label="Text"
+                  value={str(item["body"])}
+                  onChange={(v) => patch({ body: v })}
+                />
+              </>
+            )}
+          </ItemList>
+          {err("items") ? <p className="text-xs text-brand-red-text">{err("items")}</p> : null}
+        </div>
+      );
+
+    case "comparisonTable":
+      return <ComparisonFields content={content} set={set} errors={errors} />;
   }
+}
+
+/**
+ * Eyebrow / heading / body, which most of the newer blocks share.
+ *
+ * Not applied retroactively to the older cases: rewriting thirty working field
+ * sets to save a few lines is exactly the kind of churn CLAUDE.md 2 rule 10
+ * warns about.
+ */
+function HeaderFields({
+  content,
+  set,
+  errors,
+  withBody = true,
+}: {
+  content: Content;
+  set: (patch: Content) => void;
+  errors: Record<string, string[]> | null;
+  withBody?: boolean;
+}) {
+  const err = useErr(errors);
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
+          {(aria) => (
+            <Input
+              {...aria}
+              value={str(content["eyebrow"])}
+              onChange={(e) => set({ eyebrow: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field id="heading" label="Heading" error={err("heading")}>
+          {(aria) => (
+            <Input
+              {...aria}
+              value={str(content["heading"])}
+              onChange={(e) => set({ heading: e.target.value })}
+            />
+          )}
+        </Field>
+      </div>
+      {withBody ? (
+        <Field id="body" label="Text" error={err("body")}>
+          {(aria) => (
+            <Textarea
+              {...aria}
+              rows={3}
+              value={str(content["body"])}
+              onChange={(e) => set({ body: e.target.value })}
+            />
+          )}
+        </Field>
+      ) : null}
+    </>
+  );
+}
+
+function LeadFormFields({
+  content,
+  set,
+  errors,
+}: {
+  content: Content;
+  set: (patch: Content) => void;
+  errors: Record<string, string[]> | null;
+}) {
+  const err = useErr(errors);
+  const variant = str(content["variant"]) || "lead";
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-line bg-surface-muted px-3 py-2.5 text-xs text-ink-subtle">
+        Submissions become leads in the CRM with the visitor&rsquo;s campaign, referrer and device
+        attached. Which fields are asked for follows from the type below.
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field id="variant" label="Form type" error={err("variant")}>
+          {(aria) => (
+            <Select {...aria} value={variant} onChange={(e) => set({ variant: e.target.value })}>
+              <option value="lead">Enquiry — name, email, phone, company, message</option>
+              <option value="contact">Contact — name, email, phone, message</option>
+              <option value="newsletter">Newsletter — email only</option>
+            </Select>
+          )}
+        </Field>
+        <Field id="layout" label="Layout" error={err("layout")}>
+          {(aria) => (
+            <Select
+              {...aria}
+              value={str(content["layout"]) || "stacked"}
+              onChange={(e) => set({ layout: e.target.value })}
+            >
+              <option value="stacked">Copy above the form</option>
+              <option value="beside">Copy beside the form</option>
+            </Select>
+          )}
+        </Field>
+      </div>
+
+      <HeaderFields content={content} set={set} errors={errors} />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field id="submitLabel" label="Button label" error={err("submitLabel")}>
+          {(aria) => (
+            <Input
+              {...aria}
+              value={str(content["submitLabel"])}
+              onChange={(e) => set({ submitLabel: e.target.value })}
+            />
+          )}
+        </Field>
+        <Field
+          id="serviceId"
+          label="Attach leads to a service"
+          hint="Optional. Read from here on submit, never from the browser."
+          error={err("serviceId")}
+        >
+          {(aria) => (
+            <Input
+              {...aria}
+              value={str(content["serviceId"])}
+              placeholder="Service id"
+              onChange={(e) => set({ serviceId: e.target.value })}
+            />
+          )}
+        </Field>
+      </div>
+
+      <Field id="successMessage" label="Message after sending" error={err("successMessage")}>
+        {(aria) => (
+          <Textarea
+            {...aria}
+            rows={2}
+            value={str(content["successMessage"])}
+            onChange={(e) => set({ successMessage: e.target.value })}
+          />
+        )}
+      </Field>
+
+      <Field
+        id="consentText"
+        label="Small print"
+        hint="Shown beside the button."
+        error={err("consentText")}
+      >
+        {(aria) => (
+          <Input
+            {...aria}
+            value={str(content["consentText"])}
+            onChange={(e) => set({ consentText: e.target.value })}
+          />
+        )}
+      </Field>
+    </div>
+  );
+}
+
+function ComparisonFields({
+  content,
+  set,
+  errors,
+}: {
+  content: Content;
+  set: (patch: Content) => void;
+  errors: Record<string, string[]> | null;
+}) {
+  const err = useErr(errors);
+  const columns = items(content["columns"]);
+  const rows = items(content["rows"]);
+
+  const cellsOf = (row: Content): (boolean | string)[] =>
+    Array.isArray(row["cells"])
+      ? (row["cells"] as unknown[]).map((cell) => (typeof cell === "boolean" ? cell : str(cell)))
+      : [];
+
+  const setCell = (rowIndex: number, columnIndex: number, value: boolean | string) => {
+    set({
+      rows: rows.map((row, index) => {
+        if (index !== rowIndex) return row;
+        const cells = cellsOf(row);
+        while (cells.length < columns.length) cells.push("");
+        cells[columnIndex] = value;
+        return { ...row, cells };
+      }),
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <HeaderFields content={content} set={set} errors={errors} />
+
+      <ItemList
+        label="Columns"
+        values={columns}
+        addLabel="Add column"
+        blank={{ label: "", detail: "", highlight: false }}
+        max={5}
+        onChange={(next) => set({ columns: next })}
+      >
+        {(item, patch) => (
+          <>
+            <LabelledInput
+              label="Label"
+              value={str(item["label"])}
+              onChange={(v) => patch({ label: v })}
+            />
+            <LabelledInput
+              label="Detail"
+              value={str(item["detail"])}
+              onChange={(v) => patch({ detail: v })}
+            />
+            <LabelledInput
+              label="Button label"
+              value={str(item["ctaLabel"])}
+              onChange={(v) => patch({ ctaLabel: v })}
+            />
+            <LabelledInput
+              label="Button goes to"
+              placeholder="/contact"
+              value={str(item["ctaHref"])}
+              onChange={(v) => patch({ ctaHref: v })}
+            />
+            <label className="flex items-center gap-2 text-xs text-navy-800">
+              <input
+                type="checkbox"
+                checked={item["highlight"] === true}
+                onChange={(e) => patch({ highlight: e.target.checked })}
+                className="h-3.5 w-3.5 accent-brand-red"
+              />
+              Highlight this column
+            </label>
+          </>
+        )}
+      </ItemList>
+      {err("columns") ? <p className="text-xs text-brand-red-text">{err("columns")}</p> : null}
+
+      <div>
+        <p className="mb-2 text-2xs font-medium uppercase tracking-wide text-ink-subtle">Rows</p>
+        <div className="space-y-3">
+          {rows.map((row, rowIndex) => {
+            const cells = cellsOf(row);
+            return (
+              <div key={rowIndex} className="rounded-md border border-line bg-surface-muted p-3">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 space-y-2">
+                    <LabelledInput
+                      label={`Row ${rowIndex + 1}`}
+                      value={str(row["label"])}
+                      onChange={(v) =>
+                        set({ rows: rows.map((r, i) => (i === rowIndex ? { ...r, label: v } : r)) })
+                      }
+                    />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {columns.map((column, columnIndex) => {
+                        const value = cells[columnIndex] ?? "";
+                        const mode = value === true ? "yes" : value === false ? "no" : "text";
+                        return (
+                          <div key={columnIndex} className="flex items-end gap-2">
+                            <label className="block flex-1">
+                              <span className="mb-1 block text-2xs uppercase tracking-wide text-ink-subtle">
+                                {str(column["label"]) || `Column ${columnIndex + 1}`}
+                              </span>
+                              <Select
+                                value={mode}
+                                aria-label={`${str(column["label"])} for row ${rowIndex + 1}`}
+                                onChange={(e) =>
+                                  setCell(
+                                    rowIndex,
+                                    columnIndex,
+                                    e.target.value === "yes"
+                                      ? true
+                                      : e.target.value === "no"
+                                        ? false
+                                        : "",
+                                  )
+                                }
+                              >
+                                <option value="yes">Included</option>
+                                <option value="no">Not included</option>
+                                <option value="text">Text</option>
+                              </Select>
+                            </label>
+                            {mode === "text" ? (
+                              <Input
+                                aria-label={`Text for ${str(column["label"])}, row ${rowIndex + 1}`}
+                                value={typeof value === "string" ? value : ""}
+                                onChange={(e) => setCell(rowIndex, columnIndex, e.target.value)}
+                              />
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Remove row ${rowIndex + 1}`}
+                    onClick={() => set({ rows: rows.filter((_, i) => i !== rowIndex) })}
+                    className="mt-6 rounded-sm p-1.5 text-ink-subtle hover:text-brand-red"
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {rows.length < 40 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="mt-2"
+            onClick={() => set({ rows: [...rows, { label: "", cells: columns.map(() => false) }] })}
+          >
+            <Plus size={13} aria-hidden="true" />
+            Add row
+          </Button>
+        ) : null}
+        {err("rows") ? <p className="mt-1 text-xs text-brand-red-text">{err("rows")}</p> : null}
+      </div>
+    </div>
+  );
 }
 
 function CtaFields({
@@ -1427,12 +2636,26 @@ function CtaFields({
     <div className="grid gap-4 sm:grid-cols-2">
       <Field id="ctaLabel" label="Button label" error={err("ctaLabel")}>
         {(aria) => (
-          <Input {...aria} value={str(content["ctaLabel"])} onChange={(e) => set({ ctaLabel: e.target.value })} />
+          <Input
+            {...aria}
+            value={str(content["ctaLabel"])}
+            onChange={(e) => set({ ctaLabel: e.target.value })}
+          />
         )}
       </Field>
-      <Field id="ctaHref" label="Button link" hint="A path on this site, e.g. /contact" error={err("ctaHref")}>
+      <Field
+        id="ctaHref"
+        label="Button link"
+        hint="A path on this site, e.g. /contact"
+        error={err("ctaHref")}
+      >
         {(aria) => (
-          <Input {...aria} value={str(content["ctaHref"])} onChange={(e) => set({ ctaHref: e.target.value })} placeholder="/contact" />
+          <Input
+            {...aria}
+            value={str(content["ctaHref"])}
+            onChange={(e) => set({ ctaHref: e.target.value })}
+            placeholder="/contact"
+          />
         )}
       </Field>
     </div>
@@ -1729,7 +2952,13 @@ function EnabledToggle({ item, patch }: { item: Content; patch: (p: Content) => 
 }
 
 /** How a card block presents its images. Edits the shared `image` object. */
-function CardTreatmentFields({ content, set }: { content: Content; set: (patch: Content) => void }) {
+function CardTreatmentFields({
+  content,
+  set,
+}: {
+  content: Content;
+  set: (patch: Content) => void;
+}) {
   const image = (content["image"] ?? {}) as Content;
   const patch = (next: Content) => set({ image: { ...image, ...next } });
 
@@ -1810,7 +3039,11 @@ function SideImageFields({
         onChange={(picked) => set({ mediaId: picked?.id ?? "" })}
         hint="Optional. The section lays out full width without one."
       />
-      <LabelledInput label="Alt text" value={str(content["alt"])} onChange={(v) => set({ alt: v })} />
+      <LabelledInput
+        label="Alt text"
+        value={str(content["alt"])}
+        onChange={(v) => set({ alt: v })}
+      />
       <label className="flex items-center gap-2 text-xs text-navy-800">
         <input
           type="checkbox"
@@ -1944,17 +3177,30 @@ function CollectionFields({
 
       <Field id="eyebrow" label="Eyebrow" error={err("eyebrow")}>
         {(aria) => (
-          <Input {...aria} value={str(content["eyebrow"])} onChange={(e) => set({ eyebrow: e.target.value })} />
+          <Input
+            {...aria}
+            value={str(content["eyebrow"])}
+            onChange={(e) => set({ eyebrow: e.target.value })}
+          />
         )}
       </Field>
       <Field id="heading" label="Heading" error={err("heading")}>
         {(aria) => (
-          <Input {...aria} value={str(content["heading"])} onChange={(e) => set({ heading: e.target.value })} />
+          <Input
+            {...aria}
+            value={str(content["heading"])}
+            onChange={(e) => set({ heading: e.target.value })}
+          />
         )}
       </Field>
       <Field id="body" label="Intro" error={err("body")}>
         {(aria) => (
-          <Textarea {...aria} rows={3} value={str(content["body"])} onChange={(e) => set({ body: e.target.value })} />
+          <Textarea
+            {...aria}
+            rows={3}
+            value={str(content["body"])}
+            onChange={(e) => set({ body: e.target.value })}
+          />
         )}
       </Field>
 

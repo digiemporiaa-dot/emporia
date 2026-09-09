@@ -6,8 +6,9 @@
 |---|---|
 | 1 — Content admin | **Done** — merged, 18 tests |
 | 2 — Page builder upgrade | **Done** — merged, 17 tests |
-| 3 — Block library, wave 1 | Next |
-| 4–15 | Planned, below |
+| 3 — Block library, wave 1 | **Done** — merged, 45 tests |
+| 4 — Dynamic block filtering + taxonomy | Next |
+| 5–15 | Planned, below |
 
 This is the deliverable of the mandatory audit step: a map of the CMS as it
 actually exists today, an honest coverage matrix against the 26 requested
@@ -194,7 +195,7 @@ field on block content plus a migration hook so future schema changes cannot
 break stored pages; unsaved-changes warning. Columns/nesting assessed against
 the current flat `PageSection` model before committing to it.
 
-### Phase 3 — Block library, wave 1 (conversion and trust)
+### Phase 3 — Block library, wave 1 (conversion and trust) — **DONE**
 Lead form, contact form, newsletter, sticky CTA, WhatsApp CTA, team, gallery,
 video (allow-listed), tabs, accordion, timeline, pricing table, comparison
 table. Built on shared primitives, not 13 bespoke components. Forms route

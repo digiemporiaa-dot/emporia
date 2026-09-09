@@ -19,6 +19,7 @@ import {
 import { Button, Dialog, useToast } from "@/components/ui";
 import type { PickedMedia } from "@/components/admin/media-picker";
 import {
+  BLOCK_GROUPS,
   BLOCK_LIBRARY,
   blockDefinition,
   blockWarnings,
@@ -80,7 +81,9 @@ type Props = {
   canEdit: boolean;
 };
 
-const GROUPS = ["Layout", "Text", "Cards", "Media", "Dynamic", "Data"] as const;
+// Ordered beside the library itself, so a new group cannot be added there and
+// forgotten here — which is how eight blocks once shipped unreachable.
+const GROUPS = BLOCK_GROUPS;
 
 /**
  * Which tabs a block shows.
@@ -101,6 +104,8 @@ const HAS_GRID = new Set<BlockType>([
   "blogGrid",
   "caseStudyGrid",
   "testimonials",
+  "team",
+  "gallery",
 ]);
 
 const TABS = ["Content", "Layout", "Grid", "Style", "Advanced"] as const;

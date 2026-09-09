@@ -37,6 +37,16 @@ import {
   StatsBlock,
   TestimonialsBlock,
 } from "@/components/website/collection-blocks";
+import {
+  ComparisonTableBlock,
+  GalleryBlock,
+  LeadFormBlock,
+  StickyCtaBlock,
+  TabsBlock,
+  TeamBlock,
+  TimelineBlock,
+  VideoBlock,
+} from "@/components/website/convert-blocks";
 import { EMPTY_COLLECTIONS, type PageCollections } from "@/lib/content/collections";
 
 /**
@@ -120,7 +130,11 @@ export function PageSections({
                         </Reveal>
                       </div>
                     ) : null}
-                    <div className={section.content.heading ? "lg:col-span-7 lg:col-start-6" : "lg:col-span-8"}>
+                    <div
+                      className={
+                        section.content.heading ? "lg:col-span-7 lg:col-start-6" : "lg:col-span-8"
+                      }
+                    >
                       <Reveal delay={0.06}>
                         <div className="space-y-5">
                           {section.content.paragraphs.map((paragraph) => (
@@ -208,13 +222,13 @@ export function PageSections({
             );
 
           case "legal": {
-            const updated = section.content.updatedAt ? formatUpdated(section.content.updatedAt) : null;
+            const updated = section.content.updatedAt
+              ? formatUpdated(section.content.updatedAt)
+              : null;
             return (
               <section key={section.id}>
                 <Container width="narrow" className="py-12 lg:py-16">
-                  {title ? (
-                    <h1 className="mb-6 text-4xl text-navy-800">{title}</h1>
-                  ) : null}
+                  {title ? <h1 className="mb-6 text-4xl text-navy-800">{title}</h1> : null}
                   {updated ? (
                     <p className="text-xs text-ink-subtle">Last updated {updated}</p>
                   ) : null}
@@ -353,6 +367,35 @@ export function PageSections({
           case "fullWidthImage":
             return (
               <FullWidthImageBlock key={section.id} content={section.content} images={images} />
+            );
+
+          // The form posts its own section id, so the server can load this
+          // block and decide the outcome from stored content rather than from
+          // the request body.
+          case "leadForm":
+            return (
+              <LeadFormBlock
+                key={section.id}
+                id={section.id}
+                content={section.content}
+                images={images}
+              />
+            );
+          case "stickyCta":
+            return <StickyCtaBlock key={section.id} content={section.content} />;
+          case "team":
+            return <TeamBlock key={section.id} content={section.content} images={images} />;
+          case "gallery":
+            return <GalleryBlock key={section.id} content={section.content} images={images} />;
+          case "video":
+            return <VideoBlock key={section.id} content={section.content} images={images} />;
+          case "tabs":
+            return <TabsBlock key={section.id} content={section.content} images={images} />;
+          case "timeline":
+            return <TimelineBlock key={section.id} content={section.content} images={images} />;
+          case "comparisonTable":
+            return (
+              <ComparisonTableBlock key={section.id} content={section.content} images={images} />
             );
 
           // Homepage-only section types are composed bespokely on that route.
