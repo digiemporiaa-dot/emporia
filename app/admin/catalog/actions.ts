@@ -6,7 +6,9 @@ import { citySchema, serviceCityPageSchema, localFaqSchema } from "@/lib/validat
 import * as cityService from "@/lib/services/city.service";
 import * as pageService from "@/lib/services/serviceCityPage.service";
 import * as packageService from "@/lib/services/package.service";
+import * as serviceService from "@/lib/services/service.service";
 import { packageSchema } from "@/lib/validation/package";
+import { serviceSchema } from "@/lib/validation/content";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { isSeoEntity, updateEntitySeo } from "@/lib/services/seo.service";
 import { pageSeoSchema } from "@/lib/validation/seo";
@@ -191,7 +193,6 @@ export async function deleteLocalFaqAction(id: string, pageId: string): Promise<
   revalidatePath(`/admin/catalog/service-cities/${pageId}`);
 }
 
-
 export type PackageActionState = ActionResult<{ id: string }> | null;
 
 /** Features arrive as JSON from the client editor, so they are parsed then validated. */
@@ -203,7 +204,9 @@ function parseFeatures(value: FormDataEntryValue | null): unknown {
     return parsed
       .filter(
         (item): item is { label: string; detail?: string; isIncluded?: boolean } =>
-          typeof item === "object" && item !== null && typeof (item as { label?: unknown }).label === "string",
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as { label?: unknown }).label === "string",
       )
       .filter((item) => item.label.trim().length > 0)
       .map((item) => ({
@@ -297,6 +300,70 @@ export async function saveEntitySeoAction(
     return { ok: true, data: { id } };
   } catch (error) {
     actionLog.error({ err: error }, "save entity seo failed");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Services
+// ---------------------------------------------------------------------------
+
+export type ServiceActionState = ActionResult<{ id: string }> | null;
+
+export async function saveServiceAction(
+  _prev: ServiceActionState,
+  formData: FormData,
+): Promise<ServiceActionState> {
+  try {
+    const actor = await requireActor();
+    const raw = fields(formData);
+    const id = typeof raw["id"] === "string" ? raw["id"] : "";
+
+    const bodyField = formData.get("body");
+    let body: unknown = {};
+    if (typeof bodyField === "string" && bodyField.trim() !== "") {
+      try {
+        body = JSON.parse(bodyField);
+      } catch {
+        body = null;
+      }
+    }
+
+    const parsed = serviceSchema.safeParse({ ...raw, body });
+    if (!parsed.success) {
+      const details: Record<string, string[]> = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path.join(".");
+        (details[key] ??= []).push(issue.message);
+      }
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the form.",
+        details,
+      };
+    }
+
+    const service = id
+      ? await serviceService.updateService(actor, id, parsed.data)
+      : await serviceService.createService(actor, parsed.data);
+
+    revalidatePath("/admin/catalog/services");
+    return { ok: true, data: { id: service.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "saveService failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function deleteServiceAction(id: string): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    await serviceService.deleteService(actor, id);
+    revalidatePath("/admin/catalog/services");
+    return { ok: true, data: { id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "deleteService failed");
     return toActionFailure(error);
   }
 }

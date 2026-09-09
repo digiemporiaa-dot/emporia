@@ -25,6 +25,9 @@ export const SEO_ENTITIES = {
   city: { tag: "cities", label: "City" },
   serviceCityPage: { tag: "service-city-pages", label: "Service-city page" },
   servicePackage: { tag: "packages", label: "Package" },
+  service: { tag: "services", label: "Service" },
+  blogPost: { tag: "posts", label: "Blog post" },
+  caseStudy: { tag: "case-studies", label: "Case study" },
 } as const;
 
 export type SeoEntity = keyof typeof SEO_ENTITIES;
@@ -61,21 +64,32 @@ const entitySeoSelect = {
 } as const;
 
 /**
- * Read an entity's SEO.
- *
  * Switched rather than indexed: the entity name arrives from a form field, and
  * `db[whatever]` would let a caller reach any table in the schema. Prisma's
  * delegates are also not callable as a union, so each branch names its own.
  */
+function readEntity(entity: SeoEntity, id: string) {
+  switch (entity) {
+    case "city":
+      return db.city.findUnique({ where: { id }, select: entitySeoSelect });
+    case "serviceCityPage":
+      return db.serviceCityPage.findUnique({ where: { id }, select: entitySeoSelect });
+    case "servicePackage":
+      return db.servicePackage.findUnique({ where: { id }, select: entitySeoSelect });
+    case "service":
+      return db.service.findUnique({ where: { id }, select: entitySeoSelect });
+    case "blogPost":
+      return db.blogPost.findUnique({ where: { id }, select: entitySeoSelect });
+    case "caseStudy":
+      return db.caseStudy.findUnique({ where: { id }, select: entitySeoSelect });
+  }
+}
+
+/** Read an entity's SEO. */
 export async function getEntitySeo(actor: Actor, entity: SeoEntity, id: string) {
   requirePermission(actor, "seo.view");
 
-  const row =
-    entity === "city"
-      ? await db.city.findUnique({ where: { id }, select: entitySeoSelect })
-      : entity === "serviceCityPage"
-        ? await db.serviceCityPage.findUnique({ where: { id }, select: entitySeoSelect })
-        : await db.servicePackage.findUnique({ where: { id }, select: entitySeoSelect });
+  const row = await readEntity(entity, id);
 
   if (!row) throw new NotFoundError(`That ${SEO_ENTITIES[entity].label.toLowerCase()} does not exist.`);
   return row;
@@ -136,6 +150,12 @@ export async function updateEntitySeo(
           return tx.serviceCityPage.update({ where: { id }, data: { seoId: seo.id } });
         case "servicePackage":
           return tx.servicePackage.update({ where: { id }, data: { seoId: seo.id } });
+        case "service":
+          return tx.service.update({ where: { id }, data: { seoId: seo.id } });
+        case "blogPost":
+          return tx.blogPost.update({ where: { id }, data: { seoId: seo.id } });
+        case "caseStudy":
+          return tx.caseStudy.update({ where: { id }, data: { seoId: seo.id } });
       }
     },
   );

@@ -30,23 +30,74 @@ export const metadata: Metadata = {
  * it into a link.
  */
 const NAV: readonly { item: NavItem; permission: Permission }[] = [
-  { item: { kind: "link", href: "/admin", label: "Dashboard", icon: "dashboard" }, permission: "leads.view" },
-  { item: { kind: "link", href: "/admin/leads", label: "Leads", icon: "leads" }, permission: "leads.view" },
-  { item: { kind: "link", href: "/admin/sales", label: "Sales", icon: "sales" }, permission: "proposals.view" },
-  { item: { kind: "link", href: "/admin/clients", label: "Clients", icon: "clients" }, permission: "clients.view" },
-  { item: { kind: "link", href: "/admin/projects", label: "Projects", icon: "projects" }, permission: "projects.view" },
-  { item: { kind: "link", href: "/admin/website/pages", label: "Website", icon: "pages" }, permission: "pages.view" },
-  { item: { kind: "link", href: "/admin/website/sections", label: "Sections", icon: "sections" }, permission: "pages.view" },
-  { item: { kind: "link", href: "/admin/catalog", label: "Catalog", icon: "content" }, permission: "catalog.view" },
-  { item: { kind: "link", href: "/admin/content", label: "Content", icon: "content" }, permission: "content.view" },
-  { item: { kind: "link", href: "/admin/approvals", label: "Approvals", icon: "approvals" }, permission: "approvals.view" },
-  { item: { kind: "link", href: "/admin/marketing", label: "Marketing", icon: "marketing" }, permission: "popups.view" },
-  { item: { kind: "link", href: "/admin/finance", label: "Finance", icon: "finance" }, permission: "invoices.view" },
-  { item: { kind: "link", href: "/admin/media", label: "Media", icon: "media" }, permission: "media.view" },
-  { item: { kind: "link", href: "/admin/analytics", label: "Analytics", icon: "analytics" }, permission: "analytics.view" },
-  { item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" }, permission: "automation.view" },
-  { item: { kind: "link", href: "/admin/ai", label: "Assistant", icon: "ai" }, permission: "ai.use" },
-  { item: { kind: "link", href: "/admin/settings", label: "Settings", icon: "settings" }, permission: "emails.view" },
+  {
+    item: { kind: "link", href: "/admin", label: "Dashboard", icon: "dashboard" },
+    permission: "leads.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/leads", label: "Leads", icon: "leads" },
+    permission: "leads.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/sales", label: "Sales", icon: "sales" },
+    permission: "proposals.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/clients", label: "Clients", icon: "clients" },
+    permission: "clients.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/projects", label: "Projects", icon: "projects" },
+    permission: "projects.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/website", label: "Website", icon: "pages" },
+    permission: "pages.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/website/sections", label: "Sections", icon: "sections" },
+    permission: "pages.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/catalog", label: "Catalog", icon: "content" },
+    permission: "catalog.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/content", label: "Content", icon: "content" },
+    permission: "content.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/approvals", label: "Approvals", icon: "approvals" },
+    permission: "approvals.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/marketing", label: "Marketing", icon: "marketing" },
+    permission: "popups.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/finance", label: "Finance", icon: "finance" },
+    permission: "invoices.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/media", label: "Media", icon: "media" },
+    permission: "media.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/analytics", label: "Analytics", icon: "analytics" },
+    permission: "analytics.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" },
+    permission: "automation.view",
+  },
+  {
+    item: { kind: "link", href: "/admin/ai", label: "Assistant", icon: "ai" },
+    permission: "ai.use",
+  },
+  {
+    item: { kind: "link", href: "/admin/settings", label: "Settings", icon: "settings" },
+    permission: "emails.view",
+  },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

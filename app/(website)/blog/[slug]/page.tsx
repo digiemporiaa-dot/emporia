@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { Container, CtaButton, Eyebrow } from "@/components/website/primitives";
 import { Breadcrumbs } from "@/components/website/breadcrumbs";
@@ -10,13 +9,9 @@ import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
 import { seoSelect } from "@/lib/seo/select";
 import { articleSchema } from "@/lib/seo/schema";
 import { HeroReveal, Reveal } from "@/components/website/motion";
+import { parseBody, postBodySchema } from "@/lib/content/entity-body";
 
 export const revalidate = 3600;
-
-const postBody = z.object({
-  lead: z.string().optional(),
-  sections: z.array(z.object({ heading: z.string(), text: z.string() })).optional(),
-});
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
@@ -68,8 +63,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const post = await getPost(slug);
   if (!post) notFound();
 
-  const parsed = postBody.safeParse(post.body);
-  const body = parsed.success ? parsed.data : {};
+  const body = parseBody(postBodySchema, post.body);
 
   // articleSchema returns null for a post with no publication date, so an
   // incomplete Article node is never emitted.
