@@ -11,7 +11,18 @@ export default async function CatalogPage() {
   const actor = await requireActorPage("/admin/catalog");
   requirePermission(actor, "catalog.view");
 
-  const [cities, activeCities, pages, publishedPages, packages, livePackages] = await Promise.all([
+  const [
+    services,
+    liveServices,
+    cities,
+    activeCities,
+    pages,
+    publishedPages,
+    packages,
+    livePackages,
+  ] = await Promise.all([
+    db.service.count(),
+    db.service.count({ where: { status: "PUBLISHED" } }),
     db.city.count(),
     db.city.count({ where: { isActive: true } }),
     db.serviceCityPage.count(),
@@ -21,6 +32,13 @@ export default async function CatalogPage() {
   ]);
 
   const sections = [
+    {
+      href: "/admin/catalog/services" as const,
+      title: "Services",
+      detail: `${liveServices} published of ${services}`,
+      description:
+        "What the agency sells. Every service page, local page and package hangs off one of these.",
+    },
     {
       href: "/admin/catalog/cities" as const,
       title: "Cities",
@@ -38,15 +56,16 @@ export default async function CatalogPage() {
       href: "/admin/catalog/packages" as const,
       title: "Packages",
       detail: `${livePackages} published of ${packages}`,
-      description:
-        "Pricing, features and tax. Prices stay Decimal from this form to the invoice.",
+      description: "Pricing, features and tax. Prices stay Decimal from this form to the invoice.",
     },
   ];
 
   return (
     <>
       <header className="mb-7">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Catalog</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
+          Catalog
+        </p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Services, cities and local pages</h1>
       </header>
 

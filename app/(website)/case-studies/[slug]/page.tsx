@@ -1,21 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { Container, CtaButton, Eyebrow } from "@/components/website/primitives";
 import { Breadcrumbs } from "@/components/website/breadcrumbs";
 import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
 import { seoSelect } from "@/lib/seo/select";
 import { HeroReveal, Reveal } from "@/components/website/motion";
+import { parseBody, caseBodySchema } from "@/lib/content/entity-body";
 
 export const revalidate = 3600;
-
-const caseBody = z.object({
-  challenge: z.string().optional(),
-  approach: z.string().optional(),
-  outcome: z.string().optional(),
-});
 
 async function getStudy(slug: string) {
   return db.caseStudy.findFirst({
@@ -56,8 +50,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
   const study = await getStudy(slug);
   if (!study) notFound();
 
-  const parsed = caseBody.safeParse(study.body);
-  const body = parsed.success ? parsed.data : {};
+  const body = parseBody(caseBodySchema, study.body);
 
   // Related work is derived from the relationship, not hand-picked.
   const related = await db.caseStudy.findMany({

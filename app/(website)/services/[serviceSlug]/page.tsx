@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { ArrowLink, Container, CtaButton, Eyebrow, IndexNumber } from "@/components/website/primitives";
@@ -11,15 +10,9 @@ import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
 import { seoSelect } from "@/lib/seo/select";
 import { faqSchema, serviceSchema } from "@/lib/seo/schema";
 import { HeroReveal, Reveal, Stagger, StaggerItem } from "@/components/website/motion";
+import { parseBody, serviceBodySchema } from "@/lib/content/entity-body";
 
 export const revalidate = 3600;
-
-/** Service body is JSON, so it is validated before render, not trusted. */
-const serviceBody = z.object({
-  intro: z.string().optional(),
-  deliverables: z.array(z.string()).optional(),
-  approach: z.string().optional(),
-});
 
 async function getService(slug: string) {
   return db.service.findFirst({
@@ -90,8 +83,7 @@ export default async function ServiceDetailPage({
   const service = await getService(serviceSlug);
   if (!service) notFound();
 
-  const parsedBody = serviceBody.safeParse(service.body);
-  const body = parsedBody.success ? parsedBody.data : {};
+  const body = parseBody(serviceBodySchema, service.body);
 
   // Contextual internal links, derived from relationships rather than a dump.
   // FAQPage is emitted only when the page actually renders questions.

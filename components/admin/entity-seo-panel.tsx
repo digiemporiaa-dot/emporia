@@ -36,7 +36,7 @@ export function EntitySeoPanel({
   titleHint,
   canEdit,
 }: {
-  entity: "city" | "serviceCityPage" | "servicePackage";
+  entity: "city" | "serviceCityPage" | "servicePackage" | "service" | "blogPost" | "caseStudy";
   id: string;
   seo: SeoValues;
   ogImage: PickedMedia | null;
