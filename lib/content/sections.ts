@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BLOCK_SCHEMAS } from "@/lib/content/blocks";
+import { migrateContent } from "@/lib/content/migrations";
 
 /**
  * PageSection content schemas.
@@ -96,7 +97,10 @@ export function parseSections(sections: readonly RawSection[]): ParsedSection[] 
     const schema = SECTION_SCHEMAS[type];
     if (!schema) continue;
 
-    const result = schema.safeParse(section.content);
+    // Brought forward before validation, so a block whose shape changed in a
+    // later release still parses instead of being dropped and blanking the
+    // band (lib/content/migrations.ts). In memory only — nothing is written.
+    const result = schema.safeParse(migrateContent(section.content, type));
     if (!result.success) continue;
 
     parsed.push({ id: section.id, type, content: result.data } as ParsedSection);

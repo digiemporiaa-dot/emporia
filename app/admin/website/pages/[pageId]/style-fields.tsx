@@ -223,7 +223,85 @@ export function LayoutFields({
           onChange={(verticalAlign) => patch({ verticalAlign: verticalAlign || undefined })}
         />
       </div>
+
+      <BreakpointFields band={band} patch={patch} />
     </div>
+  );
+}
+
+/**
+ * Tablet and phone overrides.
+ *
+ * Collapsed by default and labelled as overrides, because the settings above
+ * are already responsive — a padding token emits a small-screen value and a
+ * desktop one. These exist for the cases that genuinely differ: a band that
+ * should be tight on a phone, or copy that centres on mobile and ranges left on
+ * a wide screen. "Inherit" is the default everywhere, and choosing it back
+ * removes the override rather than freezing the current value.
+ */
+function BreakpointFields({ band, patch }: { band: Content; patch: (next: Content) => void }) {
+  const group = (key: "tablet" | "mobile") => obj(band[key]);
+
+  const setOverride = (key: "tablet" | "mobile", field: string, value: string) => {
+    const next = { ...group(key), [field]: value || undefined };
+    // An override group with nothing in it is removed, so the stored content
+    // does not accumulate empty objects.
+    const kept = Object.fromEntries(Object.entries(next).filter(([, v]) => v !== undefined));
+    patch({ [key]: Object.keys(kept).length > 0 ? kept : undefined });
+  };
+
+  const rows: { key: "tablet" | "mobile"; label: string; hint: string }[] = [
+    { key: "tablet", label: "Tablet", hint: "Applies from the tablet breakpoint up to desktop." },
+    { key: "mobile", label: "Phone", hint: "Applies below the tablet breakpoint." },
+  ];
+
+  return (
+    <details className="rounded-md border border-line bg-surface-muted p-3">
+      <summary className="cursor-pointer text-xs font-medium text-navy-800">
+        Tablet and phone overrides
+      </summary>
+
+      <div className="mt-4 space-y-5">
+        {rows.map(({ key, label, hint }) => {
+          const values = group(key);
+          return (
+            <fieldset key={key} className="grid gap-4 sm:grid-cols-3">
+              <legend className="mb-2 text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+                {label}
+              </legend>
+              <Tokens
+                id={`band-${key}-pt`}
+                label="Padding top"
+                hint={hint}
+                value={str(values["paddingTop"])}
+                fallback=""
+                options={["", ...SPACE_TOKENS]}
+                labels={{ "": "Inherit", ...SPACE_LABELS }}
+                onChange={(value) => setOverride(key, "paddingTop", value)}
+              />
+              <Tokens
+                id={`band-${key}-pb`}
+                label="Padding bottom"
+                value={str(values["paddingBottom"])}
+                fallback=""
+                options={["", ...SPACE_TOKENS]}
+                labels={{ "": "Inherit", ...SPACE_LABELS }}
+                onChange={(value) => setOverride(key, "paddingBottom", value)}
+              />
+              <Tokens
+                id={`band-${key}-align`}
+                label="Text alignment"
+                value={str(values["align"])}
+                fallback=""
+                options={["", "left", "center", "right"]}
+                labels={{ "": "Inherit", left: "Left", center: "Centre", right: "Right" }}
+                onChange={(value) => setOverride(key, "align", value)}
+              />
+            </fieldset>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 
@@ -396,8 +474,7 @@ export function StyleFields({
   const kind = str(background["kind"]) || "none";
 
   const patchBand = (next: Content) => set({ band: { ...band, ...next } });
-  const patchBackground = (next: Content) =>
-    patchBand({ background: { ...background, ...next } });
+  const patchBackground = (next: Content) => patchBand({ background: { ...background, ...next } });
 
   return (
     <div className="space-y-5">
@@ -625,7 +702,10 @@ export function AdvancedFields({
       {band["hideMobile"] === true &&
       band["hideTablet"] === true &&
       band["hideDesktop"] === true ? (
-        <p role="alert" className="rounded-md border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
+        <p
+          role="alert"
+          className="rounded-md border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning"
+        >
           This section is hidden on every device. Use Hide on the section list instead — it keeps
           the section out of the page without three rules to remember.
         </p>

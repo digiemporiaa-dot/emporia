@@ -154,7 +154,11 @@ export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Pro
         next.map((section, index) => ({ id: section.id, order: index })),
       );
       if (!result.ok) {
-        push({ tone: "error", title: "Could not save the new order.", description: result.message });
+        push({
+          tone: "error",
+          title: "Could not save the new order.",
+          description: result.message,
+        });
       }
       router.refresh();
     });
@@ -309,10 +313,7 @@ export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Pro
                       label={`Duplicate ${section.name ?? section.type}`}
                       disabled={pending}
                       onClick={() =>
-                        run(
-                          () => duplicateSectionAction(pageId, section.id),
-                          "Section duplicated.",
-                        )
+                        run(() => duplicateSectionAction(pageId, section.id), "Section duplicated.")
                       }
                     >
                       <Copy size={14} aria-hidden="true" />
@@ -382,9 +383,8 @@ export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Pro
           section={editing}
           type={editing.type}
           media={
-            media[
-              String(((editing.content ?? {}) as Record<string, unknown>)["mediaId"] ?? "")
-            ] ?? null
+            media[String(((editing.content ?? {}) as Record<string, unknown>)["mediaId"] ?? "")] ??
+            null
           }
           cardMedia={media}
           onClose={() => setEditingId(null)}
@@ -406,10 +406,7 @@ export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Pro
           onClose={() => setRetypingId(null)}
           onPick={(type) => {
             setRetypingId(null);
-            run(
-              () => changeSectionTypeAction(pageId, retyping.id, type),
-              "Section type changed.",
-            );
+            run(() => changeSectionTypeAction(pageId, retyping.id, type), "Section type changed.");
           }}
         />
       ) : null}
@@ -478,7 +475,12 @@ function AddSectionDialog({
   onPickReusable: (id: string) => void;
 }) {
   return (
-    <Dialog open onClose={onClose} title="Add a section" description="Pick a block to add to the end of the page.">
+    <Dialog
+      open
+      onClose={onClose}
+      title="Add a section"
+      description="Pick a block to add to the end of the page."
+    >
       <div className="space-y-5">
         {reusables.length > 0 ? (
           <div>
@@ -618,10 +620,24 @@ function SectionEditor({
   onSaved: (options?: { preview?: boolean }) => void;
 }) {
   const { push } = useToast();
-  const [content, setContent] = React.useState<Content>(
-    () => ({ ...((section.content ?? {}) as Content) }),
-  );
+  const [content, setContent] = React.useState<Content>(() => ({
+    ...((section.content ?? {}) as Content),
+  }));
   const [name, setName] = React.useState(section.name ?? "");
+  /**
+   * What was on screen when the dialog opened.
+   *
+   * The editor saves on a button press, so closing it is a real way to lose
+   * work — and the Style and Layout tabs make it easy to change a dozen things
+   * without touching the copy that would remind you. Compared by value rather
+   * than tracked with a flag, so undoing an edit by hand correctly leaves the
+   * dialog clean.
+   */
+  const initial = React.useRef({
+    content: JSON.stringify(section.content ?? {}),
+    name: section.name ?? "",
+  });
+  const [confirmClose, setConfirmClose] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string[]> | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [tab, setTab] = React.useState<Tab>("Content");
@@ -641,6 +657,9 @@ function SectionEditor({
 
     if (result.ok) {
       push({ tone: "success", title: "Section saved." });
+      // Saved is the new baseline, so a second close does not warn about work
+      // that is already on the page.
+      initial.current = { content: JSON.stringify(content), name: name.trim() };
       onSaved(options);
       return;
     }
@@ -660,30 +679,62 @@ function SectionEditor({
       )
     ] ?? null;
 
+  const dirty =
+    JSON.stringify(content) !== initial.current.content || name.trim() !== initial.current.name;
+
+  const requestClose = () => {
+    if (dirty) {
+      setConfirmClose(true);
+      return;
+    }
+    onClose();
+  };
+
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={requestClose}
       title={section.name ?? definition.label}
       description="Changes are saved to this page when you press Save."
       className="max-w-3xl"
       footer={
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={saving}
-            onClick={() => void save({ preview: true })}
-          >
-            Save and preview
-          </Button>
-          <Button size="sm" disabled={saving} onClick={() => void save()}>
-            {saving ? "Saving…" : "Save section"}
-          </Button>
-        </div>
+        // Confirmed inline rather than in a second dialog: two modals open at
+        // once fight over focus, and the question is about this one.
+        confirmClose ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <p className="mr-auto text-sm text-navy-800" role="alert">
+              Discard the changes to this section?
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => setConfirmClose(false)}>
+              Keep editing
+            </Button>
+            <Button variant="danger" size="sm" onClick={onClose}>
+              Discard
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {dirty ? (
+              <p className="mr-auto text-xs text-ink-subtle" role="status">
+                Unsaved changes.
+              </p>
+            ) : null}
+            <Button variant="secondary" size="sm" onClick={requestClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={saving}
+              onClick={() => void save({ preview: true })}
+            >
+              Save and preview
+            </Button>
+            <Button size="sm" disabled={saving} onClick={() => void save()}>
+              {saving ? "Saving…" : "Save section"}
+            </Button>
+          </div>
+        )
       }
     >
       <div className="space-y-4">
@@ -725,7 +776,11 @@ function SectionEditor({
           associated with the tab that controls it. A row of divs that change a
           state variable is not a tab strip to a screen reader (CLAUDE.md 12).
         */}
-        <div role="tablist" aria-label="Section settings" className="flex gap-1 border-b border-line">
+        <div
+          role="tablist"
+          aria-label="Section settings"
+          className="flex gap-1 border-b border-line"
+        >
           {tabs.map((candidate) => (
             <button
               key={candidate}

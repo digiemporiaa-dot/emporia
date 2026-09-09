@@ -1541,6 +1541,52 @@ adding it — is **not** implemented; the flag is the foundation for it.
 > The admin list skeletons are rendered through an explicit `<Suspense>` inside
 > the list page instead, which keeps the loading state and the status code.
 
+### 17.1b-ii Breakpoints, versioning and preview
+
+Three additions the builder gained with CMS 2.0 Phase 2.
+
+**Per-breakpoint overrides.** The base spacing tokens were never desktop-only —
+`paddingTop: "md"` has always emitted `pt-10 lg:pt-14`, a small-screen value and
+a desktop one. The padding maps are now split into BASE / SM / LG halves, which
+is the same set of classes decomposed, so `tablet` and `mobile` override groups
+can slot in without disturbing them: mobile replaces the small-screen half,
+tablet inserts an `sm:` value between the two, and an absent group means
+inherit. A section stored before these existed emits exactly the classes it
+always did — pinned by test, because "looks right in dev, collapses in prod" is
+the specific failure mode of any interpolated Tailwind class.
+
+Alignment works the same way, with one wrinkle: the base `align` renders
+unprefixed, so an `lg:` class is emitted **only** when a smaller breakpoint
+overrides it and the desktop value needs restoring. A breakpoint alignment with
+no base alignment is ignored rather than promoted to the whole page.
+
+**Content versioning** (`lib/content/migrations.ts`). Section content carries a
+`version`, stamped after the schema parse — block schemas strip unknown keys, so
+the stamp cannot live inside one without adding it to all thirty. `parseSections`
+runs the migration ladder over the raw row *before* validating, so a block whose
+shape changes in a later release is brought forward in memory rather than
+failing its schema and blanking the band. Nothing is written on read: a page is
+upgraded on disk the next time an editor saves it. A version newer than the
+running build understands is left alone rather than mangled. The ladder is empty
+today — it ships before the first change needs it, because retrofitting it
+afterwards means the change that needed it has already broken the pages.
+
+**Device preview** is a real iframe at `app/preview-frame/[pageId]`, authenticated
+and in middleware's protected list. Two reasons it is not a narrowed `<div>`:
+Tailwind's breakpoints key off the viewport, so a 390px div still matches `lg:`
+and would show the desktop layout squeezed — confidently and wrongly; and the
+frame has to sit outside `/admin` or it inherits the admin sidebar inside the
+phone viewport. Desktop renders inline, so the common case costs no second
+document load. Verified in a browser: the framed document reports a 388px
+viewport and `matchMedia("(min-width: 64rem)")` false.
+
+**Unsaved changes.** The section editor saves on a button press, so closing it
+loses work — and the Style and Layout tabs make it easy to change a dozen things
+without touching any copy that would remind you. The dialog compares content by
+value against what it opened with, shows an "Unsaved changes" marker, and asks
+before closing. Confirmed inline in the same dialog rather than in a second one:
+two modals open at once fight over focus.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

@@ -31,7 +31,10 @@ import {
  */
 const { auth } = NextAuth(buildAuthConfig(async () => null));
 
-const PROTECTED = ["/admin", "/portal"];
+// `/preview-frame` renders a draft page for the editor's device preview. It
+// sits outside /admin so it does not inherit the admin shell, which means it
+// has to be named here too.
+const PROTECTED = ["/admin", "/portal", "/preview-frame"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));

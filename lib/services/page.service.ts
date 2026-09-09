@@ -8,6 +8,7 @@ import { record, withAudit } from "@/lib/services/audit.service";
 import { paged, toSkipTake } from "@/lib/paging";
 import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
 import { BLOCK_SCHEMAS, blockDefinition, isBlockType, type BlockType } from "@/lib/content/blocks";
+import { stampVersion } from "@/lib/content/migrations";
 import type { Actor } from "@/lib/actor/types";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type { PageSeoInput } from "@/lib/validation/seo";
@@ -304,9 +305,8 @@ export async function deletePage(actor: Actor, id: string) {
 
   const before = await getPage(actor, id);
 
-  await withAudit(
-    { actor, action: "DELETE", entityType: "Page", entityId: id, before },
-    (tx) => tx.page.update({ where: { id }, data: { deletedAt: new Date(), status: "ARCHIVED" } }),
+  await withAudit({ actor, action: "DELETE", entityType: "Page", entityId: id, before }, (tx) =>
+    tx.page.update({ where: { id }, data: { deletedAt: new Date(), status: "ARCHIVED" } }),
   );
 
   revalidateTag(PAGE_TAG);
@@ -397,7 +397,7 @@ function parseBlockContent(type: BlockType, content: unknown): InputJsonValue {
       fieldErrors,
     );
   }
-  return result.data as InputJsonValue;
+  return stampVersion(result.data) as InputJsonValue;
 }
 
 /** Load a section and its page, refusing one that belongs to a deleted page. */
@@ -642,10 +642,7 @@ export async function deleteSection(actor: Actor, id: string) {
       where: { pageId: before.pageId, order: { gt: before.order } },
       data: { order: { decrement: 1 } },
     });
-    await record(
-      { actor, action: "DELETE", entityType: "PageSection", entityId: id, before },
-      tx,
-    );
+    await record({ actor, action: "DELETE", entityType: "PageSection", entityId: id, before }, tx);
   });
 
   revalidateTag(PAGE_TAG);
@@ -719,7 +716,13 @@ export async function issuePreviewToken(actor: Actor, pageId: string) {
   const token = randomBytes(32).toString("base64url");
 
   await withAudit(
-    { actor, action: "UPDATE", entityType: "Page", entityId: pageId, after: { previewLink: "issued" } },
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "Page",
+      entityId: pageId,
+      after: { previewLink: "issued" },
+    },
     (tx) => tx.page.update({ where: { id: pageId }, data: { previewToken: token } }),
   );
 
@@ -731,7 +734,13 @@ export async function revokePreviewToken(actor: Actor, pageId: string) {
   await getPage(actor, pageId);
 
   await withAudit(
-    { actor, action: "UPDATE", entityType: "Page", entityId: pageId, after: { previewLink: "revoked" } },
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "Page",
+      entityId: pageId,
+      after: { previewLink: "revoked" },
+    },
     (tx) => tx.page.update({ where: { id: pageId }, data: { previewToken: null } }),
   );
 }

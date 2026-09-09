@@ -11,6 +11,7 @@ import { PAGE_TAG } from "@/lib/services/page.service";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type { Actor } from "@/lib/actor/types";
 import type { ReusableListInput, ReusableSectionDraftInput } from "@/lib/validation/page";
+import { stampVersion } from "@/lib/content/migrations";
 
 /**
  * Reusable sections: a band authored once and placed on many pages.
@@ -78,9 +79,7 @@ export async function listReusableSections(actor: Actor, input: ReusableListInpu
   return paged(rows, total, page, perPage);
 }
 
-export type ReusableSectionRow = Awaited<
-  ReturnType<typeof listReusableSections>
->["rows"][number];
+export type ReusableSectionRow = Awaited<ReturnType<typeof listReusableSections>>["rows"][number];
 
 export async function getReusableSection(actor: Actor, id: string) {
   requirePermission(actor, "pages.view");
@@ -112,7 +111,7 @@ function parseContent(type: BlockType, content: unknown): InputJsonValue {
       result.error.flatten().fieldErrors,
     );
   }
-  return result.data as InputJsonValue;
+  return stampVersion(result.data) as InputJsonValue;
 }
 
 const keyTaken = async (candidate: string): Promise<boolean> =>
@@ -122,7 +121,8 @@ export async function createReusableSection(actor: Actor, input: ReusableSection
   requirePermission(actor, "pages.create");
 
   if (!isBlockType(input.type)) throw new ValidationError("That is not a block you can add.");
-  if (!slugify(input.name)) throw new ValidationError("Give the section a name with letters in it.");
+  if (!slugify(input.name))
+    throw new ValidationError("Give the section a name with letters in it.");
 
   const type: BlockType = input.type;
   const key = await uniqueSlug(input.name, keyTaken);
@@ -169,7 +169,12 @@ export async function createReusableSection(actor: Actor, input: ReusableSection
 export async function updateReusableSection(
   actor: Actor,
   id: string,
-  input: { name: string; status: "DRAFT" | "PUBLISHED" | "ARCHIVED"; isGlobal: boolean; content: unknown },
+  input: {
+    name: string;
+    status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+    isGlobal: boolean;
+    content: unknown;
+  },
 ) {
   requirePermission(actor, "pages.edit");
 

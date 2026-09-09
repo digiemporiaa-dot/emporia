@@ -4,6 +4,7 @@ import * as pageService from "@/lib/services/page.service";
 import { ForbiddenError, ValidationError } from "@/lib/errors";
 import { BLOCK_LIBRARY } from "@/lib/content/blocks";
 import type { Actor } from "@/lib/actor/types";
+import { CURRENT_VERSION } from "@/lib/content/migrations";
 
 /**
  * The page builder's section operations, against the real database.
@@ -91,7 +92,15 @@ describeDb("page builder sections", () => {
       content: { text: "  Real heading  ", level: 3, align: "center", smuggled: "nope" },
     });
 
-    expect(saved.content).toEqual({ text: "Real heading", level: 3, align: "center" });
+    // `version` is stamped outside the block schema so a future shape change
+    // can be migrated forward rather than blanking the band; the smuggled key
+    // is still gone, which is what this test is about.
+    expect(saved.content).toEqual({
+      text: "Real heading",
+      level: 3,
+      align: "center",
+      version: CURRENT_VERSION,
+    });
   });
 
   it("rejects invalid content and names the field", async () => {

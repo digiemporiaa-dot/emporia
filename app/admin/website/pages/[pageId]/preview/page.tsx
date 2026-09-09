@@ -9,6 +9,7 @@ import { parseSections } from "@/lib/content/sections";
 import { resolveSectionImages } from "@/lib/content/media";
 import { PageSections } from "@/components/website/page-sections";
 import { PageStatusBadge } from "../../page-status";
+import { DevicePreview } from "./device-preview";
 
 /**
  * Draft preview.
@@ -32,11 +33,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function PreviewPage({
-  params,
-}: {
-  params: Promise<{ pageId: string }>;
-}) {
+export default async function PreviewPage({ params }: { params: Promise<{ pageId: string }> }) {
   const { pageId } = await params;
   const actor = await requireActorPage("/admin/website/pages");
   requirePermission(actor, "pages.view");
@@ -57,7 +54,10 @@ export default async function PreviewPage({
   return (
     <div className="-m-4 lg:-m-6">
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-line bg-white px-4 py-2.5 text-xs lg:px-6">
-        <Link href={`/admin/website/pages/${page.id}`} className="text-ink-muted hover:text-navy-800">
+        <Link
+          href={`/admin/website/pages/${page.id}`}
+          className="text-ink-muted hover:text-navy-800"
+        >
           ← Back to editor
         </Link>
         <span className="font-medium text-navy-800">{page.title}</span>
@@ -86,9 +86,9 @@ export default async function PreviewPage({
           Nothing to preview yet — this page has no renderable sections.
         </p>
       ) : (
-        <div className="bg-white">
+        <DevicePreview pageId={page.id}>
           <PageSections sections={sections} title={page.title} images={images} />
-        </div>
+        </DevicePreview>
       )}
     </div>
   );
