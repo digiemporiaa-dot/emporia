@@ -105,3 +105,28 @@ export const reusableListSchema = pageParamsSchema.extend({
 });
 export type ReusableListInput = z.infer<typeof reusableListSchema>;
 export type ReusableSectionInput = z.infer<typeof reusableSectionSchema>;
+
+/**
+ * A workflow transition.
+ *
+ * The note is where a reviewer says what needs changing, so it is worth a
+ * length that fits a real sentence or three — and worth being optional, because
+ * "approved" rarely needs one.
+ */
+export const workflowNoteSchema = z.object({
+  workflow: z.enum(["DRAFT", "IN_REVIEW", "CHANGES_REQUESTED", "APPROVED"]),
+  note: z
+    .string()
+    .trim()
+    .max(1000, "Keep the note under 1000 characters.")
+    .transform((value) => (value === "" ? null : value))
+    .nullable()
+    .default(null),
+});
+
+export type WorkflowNoteInput = z.infer<typeof workflowNoteSchema>;
+
+/** Why a version was taken by hand. Blank is allowed; the service names it. */
+export const versionReasonSchema = z.object({
+  reason: z.string().trim().max(200, "Keep the description under 200 characters."),
+});

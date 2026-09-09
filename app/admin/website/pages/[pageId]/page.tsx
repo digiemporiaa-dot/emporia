@@ -11,6 +11,9 @@ import { PageSettingsForm } from "./page-settings-form";
 import { PageBuilder } from "./builder";
 import { SeoPanel } from "./seo-panel";
 import { AuditTrail } from "./audit-trail";
+import { VersionPanel } from "./version-panel";
+import { WorkflowPanel } from "./workflow-panel";
+import { listVersions } from "@/lib/services/page-version.service";
 import { analysePage } from "@/lib/seo/analyzer";
 import { siteDefaults } from "@/lib/seo/defaults";
 import { absoluteUrl } from "@/lib/seo/urls";
@@ -61,6 +64,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
   // Loaded once for the whole screen: the filter pickers on every dynamic block
   // share this rather than each fetching the same four lists.
   const taxonomy = can(actor, "pages.edit") ? await taxonomyOptions() : EMPTY_TAXONOMY;
+  const versions = await listVersions(actor, page.id);
   // Gated on audit.view, so a role without it simply does not see the section.
   const audit = can(actor, "audit.view") ? await listPageAudit(actor, page.id) : null;
 
@@ -120,6 +124,27 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
         reusables={reusables}
         taxonomy={taxonomy}
         canEdit={can(actor, "pages.edit")}
+      />
+
+      <WorkflowPanel
+        pageId={page.id}
+        workflow={page.workflow}
+        reviewNote={page.reviewNote}
+        canEdit={can(actor, "pages.edit")}
+        canDecide={can(actor, "pages.publish")}
+      />
+
+      <VersionPanel
+        pageId={page.id}
+        versions={versions.map((entry) => ({
+          id: entry.id,
+          version: entry.version,
+          reason: entry.reason,
+          createdAt: DATE.format(entry.createdAt),
+          author: entry.createdBy?.name ?? null,
+        }))}
+        canEdit={can(actor, "pages.edit")}
+        canDelete={can(actor, "pages.delete")}
       />
 
       <SeoPanel

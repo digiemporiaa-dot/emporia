@@ -8,8 +8,9 @@
 | 2 — Page builder upgrade | **Done** — merged, 17 tests |
 | 3 — Block library, wave 1 | **Done** — merged, 45 tests |
 | 4 — Dynamic block filtering + taxonomy | **Done** — merged, 13 tests |
-| 5 — Version history and workflow | Next |
-| 6–15 | Planned, below |
+| 5 — Version history and workflow | **Done** — merged, 27 tests |
+| 6 — Scheduling | Next (needs decision D2) |
+| 7–15 | Planned, below |
 
 This is the deliverable of the mandatory audit step: a map of the CMS as it
 actually exists today, an honest coverage matrix against the 26 requested
@@ -207,7 +208,7 @@ Category / tag / service / city / industry / rating filters and sort on the
 collection blocks. Reuses `BlogCategory`, `BlogTag`, `Tag`, `Service`, `City`;
 adds `Industry` only if Phase 1 shows it is genuinely a separate entity.
 
-### Phase 5 — Version history and workflow
+### Phase 5 — Version history and workflow — **DONE**
 `PageVersion` (snapshot, author, timestamp, reason) with view / compare /
 restore / draft-from-version. Workflow states extending `PublishStatus`
 (IN_REVIEW, CHANGES_REQUESTED, APPROVED), permission-gated transitions, every

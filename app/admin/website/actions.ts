@@ -11,7 +11,12 @@ import {
 import * as pageService from "@/lib/services/page.service";
 import { pageSeoSchema } from "@/lib/validation/seo";
 import * as reusableService from "@/lib/services/reusable-section.service";
-import { reusableSectionDraftSchema } from "@/lib/validation/page";
+import * as versionService from "@/lib/services/page-version.service";
+import {
+  reusableSectionDraftSchema,
+  versionReasonSchema,
+  workflowNoteSchema,
+} from "@/lib/validation/page";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -501,6 +506,111 @@ export async function detachSectionAction(
     return { ok: true, data: result };
   } catch (error) {
     actionLog.error({ err: error }, "detach section failed");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Workflow and version history
+// ---------------------------------------------------------------------------
+
+export type WorkflowActionState = ActionResult<{ workflow: string }> | null;
+
+export async function setWorkflowAction(
+  pageId: string,
+  workflow: "DRAFT" | "IN_REVIEW" | "CHANGES_REQUESTED" | "APPROVED",
+  note?: string,
+): Promise<WorkflowActionState> {
+  try {
+    const actor = await requireActor();
+    const parsed = workflowNoteSchema.safeParse({ workflow, note: note ?? "" });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the note.",
+      };
+    }
+
+    const page = await pageService.setPageWorkflow(
+      actor,
+      pageId,
+      parsed.data.workflow,
+      parsed.data.note,
+    );
+    revalidatePath(`${LIST_PATH}/${pageId}`);
+    return { ok: true, data: { workflow: page.workflow } };
+  } catch (error) {
+    actionLog.error({ err: error, pageId }, "setWorkflow failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function saveVersionAction(
+  pageId: string,
+  reason: string,
+): Promise<ActionResult<{ version: number }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = versionReasonSchema.safeParse({ reason });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the description.",
+      };
+    }
+
+    const version = await versionService.saveVersion(actor, pageId, parsed.data.reason);
+    revalidatePath(`${LIST_PATH}/${pageId}`);
+    return { ok: true, data: { version: version.version } };
+  } catch (error) {
+    actionLog.error({ err: error, pageId }, "saveVersion failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function restoreVersionAction(
+  pageId: string,
+  version: number,
+): Promise<ActionResult<{ slugKept: boolean }>> {
+  try {
+    const actor = await requireActor();
+    const restored = await versionService.restoreVersion(actor, pageId, version);
+    revalidatePath(`${LIST_PATH}/${pageId}`);
+    return { ok: true, data: { slugKept: restored.slugKept } };
+  } catch (error) {
+    actionLog.error({ err: error, pageId, version }, "restoreVersion failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function deleteVersionAction(
+  pageId: string,
+  version: number,
+): Promise<ActionResult<{ version: number }>> {
+  try {
+    const actor = await requireActor();
+    await versionService.deleteVersion(actor, pageId, version);
+    revalidatePath(`${LIST_PATH}/${pageId}`);
+    return { ok: true, data: { version } };
+  } catch (error) {
+    actionLog.error({ err: error, pageId, version }, "deleteVersion failed");
+    return toActionFailure(error);
+  }
+}
+
+/** What changed between a stored version and what the page says now. */
+export async function compareVersionAction(
+  pageId: string,
+  version: number,
+): Promise<ActionResult<versionService.VersionDiff>> {
+  try {
+    const actor = await requireActor();
+    const diff = await versionService.compareWithCurrent(actor, pageId, version);
+    return { ok: true, data: diff };
+  } catch (error) {
+    actionLog.error({ err: error, pageId, version }, "compareVersion failed");
     return toActionFailure(error);
   }
 }
