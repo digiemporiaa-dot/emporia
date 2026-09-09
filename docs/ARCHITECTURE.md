@@ -1690,6 +1690,63 @@ query is what enforces publication.
 > compile. Found by opening the editor — which is the third defect in this work
 > that only running the UI would have caught.
 
+### 17.1b-v Version history and editorial workflow
+
+CMS 2.0 Phase 5, and the first migration since the content admin.
+
+**Why versions matter here specifically.** The builder writes straight to
+`PageSection`: an edit is live the moment it is saved, and there is no undo.
+`PageVersion` is the undo — a complete snapshot of what a page said, taken
+automatically on every publish and on demand from the editor.
+
+A snapshot is a **copy, not a diff**. A diff chain is only as good as its
+weakest link, and restoring one is the moment you least want to be replaying
+arithmetic over a year of edits. Snapshots are never taken per save: a version
+per keystroke is a version list nobody reads, and the point of the list is that
+an editor can find the one from before this morning.
+
+The publish snapshot is taken **inside the publish transaction**, so a version
+is only recorded for a publish that actually happened — a version of a state the
+site never served would be worse than none.
+
+**Restoring is not a one-way door.** It snapshots the state it is replacing
+first, so restoring the wrong version is itself undoable. It does not change
+publication — that is `setPageStatus`, with its own permission. And it runs the
+stored content through the migration ladder (17.1b-ii) on the way in, so a
+version from before a block's shape changed restores as something that still
+renders rather than a band that fails its schema and vanishes. The slug is
+deliberately **not** restored when another page has since taken it: failing the
+whole restore over an address would make history unusable.
+
+**Comparison is section by section**, not character by character. A JSON text
+diff of a page builder is unreadable — it is mostly punctuation — and the
+question is "what changed on this page", whose honest answer is a list of bands.
+Sections are matched by position, because a snapshot records a result rather
+than the operations that produced it; a reorder therefore reads as several
+changes, which is what happened.
+
+**Workflow is a second axis, not a rename of the first.** `status` answers "is
+this live"; `workflow` (DRAFT / IN_REVIEW / CHANGES_REQUESTED / APPROVED)
+answers "is the draft ready". Separate columns because they are separate
+questions with separate permissions: anyone with `pages.edit` submits or
+withdraws, and deciding — approving, or asking for changes — needs
+`pages.publish`, because approving is the judgement that precedes publishing and
+should not be self-service. Transitions are a graph, so a page cannot be
+approved without having been submitted, and every transition is audited. The
+reviewer's note travels with the decision and is cleared on resubmission: a note
+about work that has since been redone is worse than no note.
+
+> **Known limitation, stated rather than papered over.** Because sections are
+> edited in place, a page that is already published shows its edits
+> immediately. Review therefore gates the *first* publish and any republish, not
+> the content of a page that is already out. Making review gate live content
+> needs draft/published content separation, which is a change of its own scope
+> and is not pretended at here (CLAUDE.md 15 rule 5). The panel says so on
+> screen too.
+
+The migration is additive: every existing page becomes `DRAFT` with no versions,
+and the entrypoint's `migrate deploy` applies it before the server starts.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

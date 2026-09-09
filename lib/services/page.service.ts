@@ -9,7 +9,9 @@ import { paged, toSkipTake } from "@/lib/paging";
 import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
 import { BLOCK_SCHEMAS, blockDefinition, isBlockType, type BlockType } from "@/lib/content/blocks";
 import { stampVersion } from "@/lib/content/migrations";
+import { snapshot } from "@/lib/services/page-version.service";
 import type { Actor } from "@/lib/actor/types";
+import type { PageWorkflow } from "@/generated/prisma/enums";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type { PageSeoInput } from "@/lib/validation/seo";
 import type {
@@ -40,6 +42,7 @@ const listSelect = {
   title: true,
   internalName: true,
   status: true,
+  workflow: true,
   publishedAt: true,
   updatedAt: true,
   createdAt: true,
@@ -49,6 +52,7 @@ const listSelect = {
 const detailSelect = {
   ...listSelect,
   description: true,
+  reviewNote: true,
   deletedAt: true,
   previewToken: true,
   seoId: true,
@@ -231,19 +235,102 @@ export async function setPageStatus(
       entityId: id,
       before,
     },
-    (tx) =>
-      tx.page.update({
+    async (tx) => {
+      // Snapshotted inside the transaction, so a version is only recorded for a
+      // publish that actually happened — a version of a state the site never
+      // served would be worse than no version.
+      if (status === "PUBLISHED") await snapshot(tx, id, actor, "Published");
+
+      return tx.page.update({
         where: { id },
         data: {
           status,
           ...(status === "PUBLISHED" && !before.publishedAt ? { publishedAt: new Date() } : {}),
         },
-      }),
+      });
+    },
   );
 
   revalidateTag(PAGE_TAG);
   return page;
 }
+
+/**
+ * Editorial workflow.
+ *
+ * `status` answers "is this live"; `workflow` answers "is the draft ready".
+ * Separate fields because they are separate questions with separate
+ * permissions: an editor moves a page through review, a publisher puts it on
+ * the site.
+ *
+ * The transitions are deliberately few. Anyone with `pages.edit` can submit
+ * work for review or pull it back; deciding on it — approving, or asking for
+ * changes — needs `pages.publish`, because approving is the judgement that
+ * precedes publishing and should not be self-service.
+ *
+ * **What this does not do.** The builder writes straight to `PageSection`, so a
+ * published page's edits are live the moment they are saved. Review therefore
+ * gates the *first* publish and any republish, not the content of a page that
+ * is already out. Making review gate live content needs draft/published content
+ * separation, which is a change of its own and is not pretended at here
+ * (CLAUDE.md 15 rule 5).
+ */
+const WORKFLOW_TRANSITIONS: Record<PageWorkflow, readonly PageWorkflow[]> = {
+  DRAFT: ["IN_REVIEW"],
+  IN_REVIEW: ["APPROVED", "CHANGES_REQUESTED", "DRAFT"],
+  CHANGES_REQUESTED: ["IN_REVIEW", "DRAFT"],
+  APPROVED: ["DRAFT", "IN_REVIEW"],
+};
+
+/** Deciding on a review is a publisher's call; asking for one is an editor's. */
+const DECISIONS: ReadonlySet<PageWorkflow> = new Set<PageWorkflow>([
+  "APPROVED",
+  "CHANGES_REQUESTED",
+]);
+
+export async function setPageWorkflow(
+  actor: Actor,
+  id: string,
+  workflow: PageWorkflow,
+  note?: string | null,
+) {
+  requirePermission(actor, DECISIONS.has(workflow) ? "pages.publish" : "pages.edit");
+
+  const before = await getPage(actor, id);
+
+  if (before.workflow === workflow) {
+    throw new ConflictError(`This page is already ${WORKFLOW_LABELS[workflow].toLowerCase()}.`);
+  }
+  if (!WORKFLOW_TRANSITIONS[before.workflow].includes(workflow)) {
+    throw new ConflictError(
+      `A page that is ${WORKFLOW_LABELS[before.workflow].toLowerCase()} cannot go straight to ${WORKFLOW_LABELS[workflow].toLowerCase()}.`,
+    );
+  }
+
+  const page = await withAudit(
+    { actor, action: "UPDATE", entityType: "Page workflow", entityId: id, before },
+    (tx) =>
+      tx.page.update({
+        where: { id },
+        data: {
+          workflow,
+          // A note belongs to the decision that carried it. Submitting for
+          // review again clears the last reviewer's note rather than leaving it
+          // hanging over work that has since changed.
+          reviewNote: workflow === "IN_REVIEW" ? null : note?.trim() || null,
+        },
+      }),
+  );
+
+  return page;
+}
+
+export const WORKFLOW_LABELS: Record<PageWorkflow, string> = {
+  DRAFT: "In progress",
+  IN_REVIEW: "In review",
+  CHANGES_REQUESTED: "Changes requested",
+  APPROVED: "Approved",
+};
 
 /**
  * Copy a page and its sections into a new draft.

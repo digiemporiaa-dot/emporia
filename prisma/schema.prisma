@@ -101,6 +101,20 @@ enum LeadActivityType {
   CONVERTED
 }
 
+/// Editorial state, distinct from publication.
+///
+/// `status` answers "is this live"; this answers "is the draft ready". They are
+/// separate fields because they are separate questions and separate
+/// permissions: an editor moves a page through review, a publisher puts it on
+/// the site. A page that has never been through review is DRAFT, which is also
+/// what every page that predates this is.
+enum PageWorkflow {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+}
+
 enum PublishStatus {
   DRAFT
   PUBLISHED
@@ -476,6 +490,7 @@ model User {
   notifications      Notification[]
   auditLogs          AuditLog[]
   blogPosts          BlogPost[]
+  pageVersions       PageVersion[]         @relation("PageVersionAuthor")
 
   @@index([type, status])
   @@index([roleId])
@@ -835,6 +850,13 @@ model Page {
   /// unpublishing and republishing does not rewrite history.
   publishedAt DateTime?
 
+  /// Editorial state. See PageWorkflow.
+  workflow PageWorkflow @default(DRAFT)
+
+  /// The reviewer's note from the last transition, shown to whoever picks the
+  /// page up next. Cleared when the page moves back into review.
+  reviewNote String?
+
   /// Soft delete. A page's slug is a live URL; hard-deleting one silently
   /// breaks inbound links and loses the section history behind it. Every read
   /// path filters on `deletedAt: null`.
@@ -856,8 +878,10 @@ model Page {
   updatedAt DateTime @updatedAt
 
   sections PageSection[]
+  versions PageVersion[]
 
   @@index([status])
+  @@index([workflow])
   @@index([deletedAt])
   @@index([updatedAt])
 }
@@ -898,6 +922,43 @@ model PageSection {
 /// Phase 1 lays the foundation only: the model, the FK from PageSection and the
 /// publish/global flags. Resolution, editing and the "used on N pages" view
 /// arrive with the reusable-sections feature itself.
+/// A snapshot of a page, taken so an edit can be undone.
+///
+/// Sections are edited in place — the builder writes straight to PageSection —
+/// so without this there is no way back from a bad afternoon. A version is a
+/// complete copy of what the page said, not a diff: a diff chain is only as
+/// good as its weakest link, and restoring one is the moment you least want to
+/// be replaying arithmetic.
+///
+/// Taken automatically on publish, and on demand from the editor. Never taken
+/// on every save: a version per keystroke is a version list nobody reads.
+model PageVersion {
+  id     String @id @default(cuid())
+  pageId String
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  /// Sequential per page, so a version can be referred to as "v4".
+  version Int
+
+  /// The page's own fields at the time, and every section in order. Stored as
+  /// JSON rather than as rows: a restored version must reproduce what the page
+  /// said even if a block type has since changed shape, and the migration
+  /// ladder (lib/content/migrations.ts) brings it forward on the way back in.
+  snapshot Json
+
+  /// Why this version exists: "Published", "Before restore", or an editor's own
+  /// words.
+  reason String?
+
+  createdById String?
+  createdBy   User?    @relation("PageVersionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@unique([pageId, version])
+  @@index([pageId, createdAt])
+  @@index([createdById])
+}
+
 model ReusableSection {
   id String @id @default(cuid())
 
