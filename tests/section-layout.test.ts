@@ -77,7 +77,9 @@ describe("the grid", () => {
 describe("the band", () => {
   it("reproduces the block's own spacing when nothing is set", () => {
     const band = resolveBand(undefined, DEFAULTS);
-    expect(band.contentClassName).toBe("pt-10 lg:pt-14 pb-10 lg:pb-14");
+    // Grouped by breakpoint rather than by property since the per-breakpoint
+    // overrides landed. Same four classes, same rendering.
+    expect(band.contentClassName).toBe("pt-10 pb-10 lg:pt-14 lg:pb-14");
     expect(band.containerWidth).toBe("page");
     expect(band.outerStyle).toEqual({});
     expect(band.overlayStyle).toBeNull();
@@ -86,7 +88,8 @@ describe("the band", () => {
 
   it("overrides the block's spacing when the editor sets it", () => {
     const band = resolveBand(presentation.parse({ paddingTop: "none", paddingBottom: "3xl" }), DEFAULTS);
-    expect(band.contentClassName).toContain("pb-20 lg:pb-28");
+    expect(band.contentClassName).toContain("pb-20");
+    expect(band.contentClassName).toContain("lg:pb-28");
     expect(band.contentClassName).not.toContain("pt-10");
   });
 
@@ -239,5 +242,90 @@ describe("every block accepts a band", () => {
     expect(schema.safeParse({ ...seed, band: { container: "wide", paddingTop: "xl" } }).success).toBe(
       true,
     );
+  });
+});
+
+describe("per-breakpoint overrides", () => {
+  const parse = (value: unknown) => presentation.parse(value);
+
+  it("changes nothing for a section saved before they existed", () => {
+    // The whole point: absent means inherit, so every stored section keeps the
+    // exact classes it had.
+    const before = resolveBand(parse({ paddingTop: "md", paddingBottom: "md" }), DEFAULTS);
+    expect(before.contentClassName).toBe("pt-10 pb-10 lg:pt-14 lg:pb-14");
+  });
+
+  it("lets mobile replace the small-screen half while desktop stands", () => {
+    const band = resolveBand(
+      parse({ paddingTop: "3xl", paddingBottom: "3xl", mobile: { paddingTop: "none" } }),
+      DEFAULTS,
+    );
+    // Nothing on a phone, the full band from lg up.
+    expect(band.contentClassName).not.toContain("pt-20");
+    expect(band.contentClassName).toContain("lg:pt-28");
+    // The bottom is untouched by a top-only override.
+    expect(band.contentClassName).toContain("pb-20");
+  });
+
+  it("slots a tablet value between the two, only when asked", () => {
+    const inherited = resolveBand(parse({ paddingTop: "md" }), DEFAULTS);
+    expect(inherited.contentClassName).not.toContain("sm:pt-");
+
+    const explicit = resolveBand(parse({ paddingTop: "md", tablet: { paddingTop: "xs" } }), DEFAULTS);
+    expect(explicit.contentClassName).toContain("sm:pt-4");
+  });
+
+  it("emits sm:pt-0 for an explicit tablet 'none', which an empty class could not do", () => {
+    const band = resolveBand(parse({ paddingTop: "3xl", tablet: { paddingTop: "none" } }), DEFAULTS);
+    expect(band.contentClassName).toContain("sm:pt-0");
+  });
+
+  it("restores the desktop alignment when a smaller breakpoint overrides it", () => {
+    const band = resolveBand(parse({ align: "left", mobile: { align: "center" } }), DEFAULTS);
+    expect(band.contentClassName).toContain("text-center");
+    expect(band.contentClassName).toContain("lg:text-left");
+  });
+
+  it("emits one alignment class when nothing overrides it", () => {
+    const band = resolveBand(parse({ align: "center" }), DEFAULTS);
+    expect(band.contentClassName).toContain("text-center");
+    expect(band.contentClassName).not.toContain("lg:text-center");
+    expect(band.contentClassName).not.toContain("sm:text-center");
+  });
+
+  it("ignores a breakpoint alignment when there is no base alignment to override", () => {
+    // Otherwise a mobile-only choice would silently become the whole page's.
+    const band = resolveBand(parse({ mobile: { align: "center" } }), DEFAULTS);
+    expect(band.contentClassName).not.toContain("text-center");
+  });
+
+  it("stops using the block's own historical padding once a breakpoint is set", () => {
+    const withDefault = resolveBand(undefined, {
+      ...DEFAULTS,
+      paddingClassName: "py-16 lg:py-24",
+    });
+    expect(withDefault.contentClassName).toBe("py-16 lg:py-24");
+
+    const overridden = resolveBand(parse({ mobile: { paddingTop: "none" } }), {
+      ...DEFAULTS,
+      paddingClassName: "py-16 lg:py-24",
+    });
+    expect(overridden.contentClassName).not.toContain("py-16");
+  });
+
+  it("emits only literal classes — nothing interpolated", () => {
+    const band = resolveBand(
+      parse({
+        paddingTop: "lg",
+        paddingBottom: "xl",
+        align: "right",
+        tablet: { paddingTop: "sm", align: "center" },
+        mobile: { paddingBottom: "xs", align: "left" },
+      }),
+      DEFAULTS,
+    );
+    for (const cls of band.contentClassName.split(" ")) {
+      expect(cls).toMatch(/^(sm:|lg:)?[a-z-]+[a-z0-9-]*$/);
+    }
   });
 });

@@ -115,6 +115,14 @@ export const anchorId = z
   .optional()
   .or(z.literal("").transform(() => undefined));
 
+/** What an editor may change for one breakpoint. */
+export const breakpointOverride = z.object({
+  paddingTop: spaceToken.optional(),
+  paddingBottom: spaceToken.optional(),
+  align: alignToken.optional(),
+});
+export type BreakpointOverride = z.infer<typeof breakpointOverride>;
+
 export const presentation = z.object({
   container: containerToken.optional(),
   paddingTop: spaceToken.optional(),
@@ -148,6 +156,24 @@ export const presentation = z.object({
   hideDesktop: z.boolean().default(false),
   hideTablet: z.boolean().default(false),
   hideMobile: z.boolean().default(false),
+
+  /**
+   * Per-breakpoint overrides.
+   *
+   * The base fields above are not "desktop only" — `paddingTop: "md"` already
+   * emits `pt-10 lg:pt-14`, a small-screen value and a desktop one. These
+   * override that pair rather than replacing the model:
+   *
+   *   mobile   replaces the small-screen half; the desktop half still applies
+   *   tablet   inserts an `sm:` value that holds between tablet and desktop
+   *
+   * Absent means "inherit", which is why a section saved before these existed
+   * produces exactly the classes it always did. Both are deliberately narrow —
+   * padding and alignment are what actually differ between a phone and a
+   * desktop; anything more would be a second layout system.
+   */
+  tablet: breakpointOverride.optional(),
+  mobile: breakpointOverride.optional(),
 });
 
 export type Presentation = z.infer<typeof presentation>;
@@ -159,26 +185,83 @@ export const styleField = presentation.optional();
 // Token → class maps. Every value is a literal Tailwind class.
 // ---------------------------------------------------------------------------
 
-const PADDING_TOP: Record<SpaceToken, string> = {
+/**
+ * Padding, one breakpoint per map.
+ *
+ * These used to be two maps holding a pair of classes each — `"pt-10 lg:pt-14"`
+ * — which is the same thing as BASE plus LG below, and is exactly what a
+ * section with no overrides still emits. Splitting them is what lets a mobile
+ * override replace only the small-screen half, and a tablet override slot an
+ * `sm:` value in between, without either touching the other.
+ *
+ * Every class is written out literally. An interpolated one is invisible to
+ * Tailwind's scanner, so the CSS is never generated and the padding silently
+ * disappears in production while looking correct in development.
+ */
+const PADDING_TOP_BASE: Record<SpaceToken, string> = {
   none: "",
-  xs: "pt-4 lg:pt-6",
-  sm: "pt-8 lg:pt-10",
-  md: "pt-10 lg:pt-14",
-  lg: "pt-12 lg:pt-16",
-  xl: "pt-14 lg:pt-18",
-  "2xl": "pt-14 lg:pt-20",
-  "3xl": "pt-20 lg:pt-28",
+  xs: "pt-4",
+  sm: "pt-8",
+  md: "pt-10",
+  lg: "pt-12",
+  xl: "pt-14",
+  "2xl": "pt-14",
+  "3xl": "pt-20",
 };
 
-const PADDING_BOTTOM: Record<SpaceToken, string> = {
+const PADDING_TOP_SM: Record<SpaceToken, string> = {
+  none: "sm:pt-0",
+  xs: "sm:pt-4",
+  sm: "sm:pt-8",
+  md: "sm:pt-10",
+  lg: "sm:pt-12",
+  xl: "sm:pt-14",
+  "2xl": "sm:pt-14",
+  "3xl": "sm:pt-20",
+};
+
+const PADDING_TOP_LG: Record<SpaceToken, string> = {
   none: "",
-  xs: "pb-4 lg:pb-6",
-  sm: "pb-8 lg:pb-10",
-  md: "pb-10 lg:pb-14",
-  lg: "pb-12 lg:pb-16",
-  xl: "pb-14 lg:pb-18",
-  "2xl": "pb-14 lg:pb-20",
-  "3xl": "pb-20 lg:pb-28",
+  xs: "lg:pt-6",
+  sm: "lg:pt-10",
+  md: "lg:pt-14",
+  lg: "lg:pt-16",
+  xl: "lg:pt-18",
+  "2xl": "lg:pt-20",
+  "3xl": "lg:pt-28",
+};
+
+const PADDING_BOTTOM_BASE: Record<SpaceToken, string> = {
+  none: "",
+  xs: "pb-4",
+  sm: "pb-8",
+  md: "pb-10",
+  lg: "pb-12",
+  xl: "pb-14",
+  "2xl": "pb-14",
+  "3xl": "pb-20",
+};
+
+const PADDING_BOTTOM_SM: Record<SpaceToken, string> = {
+  none: "sm:pb-0",
+  xs: "sm:pb-4",
+  sm: "sm:pb-8",
+  md: "sm:pb-10",
+  lg: "sm:pb-12",
+  xl: "sm:pb-14",
+  "2xl": "sm:pb-14",
+  "3xl": "sm:pb-20",
+};
+
+const PADDING_BOTTOM_LG: Record<SpaceToken, string> = {
+  none: "",
+  xs: "lg:pb-6",
+  sm: "lg:pb-10",
+  md: "lg:pb-14",
+  lg: "lg:pb-16",
+  xl: "lg:pb-18",
+  "2xl": "lg:pb-20",
+  "3xl": "lg:pb-28",
 };
 
 const MARGIN_TOP: Record<SpaceToken, string> = {
@@ -207,6 +290,18 @@ const ALIGN: Record<AlignToken, string> = {
   left: "text-left",
   center: "text-center",
   right: "text-right",
+};
+
+const ALIGN_SM: Record<AlignToken, string> = {
+  left: "sm:text-left",
+  center: "sm:text-center",
+  right: "sm:text-right",
+};
+
+const ALIGN_LG: Record<AlignToken, string> = {
+  left: "lg:text-left",
+  center: "lg:text-center",
+  right: "lg:text-right",
 };
 
 const VERTICAL_ALIGN: Record<VerticalAlignToken, string> = {
@@ -407,14 +502,45 @@ export function resolveBand(
     .filter(Boolean)
     .join(" ");
 
-  const untouched = !style?.paddingTop && !style?.paddingBottom;
-  const contentClassName = [
+  const untouched =
+    !style?.paddingTop &&
+    !style?.paddingBottom &&
+    !style?.mobile?.paddingTop &&
+    !style?.mobile?.paddingBottom &&
+    !style?.tablet?.paddingTop &&
+    !style?.tablet?.paddingBottom;
+
+  const topToken = style?.paddingTop ?? defaults.paddingTop;
+  const bottomToken = style?.paddingBottom ?? defaults.paddingBottom;
+
+  const padding =
     untouched && defaults.paddingClassName
-      ? defaults.paddingClassName
-      : `${PADDING_TOP[style?.paddingTop ?? defaults.paddingTop]} ${
-          PADDING_BOTTOM[style?.paddingBottom ?? defaults.paddingBottom]
-        }`.trim(),
-    style?.align ? ALIGN[style.align] : "",
+      ? [defaults.paddingClassName]
+      : [
+          // Small screens: the mobile override, or the base half of the token.
+          PADDING_TOP_BASE[style?.mobile?.paddingTop ?? topToken],
+          PADDING_BOTTOM_BASE[style?.mobile?.paddingBottom ?? bottomToken],
+          // Tablet: only emitted when explicitly set, so a section that predates
+          // these overrides keeps the exact two classes it has always had.
+          style?.tablet?.paddingTop ? PADDING_TOP_SM[style.tablet.paddingTop] : "",
+          style?.tablet?.paddingBottom ? PADDING_BOTTOM_SM[style.tablet.paddingBottom] : "",
+          PADDING_TOP_LG[topToken],
+          PADDING_BOTTOM_LG[bottomToken],
+        ];
+
+  const align = style?.align;
+  const alignment = align
+    ? [
+        ALIGN[style?.mobile?.align ?? align],
+        style?.tablet?.align ? ALIGN_SM[style.tablet.align] : "",
+        // Only needed to undo a mobile or tablet override further up.
+        style?.mobile?.align || style?.tablet?.align ? ALIGN_LG[align] : "",
+      ]
+    : [];
+
+  const contentClassName = [
+    ...padding,
+    ...alignment,
     style?.verticalAlign ? VERTICAL_ALIGN[style.verticalAlign] : "",
   ]
     .filter(Boolean)
