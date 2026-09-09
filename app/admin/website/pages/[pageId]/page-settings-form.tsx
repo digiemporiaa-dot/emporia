@@ -128,9 +128,7 @@ export function PageSettingsForm({ page, canPublish }: { page: Page; canPublish:
           hint="Only shown in the admin. Useful when 200 pages all start with the same word."
           error={err("internalName")}
         >
-          {(aria) => (
-            <Input {...aria} name="internalName" defaultValue={page.internalName ?? ""} />
-          )}
+          {(aria) => <Input {...aria} name="internalName" defaultValue={page.internalName ?? ""} />}
         </Field>
 
         <Field id="description" label="Internal note" error={err("description")}>
@@ -180,9 +178,7 @@ export function PageSettingsForm({ page, canPublish }: { page: Page; canPublish:
           ) : null}
         </div>
         {!canPublish && page.status !== "PUBLISHED" ? (
-          <p className="mt-2 text-xs text-ink-subtle">
-            You can edit this page but not publish it.
-          </p>
+          <p className="mt-2 text-xs text-ink-subtle">You can edit this page but not publish it.</p>
         ) : null}
       </div>
     </div>

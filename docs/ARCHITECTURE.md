@@ -1643,6 +1643,53 @@ empty. The rule this settles: a block may be incomplete while it is being built
 (the same reasoning as `mediaRef`), the renderer skips what it cannot draw, and
 `blockWarnings` reports the gap in the builder.
 
+### 17.1b-iv Filtering a dynamic block
+
+CMS 2.0 Phase 4. A dynamic block already stored a *selection rule* rather than a
+copy of the data; this adds the rest of the rule — which rows, and in what
+order.
+
+**No taxonomy system.** The things a block filters by are the tables that
+already exist: `Service`, `City`, `BlogCategory`, `BlogTag`. A "category" that
+is not the same row the blog index links to would be a second source of truth
+for one idea (CLAUDE.md 4). `Industry` was considered and deliberately not
+created: industries are free text on the `industries` block and a Json column on
+`ServiceCityPage`, and neither wants a table yet.
+
+**Filters are slugs, not ids.** The cached summaries already carry slugs for
+their relations, the editor shows names and stores the slug behind them, and a
+slug is legible in the stored JSON. Renaming one breaks the filter — but
+renaming a slug also breaks a public URL, so it is a rare and deliberate act
+either way.
+
+**Filtering happens in `select`, not in the query.** The whole point of
+`lib/content/collections.ts` is that a page fetches each collection once and
+every block selects from that one cached list; a per-block `where` would mean a
+query per block and a cache entry per filter combination. The order is filter →
+sort → limit, so a filtered band still fills up, and `manual` is exempt from
+both: an editor who picked five case studies by hand means those five, not those
+five minus whichever no longer match a filter they also left set.
+
+A blank filter matches **everything**, which is what `matches()` exists to say
+out loud — `row.x === value` written inline empties the band the moment someone
+saves a block without choosing.
+
+`PostSummary` gained its tag slugs and `TestimonialSummary` its city and rating,
+because a filter can only use what the cached summary carries.
+
+**The editor picks from real rows.** `lib/services/taxonomy.service.ts` loads
+services, cities, categories and tags once per editor screen and passes them
+down, rather than each block fetching the same four lists while someone types.
+It is deliberately unfiltered by status: an editor setting up a band for a
+service that goes live next week should be able to choose it, and the public
+query is what enforces publication.
+
+> A no-op string replacement dropped `taxonomy` from the one line that passes it
+> into `CollectionFields`, so every picker rendered "nothing to choose from"
+> while the data sat in the database. The prop is optional, so nothing failed to
+> compile. Found by opening the editor — which is the third defect in this work
+> that only running the UI would have caught.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

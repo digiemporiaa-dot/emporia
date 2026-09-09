@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { mediaIdsIn, isBlockType, blockDefinition } from "@/lib/content/blocks";
 import { PageStatusBadge } from "../../pages/page-status";
 import { ReusableEditor } from "./reusable-editor";
+import { taxonomyOptions } from "@/lib/services/taxonomy.service";
 
 export const metadata: Metadata = { title: "Reusable section" };
 
@@ -42,6 +43,7 @@ export default async function ReusableSectionPage({
           select: { id: true, url: true, filename: true, type: true },
         });
   const mediaById = Object.fromEntries(mediaRows.map((row) => [row.id, row]));
+  const taxonomy = await taxonomyOptions();
 
   return (
     <>
@@ -65,6 +67,7 @@ export default async function ReusableSectionPage({
       </header>
 
       <ReusableEditor
+        taxonomy={taxonomy}
         section={{
           id: section.id,
           name: section.name,

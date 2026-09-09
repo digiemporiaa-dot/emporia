@@ -27,6 +27,7 @@ import {
   type BlockType,
 } from "@/lib/content/blocks";
 import type { ActionResult } from "@/lib/errors";
+import type { TaxonomyOptions } from "@/lib/content/taxonomy";
 import { BlockFields, type Content } from "./block-fields";
 import { AdvancedFields, GridFields, LayoutFields, StyleFields } from "./style-fields";
 import {
@@ -78,6 +79,8 @@ type Props = {
   media: Record<string, PickedMedia>;
   /** Published reusable sections available to place. */
   reusables: readonly InsertableReusable[];
+  /** Filter options for the dynamic blocks, loaded once by the editor page. */
+  taxonomy: TaxonomyOptions;
   canEdit: boolean;
 };
 
@@ -122,7 +125,7 @@ function summarise(section: BuilderSection): string {
   return "";
 }
 
-export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Props) {
+export function PageBuilder({ pageId, sections, media, reusables, taxonomy, canEdit }: Props) {
   const router = useRouter();
   const { push } = useToast();
   const [pending, startTransition] = React.useTransition();
@@ -392,6 +395,7 @@ export function PageBuilder({ pageId, sections, media, reusables, canEdit }: Pro
             null
           }
           cardMedia={media}
+          taxonomy={taxonomy}
           onClose={() => setEditingId(null)}
           onSaved={(options) => {
             setEditingId(null);
@@ -613,6 +617,7 @@ function SectionEditor({
   type,
   media,
   cardMedia,
+  taxonomy,
   onClose,
   onSaved,
 }: {
@@ -621,6 +626,7 @@ function SectionEditor({
   type: BlockType;
   media: PickedMedia | null;
   cardMedia: Readonly<Record<string, PickedMedia>>;
+  taxonomy: TaxonomyOptions;
   onClose: () => void;
   onSaved: (options?: { preview?: boolean }) => void;
 }) {
@@ -830,6 +836,7 @@ function SectionEditor({
               errors={errors}
               media={media}
               cardMedia={cardMedia}
+              taxonomy={taxonomy}
             />
           ) : null}
           {tab === "Layout" ? <LayoutFields content={content} set={set} /> : null}

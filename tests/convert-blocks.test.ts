@@ -82,8 +82,8 @@ describe("leadForm", () => {
   });
 
   it("keeps a configured service, which the capture path reads instead of the request body", () => {
-    const parsed = BLOCK_SCHEMAS.leadForm.parse({ serviceId: "abc123", submitLabel: "Send" });
-    expect(parsed.serviceId).toBe("abc123");
+    const parsed = BLOCK_SCHEMAS.leadForm.parse({ serviceSlug: "seo", submitLabel: "Send" });
+    expect(parsed.serviceSlug).toBe("seo");
   });
 
   it("rejects a variant it has no fields for", () => {

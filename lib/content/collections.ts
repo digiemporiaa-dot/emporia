@@ -56,10 +56,7 @@ const NEEDS = {
 
 /** `stats` reads case-study metrics, but only when set to that source. */
 function statsNeedsMetrics(section: ParsedSection): boolean {
-  return (
-    section.type === "stats" &&
-    (section.content as { source?: string }).source === "metrics"
-  );
+  return section.type === "stats" && (section.content as { source?: string }).source === "metrics";
 }
 
 export async function resolveCollections(
@@ -90,9 +87,11 @@ export async function resolveCollections(
 /**
  * Apply a block's selection rule to a collection.
  *
- * `manual` keeps the editor's order, and silently drops an id whose row has
- * since been unpublished or deleted — a stale pick should thin a band, not
- * fail the page.
+ * The order is filter → sort → limit, and `manual` skips the first two: an
+ * editor who picked five case studies by hand means those five, not those five
+ * minus whichever no longer match a filter they also left set. A stale pick is
+ * still dropped silently, because a row that has since been unpublished should
+ * thin a band rather than fail the page.
  *
  * `featured` is the collection's own order, which every one of these queries
  * already returns sorted the way the entity intends (an explicit `order`
@@ -100,12 +99,22 @@ export async function resolveCollections(
  * because they mean different things to an editor, and because a real
  * `isFeatured` column on any of these entities would change one and not the
  * other.
+ *
+ * Filtering happens here rather than in the query for the reason the whole
+ * module exists: the page fetches each collection once and every block selects
+ * from that one cached list. A per-block `where` would mean a query per block
+ * and a cache entry per filter combination.
  */
 export function select<T extends { id: string }>(
   rows: readonly T[],
   mode: "latest" | "featured" | "manual",
   ids: readonly string[],
   limit: number,
+  options?: {
+    /** Applied before the limit, so a filtered band still fills up. */
+    where?: (row: T) => boolean;
+    sort?: (a: T, b: T) => number;
+  },
 ): T[] {
   if (mode === "manual") {
     const byId = new Map(rows.map((row) => [row.id, row]));
@@ -114,5 +123,31 @@ export function select<T extends { id: string }>(
       .filter((row): row is T => row !== undefined)
       .slice(0, limit);
   }
-  return rows.slice(0, limit);
+
+  let selected = options?.where ? rows.filter(options.where) : [...rows];
+  if (options?.sort) selected = [...selected].sort(options.sort);
+  return selected.slice(0, limit);
+}
+
+/**
+ * A filter an editor left blank matches everything.
+ *
+ * Written out because the alternative — `!value || row.x === value` inline at
+ * every call site — is the sort of thing that gets typed as `row.x === value`
+ * once and silently empties a band the moment someone saves without choosing.
+ */
+export function matches(value: string | undefined, actual: string | null | undefined): boolean {
+  return !value || actual === value;
+}
+
+/** Sorts a name-bearing collection alphabetically, case-insensitively. */
+export function byName<T extends { name: string }>(a: T, b: T): number {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+/** Oldest first. A null date sorts last either way — it was never published. */
+export function byOldest<T extends { publishedAt: string | null }>(a: T, b: T): number {
+  if (!a.publishedAt) return 1;
+  if (!b.publishedAt) return -1;
+  return a.publishedAt.localeCompare(b.publishedAt);
 }

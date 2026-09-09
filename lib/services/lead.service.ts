@@ -417,9 +417,9 @@ export async function capturePageFormLead(
   // exactly as the contact form does with a client-supplied id.
   let serviceId: string | null = null;
   let serviceSlug: string | null = null;
-  if (block.serviceId) {
+  if (block.serviceSlug) {
     const service = await db.service.findFirst({
-      where: { id: block.serviceId, status: "PUBLISHED" },
+      where: { slug: block.serviceSlug, status: "PUBLISHED" },
       select: { id: true, slug: true },
     });
     serviceId = service?.id ?? null;

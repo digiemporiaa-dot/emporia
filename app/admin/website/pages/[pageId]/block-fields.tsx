@@ -6,6 +6,7 @@ import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
 import { ICON_LABELS, ICON_NAMES } from "@/lib/content/icons";
 import type { BlockType } from "@/lib/content/blocks";
+import { EMPTY_TAXONOMY, type TaxonomyOption, type TaxonomyOptions } from "@/lib/content/taxonomy";
 
 /**
  * Editors for each block type.
@@ -26,6 +27,8 @@ type FieldProps = {
   media: PickedMedia | null;
   /** Images already chosen by a card, keyed by media id. */
   cardMedia?: Readonly<Record<string, PickedMedia>>;
+  /** Services, cities, categories and tags a dynamic block can filter by. */
+  taxonomy?: TaxonomyOptions;
 };
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
@@ -196,7 +199,7 @@ const RICH_TEXT_HINT =
   "Blank line for a new paragraph. **bold**, *italic*, and [text](/path) for links to pages on this site.";
 
 export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }) {
-  const { content, set, errors, media, cardMedia } = props;
+  const { content, set, errors, media, cardMedia, taxonomy } = props;
   const err = useErr(errors);
 
   switch (type) {
@@ -205,7 +208,15 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
     case "blogGrid":
     case "caseStudyGrid":
     case "testimonials":
-      return <CollectionFields type={type} content={content} set={set} errors={errors} />;
+      return (
+        <CollectionFields
+          type={type}
+          content={content}
+          set={set}
+          errors={errors}
+          taxonomy={taxonomy}
+        />
+      );
 
     case "clientStrip":
       return (
@@ -1945,7 +1956,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
       );
 
     case "leadForm":
-      return <LeadFormFields content={content} set={set} errors={errors} />;
+      return <LeadFormFields content={content} set={set} errors={errors} taxonomy={taxonomy} />;
 
     case "stickyCta":
       return (
@@ -2357,10 +2368,12 @@ function LeadFormFields({
   content,
   set,
   errors,
+  taxonomy = EMPTY_TAXONOMY,
 }: {
   content: Content;
   set: (patch: Content) => void;
   errors: Record<string, string[]> | null;
+  taxonomy?: TaxonomyOptions;
 }) {
   const err = useErr(errors);
   const variant = str(content["variant"]) || "lead";
@@ -2408,21 +2421,15 @@ function LeadFormFields({
             />
           )}
         </Field>
-        <Field
-          id="serviceId"
+        <FilterSelect
+          id="serviceSlug"
+          emptyNote="No services exist yet."
           label="Attach leads to a service"
-          hint="Optional. Read from here on submit, never from the browser."
-          error={err("serviceId")}
-        >
-          {(aria) => (
-            <Input
-              {...aria}
-              value={str(content["serviceId"])}
-              placeholder="Service id"
-              onChange={(e) => set({ serviceId: e.target.value })}
-            />
-          )}
-        </Field>
+          emptyLabel="No service"
+          value={str(content["serviceSlug"])}
+          options={taxonomy.services}
+          onChange={(serviceSlug) => set({ serviceSlug })}
+        />
       </div>
 
       <Field id="successMessage" label="Message after sending" error={err("successMessage")}>
@@ -3153,16 +3160,67 @@ const COLLECTION_LABELS: Record<
   },
 };
 
+/**
+ * A filter picker.
+ *
+ * Always offers "Everything" as the blank value, because a filter an editor has
+ * not chosen must match everything rather than nothing. When the list is empty
+ * it says so instead of rendering a select with one useless option.
+ */
+function FilterSelect({
+  id,
+  label,
+  value,
+  options,
+  emptyLabel,
+  emptyNote,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: readonly TaxonomyOption[];
+  /** What "no filter" reads as. Always offered, because blank means everything. */
+  emptyLabel: string;
+  /** What to say when there is nothing to choose from at all. */
+  emptyNote: string;
+  onChange: (next: string) => void;
+}) {
+  if (options.length === 0) {
+    return (
+      <Field id={id} label={label}>
+        {() => <p className="text-xs text-ink-subtle">{emptyNote}</p>}
+      </Field>
+    );
+  }
+  return (
+    <Field id={id} label={label}>
+      {(aria) => (
+        <Select {...aria} value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{emptyLabel}</option>
+          {options.map((option) => (
+            <option key={option.slug} value={option.slug}>
+              {option.name}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
 function CollectionFields({
   type,
   content,
   set,
   errors,
+  taxonomy = EMPTY_TAXONOMY,
 }: {
   type: string;
   content: Content;
   set: (patch: Content) => void;
   errors: Record<string, string[]> | null;
+  taxonomy?: TaxonomyOptions;
 }) {
   const err = useErr(errors);
   const meta = COLLECTION_LABELS[type] ?? { noun: "items", hint: "" };
@@ -3250,22 +3308,133 @@ function CollectionFields({
         />
       ) : null}
 
-      {type === "blogGrid" ? (
-        <Field
-          id="categorySlug"
-          label="Only this category"
-          hint="A category slug. Leave blank for every category."
-          error={err("categorySlug")}
-        >
-          {(aria) => (
-            <Input
-              {...aria}
-              value={str(content["categorySlug"])}
-              placeholder="seo"
-              onChange={(e) => set({ categorySlug: e.target.value })}
-            />
-          )}
-        </Field>
+      {mode !== "manual" ? (
+        <fieldset className="grid gap-4 sm:grid-cols-2">
+          <legend className="mb-2 text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+            Narrow it down
+          </legend>
+
+          {type === "blogGrid" ? (
+            <>
+              <FilterSelect
+                id="categorySlug"
+                emptyNote="No blog categories exist yet."
+                label="Category"
+                emptyLabel="Every category"
+                value={str(content["categorySlug"])}
+                options={taxonomy.categories}
+                onChange={(categorySlug) => set({ categorySlug })}
+              />
+              <FilterSelect
+                id="tagSlug"
+                emptyNote="No blog tags exist yet."
+                label="Tag"
+                emptyLabel="Every tag"
+                value={str(content["tagSlug"])}
+                options={taxonomy.tags}
+                onChange={(tagSlug) => set({ tagSlug })}
+              />
+              <Field id="blog-sort" label="Order">
+                {(aria) => (
+                  <Select
+                    {...aria}
+                    value={str(content["sort"]) || "newest"}
+                    onChange={(e) => set({ sort: e.target.value })}
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                  </Select>
+                )}
+              </Field>
+            </>
+          ) : null}
+
+          {type === "caseStudyGrid" || type === "testimonials" ? (
+            <>
+              <FilterSelect
+                id="serviceSlug"
+                emptyNote="No services exist yet."
+                label="Service"
+                emptyLabel="Every service"
+                value={str(content["serviceSlug"])}
+                options={taxonomy.services}
+                onChange={(serviceSlug) => set({ serviceSlug })}
+              />
+              <FilterSelect
+                id="citySlug"
+                emptyNote="No cities exist yet."
+                label="City"
+                emptyLabel="Every city"
+                value={str(content["citySlug"])}
+                options={taxonomy.cities}
+                onChange={(citySlug) => set({ citySlug })}
+              />
+            </>
+          ) : null}
+
+          {type === "testimonials" ? (
+            <Field
+              id="minRating"
+              label="Minimum rating"
+              hint="Testimonials with no rating are left out once this is set."
+            >
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["minRating"])}
+                  onChange={(e) =>
+                    set({ minRating: e.target.value === "" ? undefined : e.target.value })
+                  }
+                >
+                  <option value="">Any rating</option>
+                  {[5, 4, 3].map((value) => (
+                    <option key={value} value={value}>
+                      {value} stars and up
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : null}
+
+          {type === "packageGrid" ? (
+            <>
+              <FilterSelect
+                id="serviceSlug"
+                emptyNote="No services exist yet."
+                label="Service"
+                emptyLabel="Every service"
+                value={str(content["serviceSlug"])}
+                options={taxonomy.services}
+                onChange={(serviceSlug) => set({ serviceSlug })}
+              />
+              <label className="flex items-end gap-2 pb-2.5 text-sm text-navy-800">
+                <input
+                  type="checkbox"
+                  checked={content["recommendedOnly"] === true}
+                  onChange={(e) => set({ recommendedOnly: e.target.checked })}
+                  className="h-4 w-4 accent-brand-red"
+                />
+                Recommended packages only
+              </label>
+            </>
+          ) : null}
+
+          {type === "serviceGrid" ? (
+            <Field id="service-sort" label="Order">
+              {(aria) => (
+                <Select
+                  {...aria}
+                  value={str(content["sort"]) || "order"}
+                  onChange={(e) => set({ sort: e.target.value })}
+                >
+                  <option value="order">The order set on each service</option>
+                  <option value="name">Alphabetical</option>
+                </Select>
+              )}
+            </Field>
+          ) : null}
+        </fieldset>
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">

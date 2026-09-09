@@ -17,6 +17,8 @@ import { absoluteUrl } from "@/lib/seo/urls";
 import { db } from "@/lib/db";
 import { mediaIdsIn } from "@/lib/content/blocks";
 import { listInsertable } from "@/lib/services/reusable-section.service";
+import { taxonomyOptions } from "@/lib/services/taxonomy.service";
+import { EMPTY_TAXONOMY } from "@/lib/content/taxonomy";
 
 export const metadata: Metadata = { title: "Edit page" };
 
@@ -28,11 +30,7 @@ const DATE = new Intl.DateTimeFormat("en-IN", {
   minute: "2-digit",
 });
 
-export default async function EditPagePage({
-  params,
-}: {
-  params: Promise<{ pageId: string }>;
-}) {
+export default async function EditPagePage({ params }: { params: Promise<{ pageId: string }> }) {
   const { pageId } = await params;
   const actor = await requireActorPage("/admin/website/pages");
   requirePermission(actor, "pages.edit");
@@ -60,6 +58,9 @@ export default async function EditPagePage({
         });
   const mediaById = Object.fromEntries(mediaRows.map((row) => [row.id, row]));
   const reusables = can(actor, "pages.edit") ? await listInsertable(actor) : [];
+  // Loaded once for the whole screen: the filter pickers on every dynamic block
+  // share this rather than each fetching the same four lists.
+  const taxonomy = can(actor, "pages.edit") ? await taxonomyOptions() : EMPTY_TAXONOMY;
   // Gated on audit.view, so a role without it simply does not see the section.
   const audit = can(actor, "audit.view") ? await listPageAudit(actor, page.id) : null;
 
@@ -75,8 +76,8 @@ export default async function EditPagePage({
     hasGlobalOgImage: Boolean(defaults.ogImageUrl),
   });
 
-  const seoMediaIds = [page.seo?.ogImageId, page.seo?.twitterImageId].filter(
-    (id): id is string => Boolean(id),
+  const seoMediaIds = [page.seo?.ogImageId, page.seo?.twitterImageId].filter((id): id is string =>
+    Boolean(id),
   );
   const seoMedia =
     seoMediaIds.length === 0
@@ -117,6 +118,7 @@ export default async function EditPagePage({
         sections={page.sections}
         media={mediaById}
         reusables={reusables}
+        taxonomy={taxonomy}
         canEdit={can(actor, "pages.edit")}
       />
 
@@ -134,7 +136,6 @@ export default async function EditPagePage({
       />
 
       {audit ? <AuditTrail entries={audit} /> : null}
-
     </>
   );
 }

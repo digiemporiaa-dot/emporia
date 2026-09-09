@@ -7,8 +7,9 @@
 | 1 — Content admin | **Done** — merged, 18 tests |
 | 2 — Page builder upgrade | **Done** — merged, 17 tests |
 | 3 — Block library, wave 1 | **Done** — merged, 45 tests |
-| 4 — Dynamic block filtering + taxonomy | Next |
-| 5–15 | Planned, below |
+| 4 — Dynamic block filtering + taxonomy | **Done** — merged, 13 tests |
+| 5 — Version history and workflow | Next |
+| 6–15 | Planned, below |
 
 This is the deliverable of the mandatory audit step: a map of the CMS as it
 actually exists today, an honest coverage matrix against the 26 requested
@@ -201,7 +202,7 @@ video (allow-listed), tabs, accordion, timeline, pricing table, comparison
 table. Built on shared primitives, not 13 bespoke components. Forms route
 through the **existing** lead capture path so attribution is captured once.
 
-### Phase 4 — Dynamic block filtering + taxonomy
+### Phase 4 — Dynamic block filtering + taxonomy — **DONE**
 Category / tag / service / city / industry / rating filters and sort on the
 collection blocks. Reuses `BlogCategory`, `BlogTag`, `Tag`, `Service`, `City`;
 adds `Industry` only if Phase 1 shows it is genuinely a separate entity.
