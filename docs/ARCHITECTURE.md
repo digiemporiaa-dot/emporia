@@ -1587,6 +1587,62 @@ value against what it opened with, shows an "Unsaved changes" marker, and asks
 before closing. Confirmed inline in the same dialog rather than in a second one:
 two modals open at once fight over focus.
 
+### 17.1b-iii Conversion blocks and the third capture path
+
+CMS 2.0 Phase 3 added eight blocks. Seven are presentational; the eighth,
+`leadForm`, is the one with an architecture.
+
+**A third capture path, not a third implementation.** There were two before:
+`captureContactLead`, which has the contact page's thin context — landing path,
+referrer, device — and `capturePopupLead`, which has the whole of it: visitor,
+UTM first and last touch, campaign, service, city. A form on a CMS page needs
+the second, because a lead without its campaign is worse than no lead: it
+quietly skews the reporting the platform exists to produce. So
+`capturePageFormLead` uses `persistTouches` like the popup does, and the lead,
+its touches and its activity commit in one transaction.
+
+**Everything that decides the outcome is loaded, not sent.** The browser posts
+the submitter's details plus the id of the *section* that rendered the form.
+The service reads that `PageSection` out of the database and takes the variant,
+the service the lead belongs to, and the success wording from the stored block
+— the same shape as the popup endpoint taking a `popupId` and loading the
+popup. A form that let the request body name its own service would let anyone
+file a lead against any service, and `serviceId` is a column the whole of
+marketing analytics groups by.
+
+A form on an unpublished or hidden section is refused, so a draft shared as a
+preview link is not a live unlisted capture endpoint. Per-variant field rules
+live in the service rather than the request schema, because the variant is on
+the block: a newsletter form asks for an email and nothing else, and the lead is
+named by that email.
+
+`/api/leads/page-form` is the popup endpoint's twin — public route handler, rate
+limited by IP, honeypotted, and sending the Conversions API copy of the
+conversion under the browser's own event id so Meta deduplicates.
+
+**Video is allow-listed, not embedded markup.** `lib/content/video.ts` accepts a
+YouTube or Vimeo URL or id, checks the *host* rather than searching the string,
+rejects anything that is not http(s), and builds the iframe `src` from the
+validated id alone. There is no field anywhere that accepts embed code, and that
+is the trade: nothing in this codebase reaches `dangerouslySetInnerHTML`, so
+there is no sanitiser to keep current and no stored-XSS surface. An
+arbitrary-embed block would give up both and require widening the CSP.
+
+**Two traps this phase walked into, both found by running the UI:**
+
+The `Convert` group was added to `BlockDefinition` but not to the builder's
+hand-written ordered group list, so all eight blocks were unreachable from Add
+Section — present in the schema, rendering correctly if you could get one onto a
+page, invisible to every editor. `BLOCK_GROUPS` now lives beside the library and
+a test asserts it covers it.
+
+`columns: z.array(...).min(1).default([])` is a contradiction: zod does not
+re-validate a default, so the empty default parsed on the way in and failed on
+the way back out — which drops the block from the page rather than showing it
+empty. The rule this settles: a block may be incomplete while it is being built
+(the same reasoning as `mediaRef`), the renderer skips what it cannot draw, and
+`blockWarnings` reports the gap in the builder.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

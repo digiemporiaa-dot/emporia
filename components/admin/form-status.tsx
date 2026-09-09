@@ -4,7 +4,11 @@ import * as React from "react";
 import { useFormStatus } from "react-dom";
 import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui";
+import { useHydrated } from "@/lib/utils/hydrated";
 import type { ActionResult } from "@/lib/errors";
+
+// Re-exported so the admin forms that gate on it keep one import.
+export { useHydrated };
 
 /**
  * The banner and submit button every admin form repeats.
@@ -51,24 +55,6 @@ export function fieldErrors(state: ActionResult<unknown> | null): Record<string,
   if (!state || state.ok) return {};
   const details = state.details;
   return details && typeof details === "object" ? (details as Record<string, string[]>) : {};
-}
-
-/**
- * Whether this component is alive in the browser yet.
- *
- * Only needed by a form that posts part of its content as JSON in a hidden
- * field — the structured editors, where React is the only thing that writes
- * that field. React's progressive enhancement will happily submit such a form
- * before hydration, which posts whatever the server rendered and silently
- * discards everything just typed. Gating the submit button on this is the fix.
- *
- * A form built entirely from ordinary named inputs does not need it, and should
- * not use it: those submit correctly with no JavaScript at all.
- */
-export function useHydrated(): boolean {
-  const [hydrated, setHydrated] = React.useState(false);
-  React.useEffect(() => setHydrated(true), []);
-  return hydrated;
 }
 
 export function SubmitButton({

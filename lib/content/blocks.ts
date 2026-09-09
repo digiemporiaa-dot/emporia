@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ICON_NAMES } from "@/lib/content/icons";
 import { gridConfig } from "@/lib/content/grid";
 import { alignToken, backgroundMediaId, styleField } from "@/lib/content/presentation";
+import { videoId } from "@/lib/content/video";
 
 /**
  * Page builder blocks.
@@ -131,7 +132,10 @@ export const tableBlock = z.object({
   /** Rendered as <caption>: a data table needs one to be navigable. */
   caption: optionalText(300),
   headers: z.array(trimmed(120)).min(1, "A table needs at least one column.").max(8),
-  rows: z.array(z.array(trimmed(500)).max(8)).min(1, "A table needs at least one row.").max(60),
+  rows: z
+    .array(z.array(trimmed(500)).max(8))
+    .min(1, "A table needs at least one row.")
+    .max(60),
   band: styleField,
 });
 
@@ -294,7 +298,6 @@ export const faqBlock = z.object({
     .max(30),
   band: styleField,
 });
-
 
 // ---------------------------------------------------------------------------
 // Layout blocks
@@ -464,7 +467,6 @@ export const heroBlock = z.object({
   height: z.enum(["auto", "sm", "md", "lg", "screen"]).default("auto"),
   band: styleField,
 });
-
 
 // ---------------------------------------------------------------------------
 // Dynamic collection blocks
@@ -667,6 +669,209 @@ export const industriesBlock = z.object({
   band: styleField,
 });
 
+// ---------------------------------------------------------------------------
+// Conversion
+// ---------------------------------------------------------------------------
+
+/**
+ * The three shapes a page form takes.
+ *
+ * A variant rather than three blocks: they differ only in which fields are
+ * asked for and how the copy reads, and every one of them creates the same
+ * `Lead` through the same attributed capture path. Three near-identical
+ * components would be three places to fix the next attribution bug.
+ */
+export const leadFormVariant = z.enum(["lead", "contact", "newsletter"]);
+export type LeadFormVariant = z.infer<typeof leadFormVariant>;
+
+export const leadFormBlock = z.object({
+  variant: leadFormVariant.default("lead"),
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  submitLabel: trimmed(60).default("Send"),
+  /** Shown in place of the form once it has been accepted. */
+  successMessage: trimmed(400).default("Thanks — we have your enquiry and will be in touch."),
+  /** Small print under the button. Not a consent checkbox: see the renderer. */
+  consentText: optionalText(400),
+  /**
+   * Attaches every lead from this form to a service.
+   *
+   * Read from the *stored* block on submit, never from the request body — a
+   * form that let the browser name its own service would let anyone file a lead
+   * against any service, and the reporting is built on that field.
+   */
+  serviceId: trimmed(40).optional(),
+  layout: z.enum(["stacked", "beside"]).default("stacked"),
+  band: styleField,
+});
+
+/**
+ * A call to action that follows the visitor down the page.
+ *
+ * `channel` decides what the button does, because "message us on WhatsApp" and
+ * "book a call" are the same band with a different destination — and a
+ * `whatsapp:` block would be a second implementation of one button.
+ */
+export const stickyCtaBlock = z.object({
+  text: trimmed(200).min(2, "Enter the message."),
+  buttonLabel: trimmed(60).min(1, "Enter the button label."),
+  channel: z.enum(["link", "whatsapp", "phone"]).default("link"),
+  /** A path for `link`; a number in international format for the other two. */
+  target: trimmed(300).min(1, "Enter where the button goes."),
+  /** Pre-filled message for WhatsApp. Ignored by the other channels. */
+  prefill: optionalText(300),
+  position: z.enum(["bottom", "top"]).default("bottom"),
+  dismissible: z.boolean().default(true),
+  /** Percent of the page scrolled before it appears. 0 shows it immediately. */
+  showAfterScroll: z.coerce.number().int().min(0).max(90).default(0),
+  band: styleField,
+});
+
+// ---------------------------------------------------------------------------
+// Trust and content
+// ---------------------------------------------------------------------------
+
+export const teamBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  items: z
+    .array(
+      z.object({
+        name: trimmed(120).min(1, "Every person needs a name."),
+        role: optionalText(120),
+        bio: optionalText(600),
+        mediaId: mediaRef,
+        alt: optionalText(300),
+        linkHref: linkHref.optional(),
+      }),
+    )
+    .max(24)
+    .default([]),
+  image: imageTreatment.optional(),
+  grid: gridConfig.optional(),
+  band: styleField,
+});
+
+export const galleryBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  items: z
+    .array(z.object({ mediaId: mediaRef, alt: optionalText(300), caption: optionalText(200) }))
+    .max(48)
+    .default([]),
+  image: imageTreatment.optional(),
+  grid: gridConfig.optional(),
+  band: styleField,
+});
+
+/**
+ * Video from an allow-listed provider.
+ *
+ * The editor supplies an id or a URL and this builds the embed; there is no
+ * field that accepts markup. An arbitrary-embed block would mean widening the
+ * CSP and accepting a stored-XSS surface the renderer does not currently have —
+ * nothing in this codebase reaches `dangerouslySetInnerHTML`, and that is worth
+ * more than the flexibility (docs/ARCHITECTURE.md 17.1b).
+ */
+export const videoProvider = z.enum(["youtube", "vimeo"]);
+
+export const videoBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  provider: videoProvider.default("youtube"),
+  /**
+   * The id, or a URL it can be read out of. Parsed by lib/content/video.ts.
+   *
+   * Allowed to be empty for the same reason `mediaRef` is: a block is added
+   * before it is filled in, and requiring the URL up front would make "add a
+   * video block" impossible. The renderer skips a block it cannot build an
+   * embed for, and `blockWarnings` reports the gap so it is visible in the
+   * builder rather than discovered as a hole in the live page.
+   */
+  video: trimmed(300).default(""),
+  title: trimmed(200).default("Video"),
+  ratio: z.enum(["16:9", "4:3", "1:1"]).default("16:9"),
+  width: imageWidth.default("container"),
+  band: styleField,
+});
+
+export const tabsBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  items: z
+    .array(
+      z.object({
+        label: trimmed(80).min(1, "Every tab needs a label."),
+        body: trimmed(6000).min(1, "Every tab needs some content."),
+      }),
+    )
+    .max(12)
+    .default([]),
+  band: styleField,
+});
+
+export const timelineBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  items: z
+    .array(
+      z.object({
+        marker: optionalText(40),
+        title: trimmed(160).min(1, "Every step needs a title."),
+        body: optionalText(1200),
+      }),
+    )
+    .max(24)
+    .default([]),
+  band: styleField,
+});
+
+/**
+ * A feature comparison.
+ *
+ * Cells are `true`, `false` or free text, because "included", "not included"
+ * and "up to 5" are all things a pricing grid has to say. Stored as written —
+ * nothing here computes or compares a price (CLAUDE.md 2 rule 1).
+ */
+export const comparisonCell = z.union([z.boolean(), trimmed(80)]);
+
+export const comparisonTableBlock = z.object({
+  eyebrow: optionalText(80),
+  heading: optionalText(200),
+  body: optionalText(1200),
+  columns: z
+    .array(
+      z.object({
+        label: trimmed(80).min(1, "Every column needs a label."),
+        detail: optionalText(120),
+        highlight: z.boolean().default(false),
+        ctaLabel: optionalText(60),
+        ctaHref: linkHref.optional(),
+      }),
+    )
+    // Not `.min(1)`: a block is added before it is filled in, and a required
+    // column would make "add a comparison table" impossible. It is also a
+    // contradiction with `.default([])` — zod does not re-validate a default,
+    // so the empty default would parse on the way in and fail on the way back
+    // out, silently dropping the block from the page. The renderer skips an
+    // empty table and `blockWarnings` reports it in the builder instead.
+    .max(5)
+    .default([]),
+  rows: z
+    .array(
+      z.object({
+        label: trimmed(160).min(1, "Every row needs a label."),
+        cells: z.array(comparisonCell).max(5),
+      }),
+    )
+    .max(40)
+    .default([]),
+  band: styleField,
+});
+
 export const BLOCK_SCHEMAS = {
   hero: heroBlock,
   heading: headingBlock,
@@ -698,6 +903,14 @@ export const BLOCK_SCHEMAS = {
   positioning: positioningBlock,
   process: processBlock,
   industries: industriesBlock,
+  leadForm: leadFormBlock,
+  stickyCta: stickyCtaBlock,
+  team: teamBlock,
+  gallery: galleryBlock,
+  video: videoBlock,
+  tabs: tabsBlock,
+  timeline: timelineBlock,
+  comparisonTable: comparisonTableBlock,
 } as const;
 
 export type BlockType = keyof typeof BLOCK_SCHEMAS;
@@ -714,12 +927,34 @@ export function isBlockType(value: string): value is BlockType {
  * shows something on the page immediately rather than an error state the
  * editor has to clear before they can see what they added.
  */
+/**
+ * The order groups appear in the Add Section list.
+ *
+ * Declared beside the library rather than in the builder, because it used to
+ * live there as a hand-written array — and adding a group to `BlockDefinition`
+ * without adding it here made every block in that group unreachable: present in
+ * the schema, rendered correctly if you could get one onto a page, and absent
+ * from the only screen that can add one. A test pins that this covers the
+ * library.
+ */
+export const BLOCK_GROUPS = [
+  "Layout",
+  "Convert",
+  "Text",
+  "Cards",
+  "Media",
+  "Dynamic",
+  "Data",
+] as const;
+
+export type BlockGroup = (typeof BLOCK_GROUPS)[number];
+
 export type BlockDefinition = {
   type: BlockType;
   label: string;
   description: string;
   /** Grouping in the Add Section modal. */
-  group: "Layout" | "Text" | "Media" | "Cards" | "Dynamic" | "Data";
+  group: BlockGroup;
   defaults: Record<string, unknown>;
   /**
    * Named starting points for the same block.
@@ -833,7 +1068,10 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     defaults: { height: "md", fit: "cover", position: "center", overlay: "none", align: "center" },
     presets: [
       { label: "Image only", defaults: { heading: "", body: "", overlay: "none" } },
-      { label: "With copy over it", defaults: { heading: "A line over the image", overlay: "dark" } },
+      {
+        label: "With copy over it",
+        defaults: { heading: "A line over the image", overlay: "dark" },
+      },
       { label: "Full height", defaults: { height: "screen", overlay: "dark" } },
     ],
   },
@@ -992,8 +1230,14 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     },
     presets: [
       { label: "Editorial index", defaults: { layout: "index" } },
-      { label: "Three cards", defaults: { layout: "cards", grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
-      { label: "Four cards", defaults: { layout: "cards", grid: { desktop: 4, tablet: 2, mobile: 1, gap: "md" } } },
+      {
+        label: "Three cards",
+        defaults: { layout: "cards", grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } },
+      },
+      {
+        label: "Four cards",
+        defaults: { layout: "cards", grid: { desktop: 4, tablet: 2, mobile: 1, gap: "md" } },
+      },
     ],
   },
   {
@@ -1026,7 +1270,14 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     },
     presets: [
       { label: "One large, two beneath", defaults: { layout: "editorial", limit: 3 } },
-      { label: "Three cards", defaults: { layout: "cards", limit: 3, grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+      {
+        label: "Three cards",
+        defaults: {
+          layout: "cards",
+          limit: 3,
+          grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" },
+        },
+      },
     ],
   },
   {
@@ -1045,7 +1296,10 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     },
     presets: [
       { label: "List", defaults: { layout: "index" } },
-      { label: "Three cards", defaults: { layout: "cards", grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+      {
+        label: "Three cards",
+        defaults: { layout: "cards", grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } },
+      },
     ],
   },
   {
@@ -1056,7 +1310,14 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
     defaults: { mode: "featured", layout: "quotes", limit: 2 },
     presets: [
       { label: "Pull quotes", defaults: { layout: "quotes", limit: 2 } },
-      { label: "Cards", defaults: { layout: "cards", limit: 3, grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" } } },
+      {
+        label: "Cards",
+        defaults: {
+          layout: "cards",
+          limit: 3,
+          grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" },
+        },
+      },
     ],
   },
   {
@@ -1158,6 +1419,134 @@ export const BLOCK_LIBRARY: readonly BlockDefinition[] = [
       ],
     },
   },
+  {
+    type: "leadForm",
+    label: "Form",
+    description:
+      "An enquiry, contact or newsletter form. Submissions become leads, with the visitor's campaign and referrer attached.",
+    group: "Convert",
+    defaults: {
+      variant: "lead",
+      heading: "Tell us what you are trying to move",
+      body: "",
+      submitLabel: "Send enquiry",
+      successMessage: "Thanks — we have your enquiry and will reply within one working day.",
+      layout: "stacked",
+    },
+    presets: [
+      { label: "Full enquiry", defaults: { variant: "lead", submitLabel: "Send enquiry" } },
+      { label: "Short contact", defaults: { variant: "contact", submitLabel: "Send message" } },
+      {
+        label: "Newsletter",
+        defaults: {
+          variant: "newsletter",
+          heading: "Get the monthly write-up",
+          submitLabel: "Subscribe",
+          successMessage: "You are on the list.",
+        },
+      },
+    ],
+  },
+  {
+    type: "stickyCta",
+    label: "Sticky call to action",
+    description: "A bar that follows the visitor down the page. Link, WhatsApp or phone.",
+    group: "Convert",
+    defaults: {
+      text: "Ready to talk?",
+      buttonLabel: "Get in touch",
+      channel: "link",
+      target: "/contact",
+      position: "bottom",
+      dismissible: true,
+      showAfterScroll: 25,
+    },
+    presets: [
+      { label: "Link to a page", defaults: { channel: "link", target: "/contact" } },
+      { label: "WhatsApp", defaults: { channel: "whatsapp", buttonLabel: "WhatsApp us" } },
+      { label: "Call", defaults: { channel: "phone", buttonLabel: "Call us" } },
+    ],
+  },
+  {
+    type: "team",
+    label: "Team",
+    description: "The people, with photographs, roles and a short bio each.",
+    group: "Cards",
+    defaults: {
+      heading: "The people doing the work",
+      items: [],
+      grid: { desktop: 3, tablet: 2, mobile: 1, gap: "md" },
+      image: { aspect: "1:1", fit: "cover", position: "center", radius: "md", overlay: "none" },
+    },
+  },
+  {
+    type: "gallery",
+    label: "Gallery",
+    description: "A grid of images from the media library, with optional captions.",
+    group: "Media",
+    defaults: {
+      items: [],
+      grid: { desktop: 3, tablet: 2, mobile: 2, gap: "sm" },
+      image: { aspect: "1:1", fit: "cover", position: "center", radius: "md", overlay: "none" },
+    },
+    presets: [
+      {
+        label: "Three across",
+        defaults: { grid: { desktop: 3, tablet: 2, mobile: 2, gap: "sm" } },
+      },
+      { label: "Four across", defaults: { grid: { desktop: 4, tablet: 2, mobile: 2, gap: "xs" } } },
+    ],
+  },
+  {
+    type: "video",
+    label: "Video",
+    description: "A YouTube or Vimeo video. Paste the URL — the embed is built for you.",
+    group: "Media",
+    defaults: { provider: "youtube", video: "", title: "Video", ratio: "16:9", width: "container" },
+  },
+  {
+    type: "tabs",
+    label: "Tabs",
+    description: "Panels behind labelled tabs. Keyboard navigable, and all content is in the page.",
+    group: "Text",
+    defaults: {
+      heading: "",
+      items: [
+        { label: "First", body: "What this tab covers." },
+        { label: "Second", body: "What this tab covers." },
+      ],
+    },
+  },
+  {
+    type: "timeline",
+    label: "Timeline",
+    description: "Ordered steps or milestones down the page.",
+    group: "Text",
+    defaults: {
+      heading: "How it goes",
+      items: [
+        { marker: "01", title: "First", body: "" },
+        { marker: "02", title: "Then", body: "" },
+      ],
+    },
+  },
+  {
+    type: "comparisonTable",
+    label: "Comparison table",
+    description: "Features down the side, plans across the top. Ticks, crosses or free text.",
+    group: "Data",
+    defaults: {
+      heading: "What is included",
+      columns: [
+        { label: "Starter", highlight: false },
+        { label: "Growth", highlight: true },
+      ],
+      rows: [
+        { label: "First feature", cells: [true, true] },
+        { label: "Second feature", cells: [false, true] },
+      ],
+    },
+  },
 ];
 
 export function blockDefinition(type: BlockType): BlockDefinition {
@@ -1215,6 +1604,23 @@ export function blockWarnings(type: string, content: unknown): string[] {
   const value = (content ?? {}) as Record<string, unknown>;
   const warnings: string[] = [];
 
+  if (type === "video") {
+    const provider = value["provider"] === "vimeo" ? "vimeo" : "youtube";
+    const raw = typeof value["video"] === "string" ? value["video"] : "";
+    // Reported here rather than left to the renderer: a video whose URL does
+    // not parse renders as nothing, and an editor should find that out in the
+    // builder, not from a gap on the live page.
+    if (!raw) warnings.push("No video chosen");
+    else if (!videoId(provider, raw)) warnings.push("That video URL is not one we can embed");
+  }
+
+  if (type === "comparisonTable") {
+    const columns = Array.isArray(value["columns"]) ? value["columns"].length : 0;
+    const rows = Array.isArray(value["rows"]) ? value["rows"].length : 0;
+    if (columns === 0) warnings.push("No columns yet");
+    if (rows === 0) warnings.push("No rows yet");
+  }
+
   if (NEEDS_IMAGE.has(type) && !value["mediaId"]) {
     warnings.push("No image chosen");
   }
@@ -1244,7 +1650,8 @@ export function blockWarnings(type: string, content: unknown): string[] {
   if (type === "benefits" || type === "textImage") {
     const items = Array.isArray(value["items"]) ? value["items"] : [];
     const hidden = items.filter(
-      (item) => item && typeof item === "object" && (item as Record<string, unknown>)["enabled"] === false,
+      (item) =>
+        item && typeof item === "object" && (item as Record<string, unknown>)["enabled"] === false,
     ).length;
     if (hidden > 0) warnings.push(`${hidden} hidden`);
   }
