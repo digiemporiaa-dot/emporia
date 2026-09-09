@@ -1,6 +1,13 @@
 # CMS 2.0 — Audit and Implementation Plan
 
-**Status: plan only. No code has been written against it.**
+**Status: Phases 1 and 2 are built and merged. Phase 3 is next.**
+
+| Phase | State |
+|---|---|
+| 1 — Content admin | **Done** — merged, 18 tests |
+| 2 — Page builder upgrade | **Done** — merged, 17 tests |
+| 3 — Block library, wave 1 | Next |
+| 4–15 | Planned, below |
 
 This is the deliverable of the mandatory audit step: a map of the CMS as it
 actually exists today, an honest coverage matrix against the 26 requested
@@ -174,13 +181,13 @@ numbering.
 Each phase closes with typecheck, lint, tests and build green, plus the phase
 report from `docs/BUILD-PLAN.md`. Each is independently shippable.
 
-### Phase 1 — Content admin (unblocks everything else)
+### Phase 1 — Content admin (unblocks everything else) — **DONE**
 Admin CRUD for `Service`, `BlogPost`, `CaseStudy` (+ metrics), `Testimonial`,
 and standalone `FAQ`. Reuses the existing list/detail/form patterns from
 `catalog/packages`, the shared `Seo` relation, the media picker, `content.*` and
 `catalog.*` permissions, audit and cache tags. **No new models.**
 
-### Phase 2 — Page builder upgrade
+### Phase 2 — Page builder upgrade — **DONE**
 Per-breakpoint visibility and alignment/spacing overrides with
 desktop → tablet → mobile inheritance; a device preview toolbar; a `version`
 field on block content plus a migration hook so future schema changes cannot
