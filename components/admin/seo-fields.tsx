@@ -17,6 +17,7 @@ export type SeoValues = {
   metaTitle: string | null;
   metaDescription: string | null;
   canonical: string | null;
+  targetKeyword: string | null;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImageId: string | null;
@@ -70,6 +71,22 @@ export function SeoFields({
 
   return (
     <div className="space-y-5">
+      <Field
+        id="targetKeyword"
+        label="Target keyword"
+        hint="One phrase this page is written to rank for. Blank switches the keyword checks off."
+        error={err("targetKeyword")}
+      >
+        {(aria) => (
+          <Input
+            {...aria}
+            name="targetKeyword"
+            defaultValue={seo?.targetKeyword ?? ""}
+            placeholder="digital marketing agency in gurgaon"
+          />
+        )}
+      </Field>
+
       <Field id="metaTitle" label="Meta title" hint={titleHint} error={err("metaTitle")}>
         {(aria) => (
           <>

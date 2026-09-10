@@ -34,6 +34,7 @@ const EMPTY = {
   metaTitle: null,
   metaDescription: null,
   canonical: null,
+  targetKeyword: null,
   ogTitle: null,
   ogDescription: null,
   ogImageId: null,

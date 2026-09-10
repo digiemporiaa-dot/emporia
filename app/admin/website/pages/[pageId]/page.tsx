@@ -16,6 +16,7 @@ import { WorkflowPanel } from "./workflow-panel";
 import { SchedulePanel } from "./schedule-panel";
 import { listVersions } from "@/lib/services/page-version.service";
 import { analysePage } from "@/lib/seo/analyzer";
+import { knownPaths, linkSuggestions } from "@/lib/services/seo-links.service";
 import { siteDefaults } from "@/lib/seo/defaults";
 import { absoluteUrl } from "@/lib/seo/urls";
 import { db } from "@/lib/db";
@@ -72,6 +73,13 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
   // The report describes the page as saved, so a social image or an OG record
   // added elsewhere is reflected without the editor having to touch this form.
   const defaults = await siteDefaults();
+  // The set of addresses a link may legitimately point at, so the report can
+  // say which internal links go nowhere. Fetched here rather than inside the
+  // analyzer, which stays a pure function over a snapshot.
+  const [paths, suggestions] = await Promise.all([
+    knownPaths(),
+    linkSuggestions(actor, page.id),
+  ]);
   const report = analysePage({
     title: page.title,
     slug: page.slug,
@@ -79,6 +87,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
     sections: page.sections,
     seo: page.seo,
     hasGlobalOgImage: Boolean(defaults.ogImageUrl),
+    knownPaths: paths,
   });
 
   const seoMediaIds = [page.seo?.ogImageId, page.seo?.twitterImageId].filter((id): id is string =>
@@ -160,6 +169,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
         pageId={page.id}
         seo={page.seo}
         report={report}
+        linkSuggestions={suggestions}
         ogImage={page.seo?.ogImageId ? (seoMediaById.get(page.seo.ogImageId) ?? null) : null}
         twitterImage={
           page.seo?.twitterImageId ? (seoMediaById.get(page.seo.twitterImageId) ?? null) : null

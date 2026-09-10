@@ -1878,6 +1878,90 @@ second tag system. Names are matched on their slug, so "Local SEO" and
 The migration is additive: every existing file keeps its filename and alt, gains
 five null columns and no tags.
 
+### 17.1b-viii SEO 2.0 — a target keyword, and links that go somewhere
+
+CMS 2.0 Phase 8. The analyzer already checked title length, description,
+content depth, images, indexability and structured data. What it could not do
+was judge a page against the phrase it was written for, or notice that a link
+in it was broken.
+
+**One target keyword, stored on `Seo`.** One, deliberately: a page written for
+six phrases ranks for none, and the analyzer can only say something useful about
+presence and density if it knows which phrase to look for. Blank is a first-class
+state — the keyword checks are simply not emitted, rather than failing. An
+unanswered question is not a bad answer.
+
+**Matching is forgiving about form, strict about substance.** `lib/seo/keyword.ts`
+normalises case, punctuation and separators, so "Digital Marketing Agency" in a
+title and `digital-marketing-agency` in a slug are the same phrase. It does not
+stem and has no synonyms: both would make the checks feel clever and behave
+unpredictably, and an editor who cannot tell why a check passed cannot act on
+it. Matching is padded to word boundaries, so "seo" does not match inside
+"Seoul".
+
+Density is measured as **the share of the page's words the phrase occupies**,
+not as a count of occurrences over words — a three-word phrase used five times
+in 300 words reads as 5%, which is what the number has to mean to anyone reading
+it. Under the floor is a warning; over the ceiling is a **failure**, because
+stuffing is actively penalised rather than merely unhelpful.
+
+**Placement is one check, not four.** Title, description and sub-headings are
+reported together, naming the ones that are missing. Four rows about a single
+phrase reads as nagging, and nagging gets ignored wholesale.
+
+**Heading outline.** The builder only emits h2 and h3 — the page's h1 is its
+title. The check that matters is not "has a heading" but a level 3 appearing
+before any level 2: a sub-point with nothing above it, which is the hole screen
+readers and crawlers actually trip on.
+
+**Links that go nowhere.** The analyzer is a pure function over a snapshot and
+stays one, so it does not look anything up. The caller passes `knownPaths` — the
+addresses it has confirmed resolve, including the fixed routes and **active
+redirects**, because an address that redirects is not broken. Omitting the set
+means the check is not emitted at all: a caller that could not do the lookup has
+not discovered that the links are bad, and reporting every link as broken would
+be a lie about the page. External links are counted separately and never called
+broken.
+
+`inlineLinks` was extended to capture full URLs as well as paths. It matched
+only paths, so an outbound link written in body copy was invisible and a page
+full of them reported none.
+
+**Internal-link suggestions, which stay suggestions.** `seo-links.service.ts`
+names the published services, cities, posts, case studies and packages this page
+mentions **by name** without linking to. There is no "apply", and there cannot
+be: inserting a link means editing a sentence somebody wrote, and a tool that
+quietly rewrites what a page claims is not one to trust. One-word names are
+skipped — "Design" is a service and also an ordinary English word, and a
+suggestion that fires on every page is one an editor stops reading, taking the
+useful ones with it.
+
+**The redirect admin.** The engine has existed since the original SEO phase —
+loop detection at write time, resolution from the catch-all route, hit counting
+— with nowhere to use it: redirects could only be created by writing to the
+database. `/admin/settings/redirects` is that screen, and building it surfaced
+that `createRedirect` and `updateRedirect` took no actor, checked no permission
+and wrote no audit row. They do now, plus `deleteRedirect` and `listRedirects`.
+A redirect can point the site's own addresses at somebody else's domain; that is
+a privileged mutation by any reading of CLAUDE.md 11, and it had simply never
+had a caller.
+
+The type is offered as **permanent or temporary**, not as four status codes,
+because Next emits 308 and 307 and cannot be made to emit 301 and 302 — four
+choices would let an admin pick one and be served another. The screen says so.
+Deletion is a hard delete: a redirect holds no history worth keeping, and
+`isActive` already means "off but kept".
+
+> **Known duplication, stated rather than hidden.** `components/admin/seo-fields.tsx`
+> was written to be the single definition of the SEO form, but the page
+> builder's panel carries its own copy, wrapped in a two-column layout with the
+> score report beside it. Adding `targetKeyword` to the shared component left
+> the page builder — the screen the field exists for — without it, and nothing
+> failed: no type error, no test, just a missing box that only opening the page
+> revealed. `tests/seo-form-parity.test.ts` now reads both files and asserts
+> every field the schema accepts is posted by both. That is a guard, not a fix;
+> consolidating the two forms is still owed.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

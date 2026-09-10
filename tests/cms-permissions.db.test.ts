@@ -74,6 +74,7 @@ describeDb("CMS permission matrix", () => {
     metaTitle: null,
     metaDescription: null,
     canonical: null,
+    targetKeyword: null,
     ogTitle: null,
     ogDescription: null,
     ogImageId: null,

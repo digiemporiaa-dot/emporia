@@ -1,7 +1,10 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { ConflictError, ValidationError } from "@/lib/errors";
-import type { RedirectType } from "@/generated/prisma/enums";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { requirePermission } from "@/lib/auth/rbac";
+import { withAudit } from "@/lib/services/audit.service";
+import type { Actor } from "@/lib/actor/types";
+import type { Prisma, RedirectType } from "@/generated/prisma/client";
 
 /**
  * Redirect management.
@@ -112,7 +115,17 @@ export async function assertNoLoop(input: RedirectInput, excludeId?: string): Pr
   );
 }
 
-export async function createRedirect(input: RedirectInput) {
+/**
+ * Create a redirect.
+ *
+ * `actor` is required rather than optional. Redirects change where the public
+ * site sends people, and an unaudited write that can point `/pricing` at
+ * somebody else's domain is a privileged mutation by any reading of
+ * CLAUDE.md 11 — it simply had no caller until there was a screen for it.
+ */
+export async function createRedirect(actor: Actor, input: RedirectInput) {
+  requirePermission(actor, "redirects.edit");
+
   const fromPath = normalisePath(input.fromPath);
   const toPath = normalisePath(input.toPath);
 
@@ -127,19 +140,32 @@ export async function createRedirect(input: RedirectInput) {
 
   await assertNoLoop({ ...input, fromPath, toPath });
 
-  return db.redirect.create({
-    data: {
-      fromPath,
-      toPath,
-      type: input.type ?? "PERMANENT_301",
-      isActive: input.isActive ?? true,
-    },
-  });
+  return withAudit(
+    { actor, action: "CREATE", entityType: "Redirect", entityId: fromPath },
+    (tx) =>
+      tx.redirect.create({
+        data: {
+          fromPath,
+          toPath,
+          type: input.type ?? "PERMANENT_301",
+          isActive: input.isActive ?? true,
+        },
+      }),
+  );
 }
 
-export async function updateRedirect(id: string, input: RedirectInput) {
+export async function updateRedirect(actor: Actor, id: string, input: RedirectInput) {
+  requirePermission(actor, "redirects.edit");
+
+  // No "is this a path" guard here, deliberately. `normalisePath` prepends a
+  // slash to anything that is not already absolute, so by this point every
+  // value is a path or a URL and such a check could never fire. Rejecting what
+  // an admin *typed* is the form's job — see `redirectSchema`.
   const fromPath = normalisePath(input.fromPath);
   const toPath = normalisePath(input.toPath);
+
+  const before = await db.redirect.findUnique({ where: { id } });
+  if (!before) throw new NotFoundError("That redirect does not exist.");
 
   const clash = await db.redirect.findFirst({
     where: { fromPath, id: { not: id } },
@@ -149,15 +175,82 @@ export async function updateRedirect(id: string, input: RedirectInput) {
 
   await assertNoLoop({ ...input, fromPath, toPath }, id);
 
-  return db.redirect.update({
-    where: { id },
-    data: {
-      fromPath,
-      toPath,
-      type: input.type ?? "PERMANENT_301",
-      isActive: input.isActive ?? true,
-    },
-  });
+  return withAudit(
+    { actor, action: "UPDATE", entityType: "Redirect", entityId: fromPath, before },
+    (tx) =>
+      tx.redirect.update({
+        where: { id },
+        data: {
+          fromPath,
+          toPath,
+          type: input.type ?? "PERMANENT_301",
+          isActive: input.isActive ?? true,
+        },
+      }),
+  );
+}
+
+/**
+ * Delete a redirect.
+ *
+ * A hard delete, unlike most things here. A redirect holds no history worth
+ * keeping — its whole content is a rule that is either in force or not — and
+ * `isActive` already covers "switch it off but keep it". A row that is both
+ * soft-deleted and inactive would be two ways of saying the same thing.
+ */
+export async function deleteRedirect(actor: Actor, id: string) {
+  requirePermission(actor, "redirects.edit");
+
+  const before = await db.redirect.findUnique({ where: { id } });
+  if (!before) throw new NotFoundError("That redirect does not exist.");
+
+  return withAudit(
+    { actor, action: "DELETE", entityType: "Redirect", entityId: before.fromPath, before },
+    (tx) => tx.redirect.delete({ where: { id }, select: { id: true } }),
+  );
+}
+
+export type RedirectListParams = {
+  page: number;
+  perPage: number;
+  search?: string | undefined;
+  active?: "all" | "on" | "off";
+};
+
+export async function listRedirects(actor: Actor, params: RedirectListParams) {
+  requirePermission(actor, "redirects.view");
+
+  const page = Math.max(1, params.page);
+  const perPage = Math.min(100, Math.max(10, params.perPage));
+  const search = params.search?.trim();
+
+  const where: Prisma.RedirectWhereInput = {
+    ...(params.active === "on" ? { isActive: true } : {}),
+    ...(params.active === "off" ? { isActive: false } : {}),
+    ...(search
+      ? {
+          OR: [
+            { fromPath: { contains: search, mode: "insensitive" as const } },
+            { toPath: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, total] = await Promise.all([
+    db.redirect.findMany({
+      where,
+      // Most-hit first: the redirects doing real work are the ones worth
+      // looking at, and a list ordered by creation buries them under whatever
+      // was added last.
+      orderBy: [{ hits: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * perPage,
+      take: perPage,
+    }),
+    db.redirect.count({ where }),
+  ]);
+
+  return { rows, total, page, perPage, pages: Math.max(1, Math.ceil(total / perPage)) };
 }
 
 export type ResolvedRedirect = {

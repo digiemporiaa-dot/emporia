@@ -46,6 +46,12 @@ export const pageSeoSchema = z.object({
   metaTitle: optional(200),
   metaDescription: optional(500),
   canonical: canonicalSchema,
+  /**
+   * One phrase, not a list. Capped short deliberately: anything longer than a
+   * few words is a sentence, and a page written for a sentence is written for
+   * nothing. Blank simply switches the keyword checks off.
+   */
+  targetKeyword: optional(80),
 
   ogTitle: optional(200),
   ogDescription: optional(500),
