@@ -89,7 +89,11 @@ export function PageFilters({ params }: { params: Record<string, unknown> }) {
           ))}
         </select>
 
-        <div className="flex items-center rounded-md border border-line-strong p-0.5" role="group" aria-label="View">
+        <div
+          className="flex items-center rounded-md border border-line-strong p-0.5"
+          role="group"
+          aria-label="View"
+        >
           {(
             [
               { value: "active", label: "Pages" },

@@ -6,7 +6,18 @@ import { can } from "@/lib/auth/rbac";
 import { listReusableSections } from "@/lib/services/reusable-section.service";
 import { reusableListSchema } from "@/lib/validation/page";
 import { blockDefinition, isBlockType } from "@/lib/content/blocks";
-import { Badge, Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Table,
+  TableEmpty,
+  TableWrap,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+} from "@/components/ui";
 import { Pagination } from "@/components/admin/pagination";
 import { PageStatusBadge } from "../pages/page-status";
 import { TableSkeleton } from "../table-skeleton";
@@ -29,7 +40,6 @@ export default async function ReusableSectionsPage({
   const parsed = reusableListSchema.safeParse(raw);
   const params = parsed.success ? parsed.data : reusableListSchema.parse({});
 
-
   return (
     <>
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -39,8 +49,8 @@ export default async function ReusableSectionsPage({
           </p>
           <h1 className="mt-1.5 text-2xl text-navy-800">Reusable sections</h1>
           <p className="mt-1.5 max-w-xl text-xs text-ink-subtle">
-            A band authored once and placed on many pages. Saving a published one updates every
-            page it appears on.
+            A band authored once and placed on many pages. Saving a published one updates every page
+            it appears on.
           </p>
         </div>
         {can(actor, "pages.create") ? (

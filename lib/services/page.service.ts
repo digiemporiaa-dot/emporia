@@ -18,6 +18,7 @@ import type {
   PageDraftInput,
   PageInput,
   PageListInput,
+  PageScheduleInput,
   SectionOrderInput,
 } from "@/lib/validation/page";
 
@@ -44,6 +45,8 @@ const listSelect = {
   status: true,
   workflow: true,
   publishedAt: true,
+  publishAt: true,
+  unpublishAt: true,
   updatedAt: true,
   createdAt: true,
   _count: { select: { sections: true } },
@@ -319,6 +322,34 @@ export async function setPageWorkflow(
           // hanging over work that has since changed.
           reviewNote: workflow === "IN_REVIEW" ? null : note?.trim() || null,
         },
+      }),
+  );
+
+  return page;
+}
+
+/**
+ * Set or clear a page's schedule.
+ *
+ * `pages.publish`, not `pages.edit`: scheduling a publish is publishing, just
+ * later. Gating it on the editing permission would let anyone who can fix a
+ * typo put a page live by choosing a date.
+ *
+ * A time in the past is accepted rather than rejected — it fires on the next
+ * run, which is what "publish it at nine" set at five past nine should do.
+ */
+export async function setPageSchedule(actor: Actor, id: string, input: PageScheduleInput) {
+  requirePermission(actor, "pages.publish");
+
+  const before = await getPage(actor, id);
+
+  const page = await withAudit(
+    { actor, action: "UPDATE", entityType: "Page schedule", entityId: id, before },
+    (tx) =>
+      tx.page.update({
+        where: { id },
+        data: { publishAt: input.publishAt, unpublishAt: input.unpublishAt },
+        select: { id: true, publishAt: true, unpublishAt: true },
       }),
   );
 

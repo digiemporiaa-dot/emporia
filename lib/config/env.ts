@@ -66,9 +66,19 @@ const envSchema = z.object({
   /** Overrides the AI API base. Used to point at a local double in testing. */
   AI_BASE_URL: z.string().url().optional(),
 
-  LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
-    .default("info"),
+  /**
+   * Shared secret for the scheduler endpoint.
+   *
+   * Optional, and its absence is meaningful: with no secret set, /api/cron
+   * refuses every request rather than running unauthenticated. Scheduling then
+   * simply does not happen, which is a visible failure — an open endpoint that
+   * publishes pages would not be.
+   *
+   * Long enough that guessing is not a strategy.
+   */
+  CRON_SECRET: z.string().min(24, "CRON_SECRET must be at least 24 characters").optional(),
+
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 
   // Seed credentials. Never hardcoded (docs/BUILD-PLAN.md, Seed data).
   SEED_SUPER_ADMIN_EMAIL: z.string().email().optional(),

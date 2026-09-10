@@ -129,52 +129,52 @@ export function RowActions({
       </div>
 
       {open ? (
-      <Dialog open onClose={() => setOpen(false)} title={title} description="Page actions">
-        <ul className="space-y-1">
-          {items.map((item) => (
-            <li key={item.key}>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={item.run}
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-navy-800 hover:bg-surface-muted disabled:opacity-50"
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </Dialog>
+        <Dialog open onClose={() => setOpen(false)} title={title} description="Page actions">
+          <ul className="space-y-1">
+            {items.map((item) => (
+              <li key={item.key}>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={item.run}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-navy-800 hover:bg-surface-muted disabled:opacity-50"
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Dialog>
       ) : null}
 
       {confirmDelete ? (
-      <Dialog
-        open
-        onClose={() => setConfirmDelete(false)}
-        title="Delete this page?"
-        description={`"${title}" stops serving immediately. It moves to the bin, where it can be restored — nothing is erased.`}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={pending}
-              onClick={() => run(() => deletePageAction(id), "Page moved to the bin.")}
-            >
-              {pending ? "Deleting…" : "Delete page"}
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-sm text-ink-muted">
-          If the page is live, its URL will start returning 404. Add a redirect if anything links
-          to it.
-        </p>
-      </Dialog>
+        <Dialog
+          open
+          onClose={() => setConfirmDelete(false)}
+          title="Delete this page?"
+          description={`"${title}" stops serving immediately. It moves to the bin, where it can be restored — nothing is erased.`}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={pending}
+                onClick={() => run(() => deletePageAction(id), "Page moved to the bin.")}
+              >
+                {pending ? "Deleting…" : "Delete page"}
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-sm text-ink-muted">
+            If the page is live, its URL will start returning 404. Add a redirect if anything links
+            to it.
+          </p>
+        </Dialog>
       ) : null}
     </>
   );

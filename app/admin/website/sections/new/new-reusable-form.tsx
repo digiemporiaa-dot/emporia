@@ -51,7 +51,13 @@ export function NewReusableForm({
         </div>
       ) : null}
 
-      <Field id="name" label="Name" required hint="Shown in the admin, not on the page." error={err("name")}>
+      <Field
+        id="name"
+        label="Name"
+        required
+        hint="Shown in the admin, not on the page."
+        error={err("name")}
+      >
         {(aria) => <Input {...aria} name="name" required autoFocus />}
       </Field>
 
