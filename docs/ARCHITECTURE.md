@@ -1805,6 +1805,79 @@ should publish on the next run.
 publish is publishing, just later. An editor without it sees the schedule as
 read-only text rather than the controls.
 
+### 17.1b-vii Media 2.0 — knowing where a file is used
+
+CMS 2.0 Phase 7. The library already had folders, versions, replace-in-place
+and a delete guard. What it did not have was any idea where a file actually
+appears.
+
+**The gap this closes.** `Media` has twelve foreign keys pointing at it — a
+service hero, a blog cover, an OG image — and the old guard counted those. But
+the place most images actually live is inside `PageSection.content`, as a
+`mediaId` in JSON, with no foreign key at all. So the guard read **zero** for
+an image on the homepage, and deleting it was allowed. The hole appeared on the
+live page.
+
+**Finding a JSON reference without a second source of truth.**
+`lib/content/blocks.ts` already holds `mediaIdsIn`, the single list of every
+place an id can sit in a block, and it stays that. `media-usage.service.ts` adds
+only a way to avoid loading every section in the database to run it: a
+substring match on the raw JSON text, in Postgres.
+
+That works because a text match is a strict **superset** of a structural one.
+If a section references the id in any field at any depth, the id appears in its
+text — so the filter cannot miss. Anything it over-collects (an id quoted in a
+paragraph, say) is thrown out by `mediaIdsIn`, which remains the only thing that
+decides what counts as a reference. The asymmetry is the whole design.
+
+A reverse index table would be exact too, and was rejected: it would need
+maintaining at a dozen section write sites plus the seeds and the version
+restore, and a usage count that has silently drifted is worse than none when a
+delete guard is standing on it.
+
+**What the panel shows** is the list, not a number: which pages (and how many
+bands on each), which reusable bands (and how many slots render them), and which
+records hold it through a foreign key, each labelled in words rather than by
+relation name. "Used in 3 places" sends someone hunting; a list is actionable.
+It is fetched when the panel opens — running it for twenty-four thumbnails
+nobody clicked would be twenty-four scans for nothing — and a check that fails
+says so rather than reporting zero, because "nothing uses this" is exactly the
+answer that gets a live image deleted.
+
+**Orphan detection** is the same question asked backwards, and it is the one
+query that genuinely has to read all the content. `referencedMediaIds()` runs
+only behind the library's _Unused only_ filter, never on an ordinary page.
+
+**Focal point.** A crop throws away edges, and which edges are expendable is a
+property of the photograph, not of the band it lands in — a portrait needs its
+face kept whatever aspect ratio it is poured into. `focalX`/`focalY` are whole
+percentages, set by clicking the picture in the library, and null means centre,
+which is what every image did before this existed.
+
+It applies only where the frame actually crops: a fixed aspect ratio with
+`object-cover`. An image rendered at its own height loses nothing, so there is
+nothing to choose. Those are exactly the places that already carried a
+`position` token, and that token still wins when it is set to anything but
+`center`: reaching for "align top" on one band is a decision about that band.
+`center` being the token's default is what lets the file's own point through.
+It is an inline style, not a class — the coordinates are arbitrary percentages,
+and an interpolated Tailwind class is invisible to the scanner.
+
+**Descriptive fields.** `title` (what you call it, as against the filename that
+landed in the bucket), `caption` (a default the renderer uses where a band shows
+one and has none of its own, so a photo credit set once follows the image), and
+`description` (provenance, licence, who is in the shot — never rendered
+publicly). All three are searched by the library.
+
+**Tags reuse `Tag`**, the table the CRM already uses, joined through `MediaTag`
+in the same shape as `LeadTag` — one vocabulary of words the agency uses, not a
+second tag system. Names are matched on their slug, so "Local SEO" and
+"local seo" are one tag. The reconciliation that does this now lives once, in
+`lib/services/tags.ts`, shared with the blog rather than written twice.
+
+The migration is additive: every existing file keeps its filename and alt, gains
+five null columns and no tags.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

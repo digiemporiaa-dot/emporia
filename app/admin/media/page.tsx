@@ -26,7 +26,9 @@ export default async function MediaPage({
   return (
     <>
       <header className="mb-5">
-        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Library</p>
+        <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
+          Library
+        </p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Media</h1>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Files go straight from your browser to storage; this server only checks what landed.
@@ -42,8 +44,14 @@ export default async function MediaPage({
           type: row.type,
           size: row.size,
           alt: row.alt,
+          title: row.title,
+          caption: row.caption,
+          description: row.description,
+          focalX: row.focalX,
+          focalY: row.focalY,
           width: row.width,
           height: row.height,
+          tags: row.tags.map((row) => row.tag),
           // Dates cross the boundary as ISO strings.
           createdAt: row.createdAt.toISOString(),
           folder: row.folder,

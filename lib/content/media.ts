@@ -19,6 +19,11 @@ export type ResolvedImage = {
   alt: string | null;
   width: number | null;
   height: number | null;
+  /** Focal point, whole percentages. Null means centre. */
+  focalX: number | null;
+  focalY: number | null;
+  /** Default caption, for blocks that show one and have none of their own. */
+  caption: string | null;
 };
 
 export type SectionImages = ReadonlyMap<string, ResolvedImage>;
@@ -36,7 +41,16 @@ export async function resolveSectionImages(
     // A deleted image is not silently swapped for another; the block that
     // referenced it simply renders without one.
     where: { id: { in: [...ids] }, deletedAt: null },
-    select: { id: true, url: true, alt: true, width: true, height: true },
+    select: {
+      id: true,
+      url: true,
+      alt: true,
+      width: true,
+      height: true,
+      focalX: true,
+      focalY: true,
+      caption: true,
+    },
   });
 
   return new Map(rows.map((row) => [row.id, row]));

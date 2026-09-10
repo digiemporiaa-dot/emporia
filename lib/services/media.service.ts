@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
+import { resolveTagIds } from "@/lib/services/tags";
+import { mediaUsage, referencedMediaIds } from "@/lib/services/media-usage.service";
 import { storage } from "@/lib/storage";
 import { objectKey, safeFilename } from "@/lib/media/keys";
 import { sniff, SNIFF_BYTES } from "@/lib/media/sniff";
@@ -180,7 +182,14 @@ export async function confirm(actor: Actor, uploadId: string) {
           folderId: intent.folderId,
           uploadedById: actor.userId,
         },
-        select: { id: true, key: true, url: true, filename: true, type: true, size: true },
+        select: {
+          id: true,
+          key: true,
+          url: true,
+          filename: true,
+          type: true,
+          size: true,
+        },
       });
 
       // Version 1 is the file as first uploaded, so a replacement never loses
@@ -218,7 +227,13 @@ async function replaceMedia(
   const version = existing.versions.reduce((max, row) => Math.max(max, row.version), 0) + 1;
 
   return withAudit(
-    { actor, action: "UPDATE", entityType: "Media", entityId: mediaId, before: { key: existing.key } },
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "Media",
+      entityId: mediaId,
+      before: { key: existing.key },
+    },
     async (tx) => {
       await tx.mediaVersion.create({
         data: {
@@ -235,8 +250,20 @@ async function replaceMedia(
       // in the bucket: something published may still reference that URL.
       return tx.media.update({
         where: { id: mediaId },
-        data: { key: next.key, url: next.url, size: next.size, checksum: next.checksum },
-        select: { id: true, key: true, url: true, filename: true, type: true, size: true },
+        data: {
+          key: next.key,
+          url: next.url,
+          size: next.size,
+          checksum: next.checksum,
+        },
+        select: {
+          id: true,
+          key: true,
+          url: true,
+          filename: true,
+          type: true,
+          size: true,
+        },
       });
     },
   );
@@ -255,15 +282,24 @@ export async function listMedia(actor: Actor, params: MediaListParamsInput) {
   const perPage = Math.min(MAX_PER_PAGE, Math.max(6, params.perPage));
   const search = params.search?.trim();
 
+  // Answering "what is unused" means reading all the page content, so it is
+  // done once here and only when asked for — never on an ordinary library page.
+  const referenced = params.unused ? await referencedMediaIds() : null;
+
   const where: Prisma.MediaWhereInput = {
     deletedAt: null,
     ...(params.type ? { type: params.type } : {}),
     ...(params.folderId ? { folderId: params.folderId } : {}),
+    ...(params.tag ? { tags: { some: { tag: { slug: params.tag } } } } : {}),
+    ...(referenced && referenced.size ? { id: { notIn: [...referenced] } } : {}),
     ...(search
       ? {
           OR: [
             { filename: { contains: search, mode: "insensitive" as const } },
             { alt: { contains: search, mode: "insensitive" as const } },
+            { title: { contains: search, mode: "insensitive" as const } },
+            { caption: { contains: search, mode: "insensitive" as const } },
+            { description: { contains: search, mode: "insensitive" as const } },
           ],
         }
       : {}),
@@ -284,11 +320,20 @@ export async function listMedia(actor: Actor, params: MediaListParamsInput) {
         type: true,
         size: true,
         alt: true,
+        title: true,
+        caption: true,
+        // Carried by the list because the details panel edits it from this row:
+        // sending null and letting the form post it back would quietly erase
+        // whatever was written the first time the panel was saved.
+        description: true,
+        focalX: true,
+        focalY: true,
         width: true,
         height: true,
         createdAt: true,
         folder: { select: { id: true, name: true } },
         uploadedBy: { select: { id: true, name: true } },
+        tags: { select: { tag: { select: { name: true, slug: true } } } },
         _count: { select: { versions: true } },
       },
     }),
@@ -318,11 +363,19 @@ export async function getMedia(actor: Actor, id: string) {
       type: true,
       size: true,
       alt: true,
+      title: true,
+      caption: true,
+      description: true,
+      focalX: true,
+      focalY: true,
       width: true,
       height: true,
       checksum: true,
       createdAt: true,
       folderId: true,
+      tags: {
+        select: { tag: { select: { id: true, name: true, slug: true } } },
+      },
       folder: { select: { id: true, name: true } },
       uploadedBy: { select: { id: true, name: true } },
       versions: {
@@ -348,7 +401,19 @@ export async function updateMedia(actor: Actor, input: MediaUpdateInput) {
 
   const existing = await db.media.findFirst({
     where: { id: input.id, deletedAt: null },
-    select: { id: true, filename: true, alt: true, folderId: true, mimeType: true },
+    select: {
+      id: true,
+      filename: true,
+      alt: true,
+      title: true,
+      caption: true,
+      description: true,
+      focalX: true,
+      focalY: true,
+      folderId: true,
+      mimeType: true,
+      tags: { select: { tag: { select: { slug: true } } } },
+    },
   });
   if (!existing) throw new NotFoundError("That file does not exist.");
 
@@ -361,19 +426,51 @@ export async function updateMedia(actor: Actor, input: MediaUpdateInput) {
   }
 
   return withAudit(
-    { actor, action: "UPDATE", entityType: "Media", entityId: input.id, before: existing },
-    (tx) =>
-      tx.media.update({
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "Media",
+      entityId: input.id,
+      before: existing,
+    },
+    async (tx) => {
+      const updated = await tx.media.update({
         where: { id: input.id },
         data: {
           // Renaming cannot change the type: the extension is re-derived from
           // the stored mime, not taken from what was typed.
           filename: safeFilename(input.filename, existing.mimeType),
           alt: input.alt ?? null,
+          title: input.title ?? null,
+          caption: input.caption ?? null,
+          description: input.description ?? null,
+          // A focal point is a pair or it is nothing: one axis set and the other
+          // centred is a coordinate nobody chose.
+          focalX: input.focalX ?? null,
+          focalY: input.focalY ?? null,
           folderId: input.folderId ?? null,
         },
         select: { id: true, filename: true },
-      }),
+      });
+
+      // Replaced wholesale rather than merged: the form sends the complete list
+      // it is showing, so removing a tag has to mean removing it.
+      const tagIds = await resolveTagIds(tx.tag, input.tags);
+      await tx.mediaTag.deleteMany({
+        where: {
+          mediaId: input.id,
+          ...(tagIds.length ? { tagId: { notIn: tagIds } } : {}),
+        },
+      });
+      if (tagIds.length) {
+        await tx.mediaTag.createMany({
+          data: tagIds.map((tagId) => ({ mediaId: input.id, tagId })),
+          skipDuplicates: true,
+        });
+      }
+
+      return updated;
+    },
   );
 }
 
@@ -383,45 +480,45 @@ export async function updateMedia(actor: Actor, input: MediaUpdateInput) {
  * The row is kept and the object stays in the bucket: something published may
  * still point at that URL, and a media library that hard-deletes leaves holes
  * in old pages (CLAUDE.md 7, soft delete where history matters).
+ *
+ * Refused while anything uses the file — including a band on a page, which the
+ * foreign keys cannot see and which this guard was blind to before
+ * `media-usage.service` existed. The refusal names the first few places rather
+ * than only counting them: "used in 3 places" sends someone hunting, and the
+ * library shows the full list beside the file anyway.
  */
 export async function deleteMedia(actor: Actor, id: string) {
   requirePermission(actor, "media.delete");
 
   const media = await db.media.findFirst({
     where: { id, deletedAt: null },
-    select: {
-      id: true,
-      filename: true,
-      _count: {
-        select: {
-          userAvatars: true,
-          serviceHeroes: true,
-          blogCovers: true,
-          caseStudyCovers: true,
-          testimonialAvatars: true,
-          clientLogos: true,
-          contractDocs: true,
-          contentItems: true,
-          approvalVersions: true,
-          popups: true,
-          seoOgImages: true,
-          seoTwitterImages: true,
-        },
-      },
-    },
+    select: { id: true, filename: true },
   });
 
   if (!media) throw new NotFoundError("That file does not exist.");
 
-  const inUse = Object.values(media._count).reduce((sum, count) => sum + count, 0);
-  if (inUse > 0) {
+  const usage = await mediaUsage(actor, id);
+  if (usage.total > 0) {
+    const places = [
+      ...usage.pages.map((page) => page.title),
+      ...usage.reusables.map((row) => row.name),
+      ...usage.entities.map((row) => row.label.toLowerCase()),
+    ];
+    const shown = places.slice(0, 3).join(", ");
+    const rest = places.length > 3 ? `, and ${places.length - 3} more` : "";
     throw new ConflictError(
-      `That file is used in ${inUse} place${inUse === 1 ? "" : "s"}. Replace it there first.`,
+      `That file is still used — ${shown}${rest}. Replace it there first, or use "Replace with a new version".`,
     );
   }
 
   return withAudit(
-    { actor, action: "DELETE", entityType: "Media", entityId: id, before: { filename: media.filename } },
+    {
+      actor,
+      action: "DELETE",
+      entityType: "Media",
+      entityId: id,
+      before: { filename: media.filename },
+    },
     (tx) =>
       tx.media.update({
         where: { id },
@@ -464,16 +561,17 @@ export async function createFolder(actor: Actor, input: FolderInput) {
     path = `${parent.path}/${input.name}`;
   }
 
-  const clash = await db.mediaFolder.findUnique({ where: { path }, select: { id: true } });
+  const clash = await db.mediaFolder.findUnique({
+    where: { path },
+    select: { id: true },
+  });
   if (clash) throw new ConflictError("A folder with that name already exists here.");
 
-  return withAudit(
-    { actor, action: "CREATE", entityType: "MediaFolder", entityId: path },
-    (tx) =>
-      tx.mediaFolder.create({
-        data: { name: input.name, parentId: input.parentId || null, path },
-        select: { id: true, name: true, path: true },
-      }),
+  return withAudit({ actor, action: "CREATE", entityType: "MediaFolder", entityId: path }, (tx) =>
+    tx.mediaFolder.create({
+      data: { name: input.name, parentId: input.parentId || null, path },
+      select: { id: true, name: true, path: true },
+    }),
   );
 }
 
@@ -482,7 +580,11 @@ export async function deleteFolder(actor: Actor, id: string) {
 
   const folder = await db.mediaFolder.findUnique({
     where: { id },
-    select: { id: true, path: true, _count: { select: { media: true, children: true } } },
+    select: {
+      id: true,
+      path: true,
+      _count: { select: { media: true, children: true } },
+    },
   });
   if (!folder) throw new NotFoundError("That folder does not exist.");
 
@@ -491,7 +593,12 @@ export async function deleteFolder(actor: Actor, id: string) {
   }
 
   return withAudit(
-    { actor, action: "DELETE", entityType: "MediaFolder", entityId: folder.path },
+    {
+      actor,
+      action: "DELETE",
+      entityType: "MediaFolder",
+      entityId: folder.path,
+    },
     (tx) => tx.mediaFolder.delete({ where: { id }, select: { id: true } }),
   );
 }

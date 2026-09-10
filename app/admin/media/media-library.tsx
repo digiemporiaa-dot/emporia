@@ -4,16 +4,31 @@ import * as React from "react";
 import { useActionState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, Check, Copy, FileText, Film, Folder, FolderPlus, Search, Trash2, X } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  Crosshair,
+  FileText,
+  Film,
+  Folder,
+  FolderPlus,
+  Link2,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { Uploader } from "./uploader";
 import {
   createFolderAction,
   deleteFolderAction,
   deleteMediaAction,
+  mediaUsageAction,
   updateMediaAction,
   type MediaActionState,
 } from "./actions";
+import type { MediaUsage } from "@/lib/services/media-usage.service";
 import type { MediaType } from "@/generated/prisma/enums";
 
 /** The media library: folders, a grid, and a detail panel. */
@@ -26,11 +41,18 @@ export type LibraryItem = {
   type: MediaType;
   size: number;
   alt: string | null;
+  title: string | null;
+  caption: string | null;
+  description: string | null;
+  /** Focal point, whole percentages. Null means centre. */
+  focalX: number | null;
+  focalY: number | null;
   width: number | null;
   height: number | null;
   createdAt: string;
   folder: { id: string; name: string } | null;
   uploadedBy: { id: string; name: string } | null;
+  tags: { name: string; slug: string }[];
   versions: number;
 };
 
@@ -42,7 +64,11 @@ export type LibraryFolder = {
   count: number;
 };
 
-const DATE = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const DATE = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
 
 function human(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -120,6 +146,8 @@ export function MediaLibrary({
   const [newFolder, setNewFolder] = React.useState(false);
 
   const activeFolder = searchParams.get("folderId");
+  const activeTag = searchParams.get("tag");
+  const unusedOnly = searchParams.get("unused") === "1";
 
   const push = (updates: Record<string, string | undefined>) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -142,7 +170,9 @@ export function MediaLibrary({
   return (
     <div className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
       <aside>
-        <h2 className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">Folders</h2>
+        <h2 className="text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
+          Folders
+        </h2>
         <ul className="mt-2 space-y-0.5">
           <li>
             <button
@@ -240,7 +270,7 @@ export function MediaLibrary({
                 id="media-search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Filename or alt text"
+                placeholder="Name, alt, caption or notes"
                 className="h-9 w-56 rounded-md border border-line-strong pl-8 pr-2 text-sm focus:border-brand-red"
               />
             </div>
@@ -267,6 +297,31 @@ export function MediaLibrary({
             <option value="DOCUMENT">Documents</option>
           </select>
 
+          <button
+            type="button"
+            onClick={() => push({ unused: unusedOnly ? undefined : "1" })}
+            aria-pressed={unusedOnly}
+            className={`h-9 rounded-md border px-3 text-sm ${
+              unusedOnly
+                ? "border-brand-red bg-brand-red/5 text-brand-red-text"
+                : "border-line-strong text-navy-800 hover:border-navy-300"
+            }`}
+          >
+            Unused only
+          </button>
+
+          {activeTag ? (
+            <button
+              type="button"
+              onClick={() => push({ tag: undefined })}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-brand-red bg-brand-red/5 px-3 text-sm text-brand-red-text"
+            >
+              #{activeTag}
+              <X size={12} aria-hidden="true" />
+              <span className="sr-only">Clear the tag filter</span>
+            </button>
+          ) : null}
+
           <p className="ml-auto text-xs text-ink-subtle">
             {total} file{total === 1 ? "" : "s"}
           </p>
@@ -274,7 +329,13 @@ export function MediaLibrary({
 
         {items.length === 0 ? (
           <div className="rounded-lg border border-line bg-white px-4 py-10 text-center">
-            <p className="text-sm text-ink-subtle">Nothing here yet.</p>
+            <p className="text-sm text-ink-subtle">
+              {unusedOnly
+                ? "Every file is used somewhere."
+                : activeTag
+                  ? "No files carry that tag."
+                  : "Nothing here yet."}
+            </p>
           </div>
         ) : (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
@@ -294,7 +355,7 @@ export function MediaLibrary({
                     <Thumb item={item} />
                   </div>
                   <div className="border-t border-line px-2.5 py-2">
-                    <p className="truncate text-xs text-navy-800">{item.filename}</p>
+                    <p className="truncate text-xs text-navy-800">{item.title || item.filename}</p>
                     <p className="text-2xs text-ink-subtle">
                       {human(item.size)}
                       {item.versions > 1 ? ` · v${item.versions}` : ""}
@@ -383,6 +444,162 @@ function NewFolderForm({ parentId, onDone }: { parentId: string | null; onDone: 
   );
 }
 
+/**
+ * Click the picture to say what part of it matters.
+ *
+ * A crop throws away edges, and which edges are expendable is a property of the
+ * photograph, not of the band it lands in. Setting it here means a portrait
+ * keeps its face in every aspect ratio it is ever poured into, instead of an
+ * editor discovering a decapitation on the live site.
+ *
+ * The value rides in hidden inputs that React renders on the server too, so a
+ * form submitted before this component is interactive still posts the point the
+ * file already had, rather than clearing it.
+ */
+function FocalPicker({
+  item,
+  formId,
+  x,
+  y,
+  onChange,
+}: {
+  item: LibraryItem;
+  /** The form these hidden inputs belong to, which is in a sibling column. */
+  formId: string;
+  x: number | null;
+  y: number | null;
+  onChange: (next: { x: number | null; y: number | null }) => void;
+}) {
+  const set = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const nextX = Math.round(((event.clientX - box.left) / box.width) * 100);
+    const nextY = Math.round(((event.clientY - box.top) / box.height) * 100);
+    onChange({
+      x: Math.min(100, Math.max(0, nextX)),
+      y: Math.min(100, Math.max(0, nextY)),
+    });
+  };
+
+  return (
+    <div>
+      {/* The picker sits in the preview column and the fields it feeds are in
+          the next one, so the inputs join the form by id rather than by being
+          nested inside it. */}
+      <input type="hidden" form={formId} name="focalX" value={x ?? ""} />
+      <input type="hidden" form={formId} name="focalY" value={y ?? ""} />
+
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-navy-800">
+        <Crosshair size={13} aria-hidden="true" className="text-ink-subtle" />
+        Focal point
+      </p>
+
+      <button
+        type="button"
+        onClick={set}
+        aria-label="Set the focal point by clicking the image"
+        className="relative block aspect-4/3 w-full cursor-crosshair overflow-hidden rounded-md border border-line bg-surface-muted"
+      >
+        <Thumb item={item} />
+        {x !== null && y !== null ? (
+          <span
+            aria-hidden="true"
+            style={{ left: `${x}%`, top: `${y}%` }}
+            className="absolute -ml-2.5 -mt-2.5 h-5 w-5 rounded-full border-2 border-brand-red bg-white/40 shadow-sm"
+          />
+        ) : null}
+      </button>
+
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <p className="text-2xs text-ink-subtle">
+          {x === null || y === null ? "Centred, as every image was before." : `${x}% ${y}%`}
+        </p>
+        {x !== null || y !== null ? (
+          <button
+            type="button"
+            onClick={() => onChange({ x: null, y: null })}
+            className="text-2xs text-ink-subtle underline hover:text-brand-red-text"
+          >
+            Reset to centre
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Everything that shows this file.
+ *
+ * The counts that matter most — a band on a page — have no foreign key behind
+ * them, so this is a query rather than a number the row already carries. It is
+ * fetched when the panel opens, and it is what the delete guard is standing on:
+ * showing the list beside the button is the difference between "you cannot" and
+ * "here is what to fix first".
+ */
+function UsagePanel({ mediaId }: { mediaId: string }) {
+  const [usage, setUsage] = React.useState<MediaUsage | null>(null);
+  const [failed, setFailed] = React.useState(false);
+  const [loading, startLoad] = useTransition();
+
+  React.useEffect(() => {
+    setUsage(null);
+    setFailed(false);
+    startLoad(async () => {
+      const result = await mediaUsageAction(mediaId);
+      if (result.ok) setUsage(result.data);
+      else setFailed(true);
+    });
+  }, [mediaId]);
+
+  return (
+    <div className="border-t border-line pt-3">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-navy-800">
+        <Link2 size={13} aria-hidden="true" className="text-ink-subtle" />
+        Used in
+      </p>
+
+      {loading || (!usage && !failed) ? (
+        <p className="mt-1.5 text-2xs text-ink-subtle">Checking…</p>
+      ) : failed ? (
+        // Not "0 places": a check that did not run is not a file nobody uses,
+        // and reporting it as one is how somebody deletes a live image.
+        <p className="mt-1.5 text-2xs text-ink-subtle">Could not check just now.</p>
+      ) : usage && usage.total === 0 ? (
+        <p className="mt-1.5 text-2xs text-ink-subtle">Nothing references this file.</p>
+      ) : usage ? (
+        <ul className="mt-1.5 space-y-1 text-2xs text-ink">
+          {usage.pages.map((page) => (
+            <li key={page.id} className="flex items-baseline justify-between gap-2">
+              <span className="truncate">
+                {page.title}
+                <span className="text-ink-subtle"> /{page.slug}</span>
+              </span>
+              <span className="shrink-0 text-ink-subtle">
+                {page.sections} band{page.sections === 1 ? "" : "s"}
+              </span>
+            </li>
+          ))}
+          {usage.reusables.map((row) => (
+            <li key={row.id} className="flex items-baseline justify-between gap-2">
+              <span className="truncate">{row.name}</span>
+              <span className="shrink-0 text-ink-subtle">
+                reusable · {row.placements} placement
+                {row.placements === 1 ? "" : "s"}
+              </span>
+            </li>
+          ))}
+          {usage.entities.map((row) => (
+            <li key={row.label} className="flex items-baseline justify-between gap-2">
+              <span className="truncate">{row.label}</span>
+              <span className="shrink-0 text-ink-subtle">{row.count}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function DetailPanel({
   item,
   folders,
@@ -402,6 +619,20 @@ function DetailPanel({
   const [pending, start] = useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [replacing, setReplacing] = React.useState(false);
+  const [focal, setFocal] = React.useState<{
+    x: number | null;
+    y: number | null;
+  }>({
+    x: item.focalX,
+    y: item.focalY,
+  });
+  const formId = React.useId();
+
+  // A different file selected means a different point; without this the panel
+  // would show the previous image's crosshair over the new picture.
+  React.useEffect(() => {
+    setFocal({ x: item.focalX, y: item.focalY });
+  }, [item.id, item.focalX, item.focalY]);
 
   return (
     <aside
@@ -422,9 +653,13 @@ function DetailPanel({
 
       <div className="mt-3 grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <div>
-          <div className="aspect-4/3 rounded-md border border-line bg-surface-muted p-2">
-            <Thumb item={item} />
-          </div>
+          {canEdit && item.type === "IMAGE" ? (
+            <FocalPicker item={item} formId={formId} x={focal.x} y={focal.y} onChange={setFocal} />
+          ) : (
+            <div className="aspect-4/3 rounded-md border border-line bg-surface-muted p-2">
+              <Thumb item={item} />
+            </div>
+          )}
 
           <dl className="mt-3 space-y-1 text-2xs text-ink-subtle">
             <div className="flex justify-between gap-3">
@@ -470,7 +705,11 @@ function DetailPanel({
               }}
               className="inline-flex h-8 items-center gap-1 rounded-sm border border-line-strong px-2 text-2xs text-navy-800 hover:border-brand-red hover:text-brand-red-text"
             >
-              {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+              {copied ? (
+                <Check size={12} aria-hidden="true" />
+              ) : (
+                <Copy size={12} aria-hidden="true" />
+              )}
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
@@ -478,11 +717,17 @@ function DetailPanel({
 
         <div className="space-y-4">
           {canEdit ? (
-            <form action={formAction} className="space-y-3" noValidate>
+            <form id={formId} action={formAction} className="space-y-3" noValidate>
               <input type="hidden" name="id" value={item.id} />
 
               <Field id="filename" label="Filename" required>
-                {(aria) => <Input {...aria} name="filename" defaultValue={item.filename} required />}
+                {(aria) => (
+                  <Input {...aria} name="filename" defaultValue={item.filename} required />
+                )}
+              </Field>
+
+              <Field id="title" label="Title" hint="What you call it. The filename is what landed.">
+                {(aria) => <Input {...aria} name="title" defaultValue={item.title ?? ""} />}
               </Field>
 
               <Field
@@ -491,6 +736,40 @@ function DetailPanel({
                 hint="What the image shows, for screen readers and SEO"
               >
                 {(aria) => <Textarea {...aria} name="alt" rows={2} defaultValue={item.alt ?? ""} />}
+              </Field>
+
+              <Field
+                id="caption"
+                label="Caption"
+                hint="Shown under the image where a band has none of its own — a credit set once."
+              >
+                {(aria) => <Input {...aria} name="caption" defaultValue={item.caption ?? ""} />}
+              </Field>
+
+              <Field
+                id="description"
+                label="Internal notes"
+                hint="Where it came from, the licence, who is in it. Never shown publicly."
+              >
+                {(aria) => (
+                  <Textarea
+                    {...aria}
+                    name="description"
+                    rows={2}
+                    defaultValue={item.description ?? ""}
+                  />
+                )}
+              </Field>
+
+              <Field id="tags" label="Tags" hint="Separated by commas. Shared with the CRM's tags.">
+                {(aria) => (
+                  <Input
+                    {...aria}
+                    name="tags"
+                    defaultValue={item.tags.map((tag) => tag.name).join(", ")}
+                    placeholder="hero, team, 2026"
+                  />
+                )}
               </Field>
 
               <Field id="folderId" label="Folder">
@@ -516,6 +795,8 @@ function DetailPanel({
               <Submit label="Save" />
             </form>
           ) : null}
+
+          <UsagePanel mediaId={item.id} />
 
           <div className="flex flex-wrap gap-2 border-t border-line pt-3">
             {canEdit ? (

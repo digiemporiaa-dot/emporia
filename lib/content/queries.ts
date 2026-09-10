@@ -2,7 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { toMoneyString } from "@/lib/money";
-import { resolveSectionImages, type SectionImages } from "@/lib/content/media";
+import { resolveSectionImages, type ResolvedImage, type SectionImages } from "@/lib/content/media";
 import { parseSections, type ParsedSection } from "@/lib/content/sections";
 import { seoSelect, type EntitySeo } from "@/lib/seo/select";
 import { resolveCollections } from "@/lib/content/collections";
@@ -43,7 +43,7 @@ export type PublishedPage = {
   /** The schema type an editor opted into, gating structured data. */
   schemaType: string | null;
   /** Images referenced by the sections, resolved in one batched query. */
-  images: Record<string, { id: string; url: string; alt: string | null; width: number | null; height: number | null }>;
+  images: Record<string, ResolvedImage>;
   seo: EntitySeo | null;
 };
 

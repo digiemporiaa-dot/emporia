@@ -329,11 +329,11 @@ describeDb("media upload", () => {
   // ── Library operations ─────────────────────────────────────────────────
 
   it("lists and renames without letting the extension change", async () => {
-    const listed = await listMedia(actor, { page: 1, perPage: 24 });
+    const listed = await listMedia(actor, { page: 1, perPage: 24, unused: false });
     expect(listed.total).toBeGreaterThanOrEqual(2);
 
     const target = createdMedia[0] as string;
-    await updateMedia(actor, { id: target, filename: "renamed.exe", alt: "A mark" });
+    await updateMedia(actor, { id: target, filename: "renamed.exe", alt: "A mark", tags: [] });
 
     const row = await prisma.media.findUniqueOrThrow({
       where: { id: target },
@@ -394,7 +394,7 @@ describeDb("media upload", () => {
     expect(row.deletedAt).not.toBeNull();
     expect(s3.has(row.key)).toBe(true);
 
-    const listed = await listMedia(actor, { page: 1, perPage: 96 });
+    const listed = await listMedia(actor, { page: 1, perPage: 96, unused: false });
     expect(listed.rows.map((r) => r.id)).not.toContain(media.id);
   });
 });

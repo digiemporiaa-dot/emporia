@@ -10,6 +10,7 @@ import type { BlockContent } from "@/lib/content/blocks";
 import { cn } from "@/lib/utils/cn";
 import { Band } from "@/components/website/band";
 import { gridClasses, resolveGrid } from "@/lib/content/grid";
+import { focalStyle } from "@/components/website/blocks-shared";
 import type { BlockImage, BlockImages } from "@/components/website/blocks-shared";
 
 /**
@@ -132,6 +133,12 @@ function Figure({
   // deliberate choice for a decorative image — so `??`, never `||`.
   const text = alt ?? image.alt ?? "";
 
+  // Same rule for the caption: what the band says beats the file's default, and
+  // a credit set once on the file follows it wherever it is placed. `||` here
+  // rather than `??` because a caption field left empty in the builder means
+  // "nothing typed", not "deliberately blank".
+  const line = caption || image.caption || null;
+
   return (
     <figure className={className}>
       <div className="overflow-hidden rounded-lg bg-surface-sunken">
@@ -145,9 +152,7 @@ function Figure({
           className="h-auto w-full object-cover"
         />
       </div>
-      {caption ? (
-        <figcaption className="mt-2.5 text-sm text-ink-subtle">{caption}</figcaption>
-      ) : null}
+      {line ? <figcaption className="mt-2.5 text-sm text-ink-subtle">{line}</figcaption> : null}
     </figure>
   );
 }
@@ -698,6 +703,7 @@ function CardImage({
         width={image.width ?? 800}
         height={image.height ?? 600}
         sizes={sizes}
+        style={focalStyle(image, treatment.position)}
         className={cn(
           "h-full w-full",
           FIT[treatment.fit],
@@ -715,6 +721,7 @@ function CardImage({
           height={hover.height ?? 600}
           sizes={sizes}
           aria-hidden="true"
+          style={focalStyle(hover, treatment.position)}
           className={cn(
             "absolute inset-0 h-full w-full opacity-0 transition-opacity duration-(--duration-slow) group-hover:opacity-100",
             FIT[treatment.fit],
@@ -1370,6 +1377,7 @@ export function FullWidthImageBlock({
           width={image.width ?? 2000}
           height={image.height ?? 900}
           sizes="100vw"
+          style={focalStyle(image, content.position)}
           className={cn(
             "h-full w-full",
             content.height === "auto" ? "" : "absolute inset-0",
