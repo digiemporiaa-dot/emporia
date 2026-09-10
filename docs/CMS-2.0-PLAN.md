@@ -235,11 +235,25 @@ to repeat. The endpoint returns **503 with no `CRON_SECRET`** rather than
 running open. Scheduling is gated on `pages.publish`, not `pages.edit`.
 See ARCHITECTURE 17.1b-vi and DEPLOYMENT §4 step 8.
 
-### Phase 7 — Media 2.0
+### Phase 7 — Media 2.0 — **DONE**
 
 Extends the existing library: tags, caption/title/description, focal point,
 **usage tracking** across pages, blocks and entities, orphan detection,
 replace-in-place, and a delete guard that shows usage count first.
+
+Delivered. The audit found replace-in-place and a delete guard already built,
+and one real defect: the guard counted only foreign keys, so an image used
+inside a page band read as unused and was deletable — a hole in a live page.
+`lib/services/media-usage.service.ts` closes that by narrowing on the raw JSON
+text in Postgres and letting `mediaIdsIn` — still the only authority on where an
+id can live — decide. A text match is a superset of a structural one, so the
+filter cannot miss and over-collection is discarded; no reverse index to drift.
+The panel lists the pages, bands, reusable sections and records rather than
+counting them, and a failed check says so instead of reporting zero.
+`focalX`/`focalY` apply where a frame actually crops and yield to a band's own
+position token. Tags reuse `Tag` via `MediaTag`, and the name-to-row
+reconciliation moved to `lib/services/tags.ts`, shared with the blog.
+See ARCHITECTURE 17.1b-vii.
 
 ### Phase 8 — SEO 2.0
 

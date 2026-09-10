@@ -6,6 +6,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { CACHE_TAGS } from "@/lib/content/queries";
 import { slugify, uniqueSlug } from "@/lib/utils/slug";
+import { resolveTagIds } from "@/lib/services/tags";
 import { SchemaType } from "@/generated/prisma/enums";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type { Actor } from "@/lib/actor/types";
@@ -99,42 +100,6 @@ async function assertPostSlugFree(slug: string, excludeId?: string): Promise<voi
   }
 }
 
-/**
- * Resolve tag names to rows, creating any that do not exist.
- *
- * Matched on the slugified name, so "Local SEO", "local seo" and "Local  SEO"
- * are one tag rather than three.
- */
-async function resolveTags(
-  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
-  names: readonly string[],
-): Promise<string[]> {
-  const wanted = new Map<string, string>();
-  for (const name of names) {
-    const slug = slugify(name);
-    // A name that slugifies to nothing (punctuation, or a script with no Latin
-    // decomposition) is not a tag anyone can link to.
-    if (slug) wanted.set(slug, name.trim());
-  }
-  if (wanted.size === 0) return [];
-
-  const existing = await tx.blogTag.findMany({
-    where: { slug: { in: [...wanted.keys()] } },
-    select: { id: true, slug: true },
-  });
-  const bySlug = new Map(existing.map((tag) => [tag.slug, tag.id]));
-
-  for (const [slug, name] of wanted) {
-    if (bySlug.has(slug)) continue;
-    const created = await tx.blogTag.create({ data: { slug, name } });
-    bySlug.set(slug, created.id);
-  }
-
-  return [...wanted.keys()].flatMap((slug) => {
-    const id = bySlug.get(slug);
-    return id ? [id] : [];
-  });
-}
 
 export async function createPost(actor: Actor, input: BlogPostInput) {
   requirePermission(actor, "blog.create");
@@ -162,7 +127,7 @@ export async function createPost(actor: Actor, input: BlogPostInput) {
         },
       });
 
-      const tagIds = await resolveTags(tx, input.tags);
+      const tagIds = await resolveTagIds(tx.blogTag, input.tags);
       if (tagIds.length > 0) {
         await tx.blogPostTag.createMany({
           data: tagIds.map((tagId) => ({ postId: created.id, tagId })),
@@ -210,7 +175,7 @@ export async function updatePost(actor: Actor, id: string, input: BlogPostInput)
 
       // Replaced wholesale rather than diffed: the submitted list is the list.
       await tx.blogPostTag.deleteMany({ where: { postId: id } });
-      const tagIds = await resolveTags(tx, input.tags);
+      const tagIds = await resolveTagIds(tx.blogTag, input.tags);
       if (tagIds.length > 0) {
         await tx.blogPostTag.createMany({
           data: tagIds.map((tagId) => ({ postId: id, tagId })),

@@ -721,6 +721,20 @@ model Tag {
   createdAt DateTime @default(now())
 
   leads LeadTag[]
+  media MediaTag[]
+}
+
+/// Media tags, sharing `Tag` with the CRM rather than opening a second tag
+/// vocabulary. One list of words the agency uses, joined per domain — the same
+/// shape `LeadTag` already established.
+model MediaTag {
+  mediaId String
+  media   Media  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  tagId   String
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([mediaId, tagId])
+  @@index([tagId])
 }
 
 model LeadTag {
@@ -2056,6 +2070,27 @@ model Media {
   alt      String?
   checksum String?
 
+  /// A human title, distinct from the filename. The filename is what landed in
+  /// the bucket; this is what an editor calls the picture.
+  title String?
+
+  /// Default caption. Used where a block shows one and has none of its own, so
+  /// a photo credit set once follows the image everywhere it appears.
+  caption String?
+
+  /// Internal notes — where the shot came from, what the licence is, who is in
+  /// it. Never rendered publicly.
+  description String?
+
+  /// Focal point, as whole percentages of width and height (0-100).
+  ///
+  /// A cropped image loses its edges, and which edges matter is a property of
+  /// the picture, not of the band it is placed in: a portrait needs its face
+  /// kept whatever aspect ratio it is poured into. Null means centre, which is
+  /// what every image did before this existed.
+  focalX Int?
+  focalY Int?
+
   folderId String?
   folder   MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
@@ -2079,6 +2114,8 @@ model Media {
   popups             Popup[]               @relation("PopupMedia")
   seoOgImages        Seo[]                 @relation("SeoOgImage")
   seoTwitterImages   Seo[]                 @relation("SeoTwitterImage")
+
+  tags MediaTag[]
 
   @@index([folderId])
   @@index([type])
