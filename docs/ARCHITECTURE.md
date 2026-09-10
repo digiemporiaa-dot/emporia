@@ -1962,6 +1962,72 @@ Deletion is a hard delete: a redirect holds no history worth keeping, and
 > every field the schema accepts is posted by both. That is a guard, not a fix;
 > consolidating the two forms is still owed.
 
+### 17.1b-ix The content library — search and bulk operations
+
+CMS 2.0 Phase 9. One screen that searches every content type at once and acts
+on the results.
+
+**Why one screen rather than selection on six list screens.** Pages, blog posts,
+case studies, testimonials, FAQs and the catalogue each had their own list, all
+server-rendered tables. Bolting row selection onto each would have meant six
+conversions to client components and six copies of the same selection logic —
+and it still would not let anyone publish four pages and a case study together,
+which is the thing a bulk action is for. The individual lists keep working
+unchanged.
+
+**`lib/cms/registry.ts` is the single description of what "content" is.** Label,
+which permission governs it, which states it can be in, and where its edit
+screen is. Search and bulk both read it, so the two cannot disagree — and a
+disagreement would surface as a record that can be found but not acted on, or
+acted on but never found.
+
+Two status shapes are normalised there. Most types carry a `PublishStatus`
+enum; FAQs and cities carry a boolean and have no archive. Both are described in
+one vocabulary, and the registry says which states a type actually supports:
+asking to archive a city is **refused with a reason**, not silently ignored.
+
+**Search queries ten tables, not one index.** The same trade the media library
+made (17.1b-vii): a `SearchIndex` would be one query and would need maintaining
+at every write site of ten models plus the seeds, and an index that has silently
+drifted is worse than a slower query, because a record that cannot be found is a
+record an editor recreates. These tables hold hundreds of rows and the queries
+run in parallel.
+
+**Permissions are per type, and the query is never issued.** Each type is read
+only if the actor holds its own view permission. A content manager without
+`casestudies.view` gets a result containing no case studies — not a hidden row,
+not a greyed-out row. A type filter naming something the actor cannot see
+returns nothing rather than falling back to everything: silently widening a
+narrowed search is how a permission check leaks.
+
+**Bulk actions go through each type's own path. Nothing writes a status column.**
+That is the rule the whole design rests on. `ServiceCityPage.publishPage`
+refuses a page without enough genuine local content and refuses one whose city
+is switched off (CLAUDE.md 9); every type's path checks its own permission,
+writes its own audit row and busts its own cache. A bulk action that wrote
+`status: "PUBLISHED"` directly would be a way around all of it — and being the
+convenient way, it would get used.
+
+Six types had no way to change status except their full `update*` function, so
+`setPostStatus`, `setCaseStudyStatus`, `setTestimonialStatus`,
+`setServiceStatus`, `setPackageStatus`, `setReusableStatus` and `setFaqActive`
+were added — each audited, permission-checked and cache-busting, each mirroring
+`setPageStatus`. Bulk-publishing through `updatePost` would have meant
+reconstructing a post's whole input, which is how a bulk action quietly
+overwrites a field nobody meant to change.
+
+**Partial failure is the normal case.** Selecting forty pages and publishing
+them, three of which are too thin, is a success with three refusals. Each record
+is attempted independently and its own error becomes that row's reason, so the
+report says which three and why — "This page does not have enough genuine local
+content to publish yet", not "failed". One transaction around the lot would roll
+back the thirty-seven that were fine. Unexpected errors are logged and reported
+as a flat "That did not work", never surfaced verbatim (CLAUDE.md 11).
+
+The selection is capped at a hundred: this issues a query per record, and a
+selection of ten thousand would be a request that never returns. Anything past
+the cap is reported as refused rather than dropped.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

@@ -191,6 +191,38 @@ export async function updatePost(actor: Actor, id: string, input: BlogPostInput)
   return post;
 }
 
+/**
+ * Set the publication status, without touching anything else.
+ *
+ * Separate from `updatePost` because bulk actions and the list screens need to
+ * publish a record without reconstructing its whole input — and reconstructing
+ * it is how a bulk action quietly overwrites a field nobody meant to change.
+ * Publishing needs `blog.publish`; anything else is an ordinary edit.
+ */
+export async function setPostStatus(
+  actor: Actor,
+  id: string,
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED",
+) {
+  requirePermission(actor, status === "PUBLISHED" ? "blog.publish" : "blog.edit");
+
+  const before = await getPost(actor, id);
+
+  const updated = await withAudit(
+    {
+      actor,
+      action: status === "PUBLISHED" ? "PUBLISH" : "UNPUBLISH",
+      entityType: "BlogPost",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.blogPost.update({ where: { id }, data: { status } }),
+  );
+
+  revalidateTag(CACHE_TAGS.posts);
+  return updated;
+}
+
 export async function deletePost(actor: Actor, id: string) {
   requirePermission(actor, "blog.delete");
 

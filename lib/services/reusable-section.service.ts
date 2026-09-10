@@ -234,6 +234,38 @@ export async function updateReusableSection(
  * band as an ordinary, now-independent section. Deleting a shared thing should
  * not blank a band on eleven pages.
  */
+/**
+ * Set the publication status, without touching anything else.
+ *
+ * Separate from `updateReusableSection` because bulk actions and the list screens need to
+ * publish a record without reconstructing its whole input — and reconstructing
+ * it is how a bulk action quietly overwrites a field nobody meant to change.
+ * Publishing needs `pages.publish`; anything else is an ordinary edit.
+ */
+export async function setReusableStatus(
+  actor: Actor,
+  id: string,
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED",
+) {
+  requirePermission(actor, status === "PUBLISHED" ? "pages.publish" : "pages.edit");
+
+  const before = await getReusableSection(actor, id);
+
+  const updated = await withAudit(
+    {
+      actor,
+      action: status === "PUBLISHED" ? "PUBLISH" : "UNPUBLISH",
+      entityType: "ReusableSection",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.reusableSection.update({ where: { id }, data: { status } }),
+  );
+
+  revalidateTag(REUSABLE_TAG);
+  return updated;
+}
+
 export async function deleteReusableSection(actor: Actor, id: string) {
   requirePermission(actor, "pages.delete");
   const before = await getReusableSection(actor, id);
