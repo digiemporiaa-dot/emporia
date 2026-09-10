@@ -4,9 +4,9 @@ import { currentActor } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { ToastProvider } from "@/components/ui";
 import { AdminNav, type NavItem } from "@/components/admin/nav";
+import { NAV } from "@/lib/admin/nav-spec";
 import { SignOutButton } from "@/components/admin/sign-out";
 import { signOutAction } from "./actions";
-import type { Permission } from "@/lib/auth/permissions";
 
 export const metadata: Metadata = {
   title: { default: "Admin", template: "%s · Emporia admin" },
@@ -24,82 +24,6 @@ export const metadata: Metadata = {
  * bypassed by any route that renders without it (CLAUDE.md 2 rule 2).
  */
 
-/**
- * Sections and the permission that reveals each one. Items marked `pending`
- * have no route yet and render inert — the phase that builds the section turns
- * it into a link.
- */
-const NAV: readonly { item: NavItem; permission: Permission }[] = [
-  {
-    item: { kind: "link", href: "/admin", label: "Dashboard", icon: "dashboard" },
-    permission: "leads.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/leads", label: "Leads", icon: "leads" },
-    permission: "leads.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/sales", label: "Sales", icon: "sales" },
-    permission: "proposals.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/clients", label: "Clients", icon: "clients" },
-    permission: "clients.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/projects", label: "Projects", icon: "projects" },
-    permission: "projects.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/website", label: "Website", icon: "pages" },
-    permission: "pages.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/website/sections", label: "Sections", icon: "sections" },
-    permission: "pages.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/catalog", label: "Catalog", icon: "content" },
-    permission: "catalog.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/content", label: "Content", icon: "content" },
-    permission: "content.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/approvals", label: "Approvals", icon: "approvals" },
-    permission: "approvals.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/marketing", label: "Marketing", icon: "marketing" },
-    permission: "popups.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/finance", label: "Finance", icon: "finance" },
-    permission: "invoices.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/media", label: "Media", icon: "media" },
-    permission: "media.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/analytics", label: "Analytics", icon: "analytics" },
-    permission: "analytics.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" },
-    permission: "automation.view",
-  },
-  {
-    item: { kind: "link", href: "/admin/ai", label: "Assistant", icon: "ai" },
-    permission: "ai.use",
-  },
-  {
-    item: { kind: "link", href: "/admin/settings", label: "Settings", icon: "settings" },
-    permission: "emails.view",
-  },
-];
-
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const actor = await currentActor();
 
@@ -110,7 +34,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // area beats an error page.
   if (actor.type === "CLIENT") redirect("/portal");
 
-  const items = NAV.filter(({ permission }) => can(actor, permission)).map(({ item }) => item);
+  const items: NavItem[] = NAV.filter(({ permission }) => can(actor, permission)).map(
+    ({ item, children }) => {
+      if (item.kind !== "link" || !children) return item;
+      // Each sub-item is filtered on its own permission, so a link that would
+      // 403 on click is never rendered. A module whose sub-items are all
+      // hidden simply has none, and its hub still explains what is there.
+      const visible = children
+        .filter((child) => can(actor, child.permission))
+        .map(({ href, label }) => ({ href, label }));
+      return visible.length > 0 ? { ...item, children: visible } : item;
+    },
+  );
 
   return (
     <ToastProvider>
