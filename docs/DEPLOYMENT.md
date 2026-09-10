@@ -41,12 +41,12 @@ One process, one database. Three properties matter operationally:
 
 ## 2. Prerequisites
 
-| Thing | Version / note |
-|---|---|
-| Coolify | any recent version, with a server attached |
-| PostgreSQL | 16 |
-| Domain | pointed at the Coolify server, TLS issued by its proxy |
-| Docker build | performed by Coolify from this repo's `Dockerfile` |
+| Thing        | Version / note                                         |
+| ------------ | ------------------------------------------------------ |
+| Coolify      | any recent version, with a server attached             |
+| PostgreSQL   | 16                                                     |
+| Domain       | pointed at the Coolify server, TLS issued by its proxy |
+| Docker build | performed by Coolify from this repo's `Dockerfile`     |
 
 The image builds on `node:22-bookworm-slim`. Alpine is deliberately not used:
 `argon2` ships glibc prebuilds and rebuilds from source on musl, which turns a
@@ -71,12 +71,12 @@ validates the whole set at boot.
 Two of these stop the container at boot if they are missing. The other two do
 not — and that is worth knowing, because their failure mode is quieter.
 
-| Key | Notes |
-|---|---|
-| `DATABASE_URL` | `postgresql://user:password@host:5432/emporia` — **boot fails without it** |
-| `AUTH_SECRET` | **at least 32 characters**, `openssl rand -base64 32` — **boot fails without it** |
-| `SITE_URL` | public origin, e.g. `https://emporia.example`. Defaults to `http://localhost:3000`, so an unset value boots happily and emits **canonical URLs and sitemap entries pointing at localhost**. Set it. |
-| `AUTH_URL` *or* `NEXTAUTH_URL` | same origin. Optional in the schema because `trustHost` is on and the origin is derived from the request; set one anyway so callback URLs do not depend on a proxy header being right. |
+| Key                            | Notes                                                                                                                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                 | `postgresql://user:password@host:5432/emporia` — **boot fails without it**                                                                                                                          |
+| `AUTH_SECRET`                  | **at least 32 characters**, `openssl rand -base64 32` — **boot fails without it**                                                                                                                   |
+| `SITE_URL`                     | public origin, e.g. `https://emporia.example`. Defaults to `http://localhost:3000`, so an unset value boots happily and emits **canonical URLs and sitemap entries pointing at localhost**. Set it. |
+| `AUTH_URL` _or_ `NEXTAUTH_URL` | same origin. Optional in the schema because `trustHost` is on and the origin is derived from the request; set one anyway so callback URLs do not depend on a proxy header being right.              |
 
 `NODE_ENV=production` is baked into the image; you do not need to set it, and
 setting it to anything else in production will hand out non-`__Secure-` session
@@ -89,20 +89,25 @@ you got wrong; read the first ten lines of its log.
 
 ### Optional — each one switches a feature on
 
-Absent means *not configured*, and the app says so rather than pretending.
+Absent means _not configured_, and the app says so rather than pretending.
 An unconfigured integration raises a typed `IntegrationNotConfiguredError` and
 the screen explains what is missing. Nothing is faked, ever.
 
-| Group | Keys | Off means |
-|---|---|---|
-| Email | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_SECURE` | no mail sends; attempts are still logged |
-| Storage | `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET_NAME` `R2_PUBLIC_URL` | media library refuses uploads |
-| Payments | `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` `RAZORPAY_WEBHOOK_SECRET` | invoices can still be recorded paid manually; no online checkout |
-| AI | `AI_PROVIDER=anthropic` `AI_API_KEY` | AI drafting hidden |
-| Logging | `LOG_LEVEL` | defaults to `info` |
+| Group      | Keys                                                                                       | Off means                                                        |
+| ---------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| Email      | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_SECURE`              | no mail sends; attempts are still logged                         |
+| Storage    | `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET_NAME` `R2_PUBLIC_URL` | media library refuses uploads                                    |
+| Payments   | `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` `RAZORPAY_WEBHOOK_SECRET`                          | invoices can still be recorded paid manually; no online checkout |
+| AI         | `AI_PROVIDER=anthropic` `AI_API_KEY`                                                       | AI drafting hidden                                               |
+| Logging    | `LOG_LEVEL`                                                                                | defaults to `info`                                               |
+| Scheduling | `CRON_SECRET`                                                                              | `/api/cron` returns 503 and **scheduled publishing never runs**  |
 
 `R2_ENDPOINT`, `RAZORPAY_API_URL` and `AI_BASE_URL` exist to point a client at a
 local double during verification. **Leave all three blank in production.**
+
+`CRON_SECRET` must be at least 24 characters. Generate one with
+`openssl rand -base64 32`. Without it the scheduler endpoint refuses every
+caller rather than running open — see step 8 of §4.
 
 `SEED_SUPER_ADMIN_*` are read only by `npm run db:seed`. Set them for the first
 seed, then remove them — they are not needed at runtime and there is no reason
@@ -133,7 +138,7 @@ to leave a password in the environment.
    process being alive. It returns no detail on failure — it is unauthenticated,
    and an error body there would describe your infrastructure to anyone asking.
 
-   Coolify runs that probe as a command *inside the container*, and
+   Coolify runs that probe as a command _inside the container_, and
    `node:22-bookworm-slim` ships neither `curl` nor `wget`. The runner stage
    therefore installs `curl`, so the default probe shape works as written:
 
@@ -144,12 +149,33 @@ to leave a password in the environment.
    The image also declares its own `HEALTHCHECK` with the same command, which
    is what `docker ps` and Compose report against. If you prefer not to depend
    on `curl` being present, `node -e "fetch('http://127.0.0.1:3000/api/health')
-   .then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"` needs nothing
+.then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"` needs nothing
    but the runtime — that is the form `docker-compose.yml` uses.
+
 6. **Attach the domain** and let the proxy issue TLS. HTTPS is not optional:
    session cookies are `__Secure-`-prefixed and `secure` in production, so over
    plain HTTP nobody can stay signed in.
 7. **Deploy.**
+8. **Add the scheduled job**, if you want pages to publish and unpublish on a
+   schedule. In Coolify, add a _Scheduled Task_ on the application resource:
+
+   | Field     | Value                                                                              |
+   | --------- | ---------------------------------------------------------------------------------- |
+   | Frequency | `*/5 * * * *` — every five minutes                                                 |
+   | Command   | `curl -fsS -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron` |
+
+   Any scheduler works — Coolify's, a system crontab, an external pinger — as
+   long as it sends the secret. The endpoint also accepts `?secret=…` for
+   schedulers that cannot set a header, and answers both GET and POST.
+
+   Calling it more often than needed is safe: each run selects only what is due
+   and clears its own marker, so a duplicate or concurrent run finds nothing to
+   do. Five minutes is the resolution of a schedule — a page set to go live at
+   09:00 goes live on the first check after 09:00, and the editor is told so on
+   screen.
+
+   Without this job, `publishAt` and `unpublishAt` are recorded and simply never
+   fire. Everything else in the application is unaffected.
 
 ### What happens on every deploy
 
@@ -170,23 +196,23 @@ variable lists, the two example automations, and the `home` page that `/`
 renders. Without it, a release that adds a permission 403s its own new screen
 for everybody until somebody remembers to run a command.
 
-It is safe to run unattended, and that is enforced by what it does *not* do:
+It is safe to run unattended, and that is enforced by what it does _not_ do:
 
-| It does | It never does |
-|---|---|
-| Upsert the permission catalogue | Create a user or set a password |
-| Reconcile the nine `isSystem` roles against the code | Touch a role you created yourself |
-| Create missing site settings | Update a site setting that exists |
-| Create missing email templates, refresh their variable lists | Rewrite a template's subject or body |
-| Create the two example automations, switched off | Re-enable or edit an automation |
-| Create the `home` page if no page has that slug | Overwrite, republish or resurrect one that does |
-| | Insert demo content of any kind |
+| It does                                                      | It never does                                   |
+| ------------------------------------------------------------ | ----------------------------------------------- |
+| Upsert the permission catalogue                              | Create a user or set a password                 |
+| Reconcile the nine `isSystem` roles against the code         | Touch a role you created yourself               |
+| Create missing site settings                                 | Update a site setting that exists               |
+| Create missing email templates, refresh their variable lists | Rewrite a template's subject or body            |
+| Create the two example automations, switched off             | Re-enable or edit an automation                 |
+| Create the `home` page if no page has that slug              | Overwrite, republish or resurrect one that does |
+|                                                              | Insert demo content of any kind                 |
 
 `SKIP_DB_SYNC=1` skips it. A failure here stops the boot on purpose: serving
 with permissions that do not match the deployed code is worse than not serving.
 
 **The seed proper is still not part of the entrypoint, deliberately.**
-`npm run db:seed` runs the same sync *and* creates the super admin — and with
+`npm run db:seed` runs the same sync _and_ creates the super admin — and with
 `SEED_SUPER_ADMIN_PASSWORD` set it resets that account's password every time,
 which is fine as a deliberate act and would be a serious surprise as a side
 effect of a redeploy.
@@ -241,7 +267,7 @@ a second one. If you delete it, the sync will not put it back.
 ### Who can edit the website
 
 The page CMS uses its own `pages.*` permissions, deliberately separate from
-`content.*` (which is the content *calendar*). Seeded to ADMIN,
+`content.*` (which is the content _calendar_). Seeded to ADMIN,
 MARKETING_MANAGER and CONTENT_MANAGER; `pages.view` is in the read-only
 baseline. Editing a page's SEO additionally needs `seo.edit`, and the history
 panel needs `audit.view` — so a role can be given metadata control without

@@ -13,6 +13,7 @@ import { SeoPanel } from "./seo-panel";
 import { AuditTrail } from "./audit-trail";
 import { VersionPanel } from "./version-panel";
 import { WorkflowPanel } from "./workflow-panel";
+import { SchedulePanel } from "./schedule-panel";
 import { listVersions } from "@/lib/services/page-version.service";
 import { analysePage } from "@/lib/seo/analyzer";
 import { siteDefaults } from "@/lib/seo/defaults";
@@ -124,6 +125,14 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
         reusables={reusables}
         taxonomy={taxonomy}
         canEdit={can(actor, "pages.edit")}
+      />
+
+      <SchedulePanel
+        pageId={page.id}
+        status={page.status}
+        publishAt={page.publishAt?.toISOString() ?? null}
+        unpublishAt={page.unpublishAt?.toISOString() ?? null}
+        canPublish={can(actor, "pages.publish")}
       />
 
       <WorkflowPanel

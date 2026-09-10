@@ -81,78 +81,78 @@ async function PagesTable({ actor, params }: { actor: Actor; params: PageListInp
 
   return (
     <>
-        <TableWrap label="Pages">
-          <Table>
-            <THead>
-              <TR>
-                <TH>Page</TH>
-                <TH>Slug</TH>
-                <TH>Status</TH>
-                <TH className="text-right">Sections</TH>
-                <TH>Updated</TH>
-                <TH>
-                  <span className="sr-only">Actions</span>
-                </TH>
-              </TR>
-            </THead>
-            <TBody>
-              {result.rows.length === 0 ? (
-                <TableEmpty
-                  colSpan={6}
-                  title={inBin ? "The bin is empty" : "No pages match"}
-                  description={
-                    inBin
-                      ? "Deleted pages are kept here so they can be restored."
-                      : result.total === 0 && !params.query && !params.status
-                        ? "Create a page to publish a landing page or campaign page."
-                        : "Try widening the filters."
-                  }
-                />
-              ) : (
-                result.rows.map((row) => (
-                  <TR key={row.id}>
-                    <TD>
-                      {canEdit && !inBin ? (
-                        <Link
-                          href={`/admin/website/pages/${row.id}`}
-                          className="font-medium text-navy-800 hover:text-brand-red"
-                        >
-                          {row.title}
-                        </Link>
-                      ) : (
-                        <span className="font-medium text-navy-800">{row.title}</span>
-                      )}
-                      {row.internalName ? (
-                        <p className="text-xs text-ink-subtle">{row.internalName}</p>
-                      ) : null}
-                    </TD>
-                    <TD className="font-mono text-xs text-ink-subtle">/{row.slug}</TD>
-                    <TD>
-                      <div className="flex items-center gap-2">
-                        <PageStatusBadge status={row.status} />
-                        {!inBin ? <PreviewLink id={row.id} /> : null}
-                      </div>
-                    </TD>
-                    <TD className="text-right tabular-nums">{row._count.sections}</TD>
-                    <TD className="text-xs text-ink-subtle">{DATE.format(row.updatedAt)}</TD>
-                    <TD>
-                      <RowActions
-                        id={row.id}
-                        title={row.title}
-                        status={row.status}
-                        deleted={inBin}
-                        canEdit={canEdit}
-                        canPublish={canPublish}
-                        canCreate={canCreate}
-                        canDelete={canDelete}
-                      />
-                    </TD>
-                  </TR>
-                ))
-              )}
-            </TBody>
-          </Table>
-        </TableWrap>
+      <TableWrap label="Pages">
+        <Table>
+          <THead>
+            <TR>
+              <TH>Page</TH>
+              <TH>Slug</TH>
+              <TH>Status</TH>
+              <TH className="text-right">Sections</TH>
+              <TH>Updated</TH>
+              <TH>
+                <span className="sr-only">Actions</span>
+              </TH>
+            </TR>
+          </THead>
+          <TBody>
+            {result.rows.length === 0 ? (
+              <TableEmpty
+                colSpan={6}
+                title={inBin ? "The bin is empty" : "No pages match"}
+                description={
+                  inBin
+                    ? "Deleted pages are kept here so they can be restored."
+                    : result.total === 0 && !params.query && !params.status
+                      ? "Create a page to publish a landing page or campaign page."
+                      : "Try widening the filters."
+                }
+              />
+            ) : (
+              result.rows.map((row) => (
+                <TR key={row.id}>
+                  <TD>
+                    {canEdit && !inBin ? (
+                      <Link
+                        href={`/admin/website/pages/${row.id}`}
+                        className="font-medium text-navy-800 hover:text-brand-red"
+                      >
+                        {row.title}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-navy-800">{row.title}</span>
+                    )}
+                    {row.internalName ? (
+                      <p className="text-xs text-ink-subtle">{row.internalName}</p>
+                    ) : null}
+                  </TD>
+                  <TD className="font-mono text-xs text-ink-subtle">/{row.slug}</TD>
+                  <TD>
+                    <div className="flex items-center gap-2">
+                      <PageStatusBadge status={row.status} />
+                      {!inBin ? <PreviewLink id={row.id} /> : null}
+                    </div>
+                  </TD>
+                  <TD className="text-right tabular-nums">{row._count.sections}</TD>
+                  <TD className="text-xs text-ink-subtle">{DATE.format(row.updatedAt)}</TD>
+                  <TD>
+                    <RowActions
+                      id={row.id}
+                      title={row.title}
+                      status={row.status}
+                      deleted={inBin}
+                      canEdit={canEdit}
+                      canPublish={canPublish}
+                      canCreate={canCreate}
+                      canDelete={canDelete}
+                    />
+                  </TD>
+                </TR>
+              ))
+            )}
+          </TBody>
+        </Table>
+      </TableWrap>
 
       <Pagination
         basePath="/admin/website/pages"

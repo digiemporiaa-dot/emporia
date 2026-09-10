@@ -51,19 +51,19 @@ page and an admin page that both show an invoice call the same
 
 Phase 0 found two version traps. These are the pins Phase 2 will use.
 
-| Package | Pin | Why |
-|---|---|---|
-| `next` | `15.5.25` | CLAUDE.md §3 mandates Next 15. 16.3.4 is stable but out of spec — see §19 D1. |
-| `react` / `react-dom` | `19.x` | Required by Next 15. |
+| Package                     | Pin                    | Why                                                                                                                                                               |
+| --------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `next`                      | `15.5.25`              | CLAUDE.md §3 mandates Next 15. 16.3.4 is stable but out of spec — see §19 D1.                                                                                     |
+| `react` / `react-dom`       | `19.x`                 | Required by Next 15.                                                                                                                                              |
 | `prisma` / `@prisma/client` | `7.10.0` (both, exact) | **`prisma@latest` is `8.0.0-rc.12`, a release candidate.** A bare install would pull an RC into a production build. Both packages pin to the same stable version. |
-| `decimal.js` | `10.6.0` | CLAUDE.md §2 rule 1. |
-| `zod` | `4.5.4` | CLAUDE.md §2 rule 4. |
-| `next-auth` | `5.0.0-beta.32` | Auth.js v5 is still beta; CLAUDE.md §3 asks for it explicitly. Accepted risk — see §19 D4. |
-| `tailwindcss` | `4.3.3` | CSS-first config suits the token system in CLAUDE.md §6. |
-| `framer-motion` | latest 12.x | §6 motion. |
-| `lucide-react` | latest | §3. |
-| `argon2` | latest | Password hashing — see §19 D2. |
-| `vitest` | latest 3.x | §18 testing. |
+| `decimal.js`                | `10.6.0`               | CLAUDE.md §2 rule 1.                                                                                                                                              |
+| `zod`                       | `4.5.4`                | CLAUDE.md §2 rule 4.                                                                                                                                              |
+| `next-auth`                 | `5.0.0-beta.32`        | Auth.js v5 is still beta; CLAUDE.md §3 asks for it explicitly. Accepted risk — see §19 D4.                                                                        |
+| `tailwindcss`               | `4.3.3`                | CSS-first config suits the token system in CLAUDE.md §6.                                                                                                          |
+| `framer-motion`             | latest 12.x            | §6 motion.                                                                                                                                                        |
+| `lucide-react`              | latest                 | §3.                                                                                                                                                               |
+| `argon2`                    | latest                 | Password hashing — see §19 D2.                                                                                                                                    |
+| `vitest`                    | latest 3.x             | §18 testing.                                                                                                                                                      |
 
 Renovate/Dependabot is out of scope until Phase 17.
 
@@ -235,7 +235,7 @@ AttributionTouch    FIRST LAST
 ```
 
 `NotificationChannel` includes `WHATSAPP SMS PUSH` because Phase 12 asks for
-them to be *architected*. The enum values exist; no sender is implemented.
+them to be _architected_. The enum values exist; no sender is implemented.
 Selecting them raises a typed "channel not configured" error — never a silent
 success.
 
@@ -543,7 +543,7 @@ a deploy while credentials stay server-side (CLAUDE.md §2 rule 6).
 ```
 
 > **Noted in Phase 8.** Internal links to any of these dynamic routes must be
-> written as template literals — `` href={`/services/${slug}`} ``. `next/link`
+> written as template literals — ``href={`/services/${slug}`}``. `next/link`
 > given an object href formats it literally under the App Router, so
 > `{ pathname: "/services/[serviceSlug]", query: { serviceSlug: slug } }`
 > renders `/services/[serviceSlug]?serviceSlug=seo`. Phases 3 to 7 used the
@@ -617,30 +617,30 @@ model does not fit. Everything else in admin and portal is a server action.
 One module per domain in `lib/services`. Each exports functions taking
 `(actor: Actor, input: ValidatedInput)` and returning domain objects.
 
-| Module | Owns |
-|---|---|
-| `auth` | login, password reset, invitations, session assembly |
-| `user`, `role` | staff CRUD, role/permission administration |
-| `lead` | lead CRUD, status transitions, conversion to client |
-| `leadScoring` | **the single scoring implementation** (budget, service, city, source, engagement) |
-| `leadAssignment` | assign/reassign + history + permission checks |
-| `leadActivity` | timeline writes; every domain event funnels here |
-| `catalog` | services, cities, packages |
-| `serviceCityPage` | local pages + **`canPublish()`** |
-| `content` | pages, sections, blog, case studies, testimonials, FAQs |
-| `opportunity`, `proposal`, `contract`, `client` | sales pipeline |
-| `project`, `projectTask`, `milestone`, `timeEntry` | delivery |
-| `contentCalendar`, `approval` | content workflow + client sign-off |
-| `campaign`, `attribution` | campaigns, metrics, UTM touch resolution |
-| `popup` | **server-side targeting resolution**, analytics events |
-| `invoice`, `payment`, `retainer` | finance; all totals via `lib/money` |
-| `media` | R2 presign, server-side validation, folders, versions |
-| `email`, `notification` | templated sends, logging, in-app notices |
-| `automation` | trigger → condition → action evaluation |
-| `seo`, `redirect`, `sitemap` | metadata resolution, redirect loop detection |
-| `analytics` | dashboard aggregations (§15) |
-| `audit` | `withAudit()` transaction wrapper |
-| `setting` | site + integration settings |
+| Module                                             | Owns                                                                              |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `auth`                                             | login, password reset, invitations, session assembly                              |
+| `user`, `role`                                     | staff CRUD, role/permission administration                                        |
+| `lead`                                             | lead CRUD, status transitions, conversion to client                               |
+| `leadScoring`                                      | **the single scoring implementation** (budget, service, city, source, engagement) |
+| `leadAssignment`                                   | assign/reassign + history + permission checks                                     |
+| `leadActivity`                                     | timeline writes; every domain event funnels here                                  |
+| `catalog`                                          | services, cities, packages                                                        |
+| `serviceCityPage`                                  | local pages + **`canPublish()`**                                                  |
+| `content`                                          | pages, sections, blog, case studies, testimonials, FAQs                           |
+| `opportunity`, `proposal`, `contract`, `client`    | sales pipeline                                                                    |
+| `project`, `projectTask`, `milestone`, `timeEntry` | delivery                                                                          |
+| `contentCalendar`, `approval`                      | content workflow + client sign-off                                                |
+| `campaign`, `attribution`                          | campaigns, metrics, UTM touch resolution                                          |
+| `popup`                                            | **server-side targeting resolution**, analytics events                            |
+| `invoice`, `payment`, `retainer`                   | finance; all totals via `lib/money`                                               |
+| `media`                                            | R2 presign, server-side validation, folders, versions                             |
+| `email`, `notification`                            | templated sends, logging, in-app notices                                          |
+| `automation`                                       | trigger → condition → action evaluation                                           |
+| `seo`, `redirect`, `sitemap`                       | metadata resolution, redirect loop detection                                      |
+| `analytics`                                        | dashboard aggregations (§15)                                                      |
+| `audit`                                            | `withAudit()` transaction wrapper                                                 |
+| `setting`                                          | site + integration settings                                                       |
 
 **Shared logic exists once** (CLAUDE.md §4): lead scoring in `leadScoring`,
 proposal and invoice arithmetic in `lib/money`, SEO fallbacks in `seo`, popup
@@ -660,14 +660,14 @@ system actor.
 
 ```ts
 type Actor = {
-  userId: string
-  type: "STAFF" | "CLIENT" | "SYSTEM"
-  roleName: RoleName | null
-  clientId: string | null      // non-null for portal users
-  permissions: ReadonlySet<string>
-  ip: string
-  userAgent: string
-}
+  userId: string;
+  type: "STAFF" | "CLIENT" | "SYSTEM";
+  roleName: RoleName | null;
+  clientId: string | null; // non-null for portal users
+  permissions: ReadonlySet<string>;
+  ip: string;
+  userAgent: string;
+};
 ```
 
 Assembled once per request in `lib/actor` from the Auth.js session plus request
@@ -692,8 +692,8 @@ token expired. To keep that cheap:
 ### 9.3 Permission checks
 
 ```ts
-await requirePermission(actor, "leads.assign")   // throws Forbidden
-await requireOwnership(actor, clientId)          // throws Forbidden
+await requirePermission(actor, "leads.assign"); // throws Forbidden
+await requireOwnership(actor, clientId); // throws Forbidden
 ```
 
 `SUPER_ADMIN` bypasses `requirePermission` and **nothing else does** — including
@@ -805,7 +805,6 @@ every lead can name the page, popup, campaign and UTM touch that produced it;
 and every rupee of revenue can be traced back through invoice → project →
 client → proposal → lead → source → city → service.
 
-
 ---
 
 ## 11A. The page section builder
@@ -820,11 +819,11 @@ by the zod schema registered under its type.
 `BLOCK_SCHEMAS` in `lib/content/blocks.ts` is the registry, and three things
 read it, so a block cannot exist in one and be missing from another:
 
-| consumer | file |
-|---|---|
-| storage + validation | `lib/services/page.service.ts` |
-| public rendering | `components/website/page-sections.tsx` → `blocks.tsx` |
-| the editor | `app/admin/website/pages/[pageId]/block-fields.tsx` |
+| consumer             | file                                                  |
+| -------------------- | ----------------------------------------------------- |
+| storage + validation | `lib/services/page.service.ts`                        |
+| public rendering     | `components/website/page-sections.tsx` → `blocks.tsx` |
+| the editor           | `app/admin/website/pages/[pageId]/block-fields.tsx`   |
 
 `BLOCK_LIBRARY` sits beside the schemas and carries each block's label,
 description, group, defaults and presets. A test asserts the two lists agree and
@@ -926,14 +925,14 @@ robots       entity.seo.robotsIndex/Follow, forced noindex for
 `lib/seo/schema.ts` emits JSON-LD **only where the page genuinely contains that
 content** (CLAUDE.md §9):
 
-| Schema | Emitted when |
-|---|---|
-| `Organization`, `WebSite` | root layout, once |
-| `BreadcrumbList` | any page with a breadcrumb trail |
-| `Service` | service and service-city pages |
-| `LocalBusiness` | city and service-city pages, with real city data |
-| `Article` | blog posts |
-| `FAQPage` | **only if the page renders ≥1 FAQ** |
+| Schema                    | Emitted when                                     |
+| ------------------------- | ------------------------------------------------ |
+| `Organization`, `WebSite` | root layout, once                                |
+| `BreadcrumbList`          | any page with a breadcrumb trail                 |
+| `Service`                 | service and service-city pages                   |
+| `LocalBusiness`           | city and service-city pages, with real city data |
+| `Article`                 | blog posts                                       |
+| `FAQPage`                 | **only if the page renders ≥1 FAQ**              |
 
 An empty FAQ list emits no `FAQPage` node. This is enforced in the emitter, so
 it cannot be got wrong per-template.
@@ -952,7 +951,7 @@ Managed in the DB (`Redirect`), 301/302/307/308, activatable.
 
 The obvious implementation — look up every request in middleware — is rejected.
 Next middleware runs on the edge runtime where Prisma cannot run, and forcing it
-to Node runtime adds a DB round trip to *every* asset request.
+to Node runtime adds a DB round trip to _every_ asset request.
 
 Instead, redirects resolve in the `[...landingPage]` catch-all, which only runs
 for paths no real route matched — precisely the old URLs a redirect exists for:
@@ -1002,15 +1001,15 @@ cannot become indexable through any path.
 Proposed thresholds — **these are business rules and need your sign-off**
 (§19 D6):
 
-| Requirement | Threshold |
-|---|---|
-| `localIntro` | ≥ 120 words, unique across pages for the same service |
-| `marketContext` | ≥ 100 words |
-| `industries` | ≥ 3 entries |
-| local FAQs | ≥ 3 attached |
-| local proof | ≥ 1 case study **or** testimonial for that city or service |
-| `positioning`, `ctaHeading`, `ctaBody` | non-empty |
-| SEO | `metaTitle` + `metaDescription` present and not equal to another page's |
+| Requirement                            | Threshold                                                               |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| `localIntro`                           | ≥ 120 words, unique across pages for the same service                   |
+| `marketContext`                        | ≥ 100 words                                                             |
+| `industries`                           | ≥ 3 entries                                                             |
+| local FAQs                             | ≥ 3 attached                                                            |
+| local proof                            | ≥ 1 case study **or** testimonial for that city or service              |
+| `positioning`, `ctaHeading`, `ctaBody` | non-empty                                                               |
+| SEO                                    | `metaTitle` + `metaDescription` present and not equal to another page's |
 
 The uniqueness checks are what actually stop templated mass-publishing: a page
 whose intro is another city's intro with the name swapped fails on the
@@ -1070,7 +1069,6 @@ Focus trap, `Esc` to close, focus restored to the trigger, `role="dialog"`,
 `aria-modal="true"`, labelled close control, and no popup at all under
 `prefers-reduced-motion` beyond an instant fade.
 
-
 ---
 
 ## 14A. Tracking, pixels and consent
@@ -1105,10 +1103,10 @@ provider means adding a key there.
 
 Two reads, deliberately different functions rather than one with a flag:
 
-| function | caller | permission | token |
-|---|---|---|---|
-| `getTrackingSettings` | admin | `settings.view` | masked |
-| `publicTrackingConfig` | public site | none, cached | never selected |
+| function               | caller      | permission      | token          |
+| ---------------------- | ----------- | --------------- | -------------- |
+| `getTrackingSettings`  | admin       | `settings.view` | masked         |
+| `publicTrackingConfig` | public site | none, cached    | never selected |
 
 `publicTrackingConfig` cannot leak the Conversions API token because it never
 fetches it. That is the defence: a mistake in a component cannot expose what the
@@ -1133,7 +1131,7 @@ returns null rather than throwing, and the admin says so and asks for it again.
 ### 14A.4 Consent
 
 Three modes — `IMPLIED`, `OPT_OUT`, `OPT_IN` — differing entirely in what
-happens *before* a visitor answers. `lib/tracking/consent.ts` is pure and free
+happens _before_ a visitor answers. `lib/tracking/consent.ts` is pure and free
 of both React and the database, so the rule that decides whether a pixel may
 fire is unit tested directly.
 
@@ -1161,10 +1159,10 @@ Deduplication is what makes running both safe. Meta collapses two events sharing
 `event_name` and `event_id`, so each conversion is counted once. The ids are
 never generated per copy:
 
-| conversion | id | browser copy |
-|---|---|---|
-| `Lead` | a UUID minted by the form, sent to the server in the same request | `fbq('track','Lead',…,{eventID})` |
-| `Purchase` | `purchase:<gateway payment id>`, derived | none — the portal loads no tracking |
+| conversion | id                                                                | browser copy                        |
+| ---------- | ----------------------------------------------------------------- | ----------------------------------- |
+| `Lead`     | a UUID minted by the form, sent to the server in the same request | `fbq('track','Lead',…,{eventID})`   |
+| `Purchase` | `purchase:<gateway payment id>`, derived                          | none — the portal loads no tracking |
 
 Because the purchase id is derived, a retried webhook sends the same id and Meta
 records one purchase rather than two.
@@ -1202,7 +1200,7 @@ No placeholder numbers, no sample series, no "demo" chart data.
 
 Three rules decide what the numbers mean, and each is pinned by a test:
 
-- **Revenue attribution.** A client's received money is attributed to the *one*
+- **Revenue attribution.** A client's received money is attributed to the _one_
   lead that converted it — the earliest, when several did. Attributing to every
   converting lead would count the same money once per duplicate enquiry.
   `breakdowns` and `revenueByDimension` share the rule, so the two screens
@@ -1236,7 +1234,7 @@ than writing it as zeroes.
 `trigger → conditions → actions`, with every part a database row rather than
 code. A rule is built, tried and switched on in admin; nothing is deployed.
 
-**Where rules run.** `runAutomations` is called *after* the mutation it reacts
+**Where rules run.** `runAutomations` is called _after_ the mutation it reacts
 to has committed, and it never throws to its caller. An automation must not be
 the reason a lead fails to be captured or a proposal fails to be accepted, and a
 broken rule is logged and skipped rather than propagated.
@@ -1287,14 +1285,14 @@ a read of those rows rather than a second log that could drift from them.
 Each external system sits behind an interface in `lib/`, with one real provider
 implementation and **no fake fallback**:
 
-| Interface | Provider | Phase |
-|---|---|---|
-| `StorageService` | Cloudflare R2 (S3 presigned) | 11 |
-| `EmailService` | SMTP (nodemailer) | 12 |
-| `PaymentService` | Razorpay | 13 |
-| `ReportingProvider` | Google Ads, Meta Ads, GA4, Search Console — **interfaces only, no implementation** | 14 |
-| `AIProvider` | Anthropic (`claude-opus-5`), provider-swappable | 16 |
-| `ShippingService` | Shiprocket — **interface only, no implementation** | — |
+| Interface           | Provider                                                                           | Phase |
+| ------------------- | ---------------------------------------------------------------------------------- | ----- |
+| `StorageService`    | Cloudflare R2 (S3 presigned)                                                       | 11    |
+| `EmailService`      | SMTP (nodemailer)                                                                  | 12    |
+| `PaymentService`    | Razorpay                                                                           | 13    |
+| `ReportingProvider` | Google Ads, Meta Ads, GA4, Search Console — **interfaces only, no implementation** | 14    |
+| `AIProvider`        | Anthropic (`claude-opus-5`), provider-swappable                                    | 16    |
+| `ShippingService`   | Shiprocket — **interface only, no implementation**                                 | —     |
 
 **Unconfigured behaviour.** When required env is missing, the provider is not
 constructed and calls throw a typed `IntegrationNotConfiguredError`. The app
@@ -1334,11 +1332,11 @@ configuration enforced by that table's unique key.
 
 Three reads, deliberately three functions:
 
-| function | caller | permission | API key |
-|---|---|---|---|
-| `getAISettings` | admin screen | `settings.view` | masked |
-| `activeAIConfig` | a provider request | none, server-only | decrypted |
-| `aiStatus` | "is the button offered" | none, cached | never selected |
+| function         | caller                  | permission        | API key        |
+| ---------------- | ----------------------- | ----------------- | -------------- |
+| `getAISettings`  | admin screen            | `settings.view`   | masked         |
+| `activeAIConfig` | a provider request      | none, server-only | decrypted      |
+| `aiStatus`       | "is the button offered" | none, cached      | never selected |
 
 `ai()` resolves per request and is **not** memoised. Memoising was right when
 the configuration came from environment variables that could not change without
@@ -1376,14 +1374,14 @@ provider class — not edits across five files.
 **Nothing is written.** Every assist returns a draft. There is no code path by
 which the model writes to the database — a person reads the suggestion, edits
 it, and saves it through the ordinary service for that record, which applies
-that record's ordinary validation and audit. The lead assessment sits *beside*
+that record's ordinary validation and audit. The lead assessment sits _beside_
 the rules-engine score and never replaces it.
 
 **Figures come from the database, and go back to the screen from there.** Each
 prompt is handed the facts it may use and is instructed never to produce another
 number. Two structural consequences:
 
-- The proposal drafter is given the line *names* and not the line *prices*, so
+- The proposal drafter is given the line _names_ and not the line _prices_, so
   a drafted paragraph cannot contradict the priced total on the same page.
 - `analyzeCRM` returns the figures it was given alongside the prose, and the
   page renders those, not numbers parsed out of a sentence. Revenue is only in
@@ -1419,7 +1417,7 @@ unconfigured rather than guessed at.
 Deploy target is Coolify, per CLAUDE.md §3. Three concerns: the image, local
 development, and what runs at deploy time.
 
-> This section is the *reasoning*. The operator's procedure — variables, Coolify
+> This section is the _reasoning_. The operator's procedure — variables, Coolify
 > steps, first boot, provider configuration, scaling, backups, rollback and
 > troubleshooting — is [DEPLOYMENT.md](./DEPLOYMENT.md).
 
@@ -1449,6 +1447,7 @@ runner   → slim, non-root `nextjs` user, curl for the health probe,
 > OpenSSL dependency to match**. The generated client is TypeScript, emitted to
 > `generated/` at build time and gitignored. bookworm-slim is still the right
 > base, but now only because `argon2` ships glibc prebuilds.
+
 - `.dockerignore` excludes `node_modules`, `.next`, `.git`, `.env*`, `docs`,
   test output — both for build speed and so a stray `.env` can never enter an
   image layer.
@@ -1456,7 +1455,7 @@ runner   → slim, non-root `nextjs` user, curl for the health probe,
 > **Revised after the first production deploy.** The runner used to copy exactly
 > three folders out of `node_modules` — `prisma`, `@prisma`, `dotenv` — on the
 > theory that the standalone trace covered everything else. It does, for the
-> *server*. It does not for the **Prisma 7 CLI** the entrypoint runs, whose
+> _server_. It does not for the **Prisma 7 CLI** the entrypoint runs, whose
 > transitive closure is around 130 packages, `effect` among them. None were in
 > the image, so `prisma migrate deploy` died on `Cannot find module 'effect'`
 > before `server.js` was ever reached, and every container crash-looped on boot.
@@ -1495,7 +1494,7 @@ Pages are assembled from **sections**, each a row in `PageSection` holding a
   of valid defaults.
 - **Bespoke bands** (`lib/content/sections.ts`) — `hero`, `positioning`,
   `industries`, `roles`, `legal`. Hand-composed for the homepage, About, Careers
-  and the legal pages. They still render and are deliberately *not* offered in
+  and the legal pages. They still render and are deliberately _not_ offered in
   the builder, which also refuses to edit one.
 
 `SECTION_SCHEMAS` is the union of both, and `parseSections` validates every row
@@ -1503,7 +1502,7 @@ before render, dropping any that does not match its own schema. Bad CMS data
 degrades one band, never the page.
 
 **Content is parsed, not trusted.** A section save validates against that
-block's schema and stores the *parsed* value, so unknown keys are stripped and a
+block's schema and stores the _parsed_ value, so unknown keys are stripped and a
 row can never hold a shape the renderer has not agreed to.
 
 **Rich text is markdown-lite**, not HTML: `**bold**`, `*italic*`, `[text](/path)`,
@@ -1520,7 +1519,7 @@ relationship is a reference: `PageSection.reusableSectionId` plus a snapshot of
 the resolved type and content on the row itself. The snapshot means the public
 query needs no join, and that a reusable section which is later unpublished or
 deleted leaves every placement rendering its last known good state rather than
-blanking a band on eleven pages. Saving a *published* one rewrites every
+blanking a band on eleven pages. Saving a _published_ one rewrites every
 placement in the same transaction; saving a draft does not, so work in progress
 never reaches live pages. Deleting one detaches its placements. Unlinking a
 single placement makes it an ordinary section, which is how a one-off variation
@@ -1563,7 +1562,7 @@ no base alignment is ignored rather than promoted to the whole page.
 **Content versioning** (`lib/content/migrations.ts`). Section content carries a
 `version`, stamped after the schema parse — block schemas strip unknown keys, so
 the stamp cannot live inside one without adding it to all thirty. `parseSections`
-runs the migration ladder over the raw row *before* validating, so a block whose
+runs the migration ladder over the raw row _before_ validating, so a block whose
 shape changes in a later release is brought forward in memory rather than
 failing its schema and blanking the band. Nothing is written on read: a page is
 upgraded on disk the next time an editor saves it. A version newer than the
@@ -1602,7 +1601,7 @@ quietly skews the reporting the platform exists to produce. So
 its touches and its activity commit in one transaction.
 
 **Everything that decides the outcome is loaded, not sent.** The browser posts
-the submitter's details plus the id of the *section* that rendered the form.
+the submitter's details plus the id of the _section_ that rendered the form.
 The service reads that `PageSection` out of the database and takes the variant,
 the service the lead belongs to, and the success wording from the stored block
 — the same shape as the popup endpoint taking a `popupId` and loading the
@@ -1621,7 +1620,7 @@ limited by IP, honeypotted, and sending the Conversions API copy of the
 conversion under the browser's own event id so Meta deduplicates.
 
 **Video is allow-listed, not embedded markup.** `lib/content/video.ts` accepts a
-YouTube or Vimeo URL or id, checks the *host* rather than searching the string,
+YouTube or Vimeo URL or id, checks the _host_ rather than searching the string,
 rejects anything that is not http(s), and builds the iframe `src` from the
 validated id alone. There is no field anywhere that accepts embed code, and that
 is the trade: nothing in this codebase reaches `dangerouslySetInnerHTML`, so
@@ -1645,7 +1644,7 @@ empty. The rule this settles: a block may be incomplete while it is being built
 
 ### 17.1b-iv Filtering a dynamic block
 
-CMS 2.0 Phase 4. A dynamic block already stored a *selection rule* rather than a
+CMS 2.0 Phase 4. A dynamic block already stored a _selection rule_ rather than a
 copy of the data; this adds the rest of the rule — which rows, and in what
 order.
 
@@ -1738,7 +1737,7 @@ about work that has since been redone is worse than no note.
 
 > **Known limitation, stated rather than papered over.** Because sections are
 > edited in place, a page that is already published shows its edits
-> immediately. Review therefore gates the *first* publish and any republish, not
+> immediately. Review therefore gates the _first_ publish and any republish, not
 > the content of a page that is already out. Making review gate live content
 > needs draft/published content separation, which is a change of its own scope
 > and is not pretended at here (CLAUDE.md 15 rule 5). The panel says so on
@@ -1746,6 +1745,65 @@ about work that has since been redone is worse than no note.
 
 The migration is additive: every existing page becomes `DRAFT` with no versions,
 and the entrypoint's `migrate deploy` applies it before the server starts.
+
+### 17.1b-vi Scheduled publishing
+
+CMS 2.0 Phase 6. A page can be told to go live at a time and to come down at a
+time, and something outside the application has to notice.
+
+**Scheduling is a pull, not a clock.** Nothing in this codebase runs on a timer,
+and adding a queue or a long-lived worker would be a second piece of
+infrastructure to run and monitor for a feature whose whole job is flipping a
+status twice a month. Instead `app/api/cron/route.ts` answers "what is due?" and
+acts, and the deployment platform calls it on a schedule
+(`docs/DEPLOYMENT.md` §4). It accepts GET and POST, because schedulers differ on
+which they use for a plain trigger.
+
+**The endpoint refuses to run open.** It is authenticated by `CRON_SECRET`,
+compared in constant time and accepted either as `Authorization: Bearer` or as
+`?secret=` for schedulers that cannot set headers. With no secret configured it
+returns **503**, not 200: an unauthenticated endpoint that publishes pages is a
+worse failure than scheduling that visibly does not happen. A wrong secret gets
+a bare 401 with no detail. The comparison hashes nothing — it encodes both sides
+and does the `timingSafeEqual` work even on a length mismatch, so a wrong length
+is not measurably faster than a wrong value.
+
+**The scheduler is an actor, not a bypass.** `schedulerActor()` is a system
+actor holding exactly `pages.view`, `pages.edit` and `pages.publish` — it can
+publish a page and it cannot delete a client. Publishing goes through
+`setPageStatus`, the same path a person's publish takes, so a scheduled publish
+takes a version and writes an audit row exactly like a manual one. The page
+history reads "System published the page".
+
+**Order matters, and it is publishes first.** If a window has already elapsed
+in full — scheduled up on Monday, down on Friday, and nobody ran the job until
+Saturday — processing unpublishes first would leave the page live forever.
+Publishing first, then unpublishing, ends an elapsed window in the down
+position, which is what was asked for.
+
+**Firing once is a property of the data, not of the caller.** `publishAt` is
+cleared after a successful publish, so a page taken down by hand does not
+silently go live again on the next run. `unpublishAt` is **kept**, so a page put
+back up by hand still comes down again at its end time — a recurring window is
+the more useful reading of "this campaign ends Friday". Selection excludes
+`ARCHIVED` (the scheduler never resurrects something retired) and soft-deleted
+rows. The run is therefore safe to call more often than needed and safe to call
+twice at once: a concurrent second run finds nothing left to do.
+
+**One bad page does not hold back everyone else's launch.** Each page is
+published in its own attempt and a failure is collected into the run's `failed`
+list, logged and returned, rather than thrown.
+
+**Times are the operator's, converted in the browser.** They are stored in UTC;
+`schedule-panel.tsx` converts to and from `datetime-local` and names the
+browser's timezone on screen, because the server has no idea where anyone is and
+a page scheduled for "9am" by someone in Gurgaon should go live at 9am there. A
+time in the past is accepted — "publish it at nine", set at five past nine,
+should publish on the next run.
+
+**Scheduling needs `pages.publish`, not `pages.edit`**, because scheduling a
+publish is publishing, just later. An editor without it sees the schedule as
+read-only text rather than the controls.
 
 ### 17.1c SEO across entities
 
@@ -1789,7 +1847,7 @@ settings model.
 
 **It reuses the keys that already existed.** `site.name`, `site.tagline`,
 `site.email`, `site.phone` and `site.address` are the rows the seed writes and
-the contact page reads. This screen edits *those* rows rather than shadowing
+the contact page reads. This screen edits _those_ rows rather than shadowing
 them, so there is one answer to "what is the company phone number". The lists
 add `nav.headerLinks`, `nav.cta`, `nav.footerCompanyLinks`, `nav.footerLegalLinks`,
 `nav.socialLinks` and `nav.copyrightName`.
@@ -1805,7 +1863,7 @@ migration and nothing to seed.
 re-validated on read; one that will not parse falls back to its default while
 the rest of the navigation is unaffected. This runs on every public request, so
 the fallback is silent rather than logged. The distinction the read preserves is
-*saved as empty* versus *never saved*: a column an editor deliberately cleared
+_saved as empty_ versus _never saved_: a column an editor deliberately cleared
 stays cleared, because the row exists.
 
 **`href` is the security boundary.** These values are rendered into every page,
@@ -1849,7 +1907,7 @@ behind a CDN that is a fair trade, and it is the only option that keeps builds
 reproducible. See §19 D7.
 
 > **Revised in Phase 3.** Avoiding `generateStaticParams` turned out not to be
-> sufficient. A *static* route (`/`, `/about`, `/services`) that reads the
+> sufficient. A _static_ route (`/`, `/about`, `/services`) that reads the
 > database is prerendered at build time regardless, so the first website pages
 > broke the hermetic build immediately — verified by building with no `.env`.
 >
@@ -1912,24 +1970,24 @@ while fixing the drift.
 `prisma/platform.ts` is the half the source tree owns, and it is written to be
 safe unattended:
 
-| Syncs | Refuses |
-|---|---|
-| Permission catalogue, upserted | Creating a user or setting a password |
-| The nine `isSystem` roles, reconciled against `ROLE_PERMISSIONS` | Touching a role it did not create |
-| Lead source types, upserted by slug | — |
-| Site settings, created if absent | Updating one that exists |
-| Email templates, created if absent; `variables` refreshed | Rewriting a subject or body |
-| The two example automations, created switched off | Re-enabling or editing one |
-| The `home` page, created if no page holds that slug | Overwriting, republishing or resurrecting one that does |
-| | Demo content of any kind |
+| Syncs                                                            | Refuses                                                 |
+| ---------------------------------------------------------------- | ------------------------------------------------------- |
+| Permission catalogue, upserted                                   | Creating a user or setting a password                   |
+| The nine `isSystem` roles, reconciled against `ROLE_PERMISSIONS` | Touching a role it did not create                       |
+| Lead source types, upserted by slug                              | —                                                       |
+| Site settings, created if absent                                 | Updating one that exists                                |
+| Email templates, created if absent; `variables` refreshed        | Rewriting a subject or body                             |
+| The two example automations, created switched off                | Re-enabling or editing one                              |
+| The `home` page, created if no page holds that slug              | Overwriting, republishing or resurrecting one that does |
+|                                                                  | Demo content of any kind                                |
 
-The one thing it *removes* is a role grant the code no longer declares, and only
+The one thing it _removes_ is a role grant the code no longer declares, and only
 from those nine system roles. That is deliberate: a release that revokes access
 has to actually revoke it. When a roles editor is built it belongs on
 non-system roles, which the sync does not touch.
 
 `prisma/seed.ts` is the sync plus `seedSuperAdmin`, and stays manual for one
-reason: with `SEED_SUPER_ADMIN_PASSWORD` set it *resets* that account's
+reason: with `SEED_SUPER_ADMIN_PASSWORD` set it _resets_ that account's
 password on every run. Deliberate as a command, unacceptable as a side effect
 of a redeploy. `prisma/seed-demo.ts` is untouched by any of this and stays as
 far from the entrypoint as it was.
@@ -1937,7 +1995,7 @@ far from the entrypoint as it was.
 **The starter homepage.** `/` renders the CMS page with slug `home`, and `home`
 is in `RESERVED_SLUGS`, so the admin cannot create one — the reservation exists
 so nobody shadows a built-in route, and the page service exempts a page whose
-slug is *already* that, which is what keeps the real homepage editable. The
+slug is _already_ that, which is what keeps the real homepage editable. The
 consequence is that a database with no `home` row has a 404 front page and no
 way to fix it from the UI. `prisma/ensure-homepage.ts` is the only path that can
 create it, and it creates it only when no `Page` holds that slug at all —
@@ -1996,7 +2054,7 @@ animations otherwise leave elements mid-fade when axe samples them, and it
 reports the blended colour. A "failure" naming a foreground the stylesheet never
 contains is that artefact, not a defect.
 
-**Error messages.** `AppError.message` is the *internal* message when a subclass
+**Error messages.** `AppError.message` is the _internal_ message when a subclass
 supplies one; `publicMessage` is the one meant for a user. Four route handlers
 returned `error.message`, leaking the internal text. Route handlers return
 `error.publicMessage`; server actions already went through `toActionFailure`,
@@ -2051,7 +2109,7 @@ moved to 10.x (the `raw`-option advisory was never reachable — our `sendMail`
 passes only addresses, subject and bodies — but the dependency should still be
 current), and `overrides` pin patched `postcss`, `mysql2` and `deepmerge-ts`
 under the toolchain that ships them. The overrides exist so the pins in §2
-survive: `npm audit fix --force` would have installed Next 16 and *downgraded*
+survive: `npm audit fix --force` would have installed Next 16 and _downgraded_
 Prisma to 6.
 
 **Not verified here.** The Docker image build could not be run: the sandbox has
@@ -2068,18 +2126,18 @@ transaction that rolls back, so tests share one schema without interfering.
 
 Per CLAUDE.md §12, coverage targets:
 
-| Area | What is asserted |
-|---|---|
-| auth | password hashing, session shape, failed-login handling |
-| RBAC | every role × every permission; `SUPER_ADMIN` bypass; own-vs-team lead scoping |
-| leads | creation with attribution, assignment, status transitions, scoring |
-| money | proposal and invoice totals to the paisa, rounding at boundaries, tax and discount interaction |
-| payments | signature verification, **replayed webhook does not double-credit** |
-| media | permission gating, spoofed-extension rejection |
-| **client isolation** | every portal route probed with a foreign client's ids |
-| popups | targeting resolution, frequency caps, priority ties |
-| SEO | metadata fallback chain, canonical generation, `canPublish()` |
-| sitemap/robots/redirects | no drafts or private URLs; loop detection rejects cycles |
+| Area                     | What is asserted                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| auth                     | password hashing, session shape, failed-login handling                                         |
+| RBAC                     | every role × every permission; `SUPER_ADMIN` bypass; own-vs-team lead scoping                  |
+| leads                    | creation with attribution, assignment, status transitions, scoring                             |
+| money                    | proposal and invoice totals to the paisa, rounding at boundaries, tax and discount interaction |
+| payments                 | signature verification, **replayed webhook does not double-credit**                            |
+| media                    | permission gating, spoofed-extension rejection                                                 |
+| **client isolation**     | every portal route probed with a foreign client's ids                                          |
+| popups                   | targeting resolution, frequency caps, priority ties                                            |
+| SEO                      | metadata fallback chain, canonical generation, `canPublish()`                                  |
+| sitemap/robots/redirects | no drafts or private URLs; loop detection rejects cycles                                       |
 
 The isolation and money suites are the two that must never be allowed to go
 yellow — they encode the requirements whose violation CLAUDE.md §2 says rejects
@@ -2091,17 +2149,17 @@ the work outright.
 
 ### Decisions I need from you
 
-| # | Decision | My recommendation |
-|---|---|---|
-| **D1** | Next.js 15.5.25 (per spec) or 16.3.4 (current stable)? | **15.5.25.** Follow the spec. 16 is young and nothing here needs it. |
-| **D2** | argon2 or bcrypt? | **argon2id.** Better resistance; `argon2` has glibc prebuilds, which §17.1 already accounts for. |
-| **D3** | Is the missing Docker daemon acceptable — files authored now, built and verified in Phase 17? | **Yes**, given native Postgres covers everything else. |
-| **D4** | Auth.js v5 is still beta (`5.0.0-beta.32`). Accept, or use a stable alternative? | **Accept.** CLAUDE.md §3 names it, and the credentials + JWT path is its most stable surface. |
-| **D5** | One role per user, or multiple? | **One.** Extending to many is additive later; multi-role now adds resolution ambiguity for no stated requirement. |
-| **D6** | Are the `canPublish()` thresholds in §13 the right bar? | They are my proposal, not a spec value — this is a **business rule** and CLAUDE.md §15 rule 6 says ask rather than guess. |
-| **D7** | ISR + on-demand revalidation instead of `generateStaticParams` (§17.2)? | **Yes.** It is the only option that keeps container builds hermetic. |
-| **D8** | Currency: INR only, or multi-currency from the start? | Schema supports multi (`Currency` enum per document); **default and seed INR**. No FX conversion is planned — flag if you need it. |
-| **D9** | Rate limiting store — in-process, or Redis? | **Resolved: Postgres.** In-process was correct for one container and wrong behind two — an attacker got the limit once per instance. The window is now a `RateLimitWindow` row incremented by a single `INSERT … ON CONFLICT DO UPDATE`, so the limit holds across instances and concurrent requests cannot both pass it. Postgres was already a hard dependency; Redis would have been new infrastructure for the same guarantee. |
+| #      | Decision                                                                                      | My recommendation                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **D1** | Next.js 15.5.25 (per spec) or 16.3.4 (current stable)?                                        | **15.5.25.** Follow the spec. 16 is young and nothing here needs it.                                                                                                                                                                                                                                                                                                                                                               |
+| **D2** | argon2 or bcrypt?                                                                             | **argon2id.** Better resistance; `argon2` has glibc prebuilds, which §17.1 already accounts for.                                                                                                                                                                                                                                                                                                                                   |
+| **D3** | Is the missing Docker daemon acceptable — files authored now, built and verified in Phase 17? | **Yes**, given native Postgres covers everything else.                                                                                                                                                                                                                                                                                                                                                                             |
+| **D4** | Auth.js v5 is still beta (`5.0.0-beta.32`). Accept, or use a stable alternative?              | **Accept.** CLAUDE.md §3 names it, and the credentials + JWT path is its most stable surface.                                                                                                                                                                                                                                                                                                                                      |
+| **D5** | One role per user, or multiple?                                                               | **One.** Extending to many is additive later; multi-role now adds resolution ambiguity for no stated requirement.                                                                                                                                                                                                                                                                                                                  |
+| **D6** | Are the `canPublish()` thresholds in §13 the right bar?                                       | They are my proposal, not a spec value — this is a **business rule** and CLAUDE.md §15 rule 6 says ask rather than guess.                                                                                                                                                                                                                                                                                                          |
+| **D7** | ISR + on-demand revalidation instead of `generateStaticParams` (§17.2)?                       | **Yes.** It is the only option that keeps container builds hermetic.                                                                                                                                                                                                                                                                                                                                                               |
+| **D8** | Currency: INR only, or multi-currency from the start?                                         | Schema supports multi (`Currency` enum per document); **default and seed INR**. No FX conversion is planned — flag if you need it.                                                                                                                                                                                                                                                                                                 |
+| **D9** | Rate limiting store — in-process, or Redis?                                                   | **Resolved: Postgres.** In-process was correct for one container and wrong behind two — an attacker got the limit once per instance. The window is now a `RateLimitWindow` row incremented by a single `INSERT … ON CONFLICT DO UPDATE`, so the limit holds across instances and concurrent requests cannot both pass it. Postgres was already a hard dependency; Redis would have been new infrastructure for the same guarantee. |
 
 ### Risks
 

@@ -130,3 +130,38 @@ export type WorkflowNoteInput = z.infer<typeof workflowNoteSchema>;
 export const versionReasonSchema = z.object({
   reason: z.string().trim().max(200, "Keep the description under 200 characters."),
 });
+
+/**
+ * When a page should go up and come down.
+ *
+ * Separate from `pageSchema` on purpose, and gated on `pages.publish` rather
+ * than `pages.edit`: scheduling a publish *is* publishing, just later. Folding
+ * it into the settings form would let anyone who can fix a typo put a page
+ * live by choosing a date.
+ *
+ * Both are ISO strings from the browser, which converts from the operator's own
+ * clock. Blank clears the schedule.
+ */
+const scheduledAt = z
+  .string()
+  .trim()
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .default(null)
+  .refine(
+    (value) => value === null || !Number.isNaN(Date.parse(value)),
+    "That is not a valid date and time.",
+  )
+  .transform((value) => (value === null ? null : new Date(value)));
+
+export const pageScheduleSchema = z
+  .object({ publishAt: scheduledAt, unpublishAt: scheduledAt })
+  .refine(
+    (value) => !value.publishAt || !value.unpublishAt || value.unpublishAt > value.publishAt,
+    {
+      path: ["unpublishAt"],
+      message: "The page cannot come down before it goes up.",
+    },
+  );
+
+export type PageScheduleInput = z.infer<typeof pageScheduleSchema>;

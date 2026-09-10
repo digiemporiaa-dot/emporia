@@ -13,6 +13,7 @@ import { pageSeoSchema } from "@/lib/validation/seo";
 import * as reusableService from "@/lib/services/reusable-section.service";
 import * as versionService from "@/lib/services/page-version.service";
 import {
+  pageScheduleSchema,
   reusableSectionDraftSchema,
   versionReasonSchema,
   workflowNoteSchema,
@@ -611,6 +612,38 @@ export async function compareVersionAction(
     return { ok: true, data: diff };
   } catch (error) {
     actionLog.error({ err: error, pageId, version }, "compareVersion failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function setScheduleAction(
+  pageId: string,
+  publishAt: string,
+  unpublishAt: string,
+): Promise<ActionResult<{ publishAt: string | null; unpublishAt: string | null }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = pageScheduleSchema.safeParse({ publishAt, unpublishAt });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the dates.",
+        details: parsed.error.flatten().fieldErrors,
+      };
+    }
+
+    const page = await pageService.setPageSchedule(actor, pageId, parsed.data);
+    revalidatePath(`${LIST_PATH}/${pageId}`);
+    return {
+      ok: true,
+      data: {
+        publishAt: page.publishAt?.toISOString() ?? null,
+        unpublishAt: page.unpublishAt?.toISOString() ?? null,
+      },
+    };
+  } catch (error) {
+    actionLog.error({ err: error, pageId }, "setSchedule failed");
     return toActionFailure(error);
   }
 }

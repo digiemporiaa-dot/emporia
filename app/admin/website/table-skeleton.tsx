@@ -10,7 +10,10 @@
  */
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div aria-hidden="true" className="animate-pulse space-y-px rounded-lg border border-line bg-white p-3">
+    <div
+      aria-hidden="true"
+      className="animate-pulse space-y-px rounded-lg border border-line bg-white p-3"
+    >
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="h-11 rounded-sm bg-surface-sunken/70" />
       ))}

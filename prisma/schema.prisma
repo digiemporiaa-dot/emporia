@@ -850,6 +850,20 @@ model Page {
   /// unpublishing and republishing does not rewrite history.
   publishedAt DateTime?
 
+  /// When this page should go live, and when it should come down.
+  ///
+  /// Stored in UTC like every other timestamp; the admin converts from the
+  /// operator's own clock on the way in and back on the way out. A time in the
+  /// past is not an error — it simply fires on the next run, which is what
+  /// "publish it at nine" set at five past nine should do.
+  ///
+  /// `publishAt` is cleared once it fires, so a scheduled publish happens once.
+  /// `unpublishAt` is kept, because a campaign page that is taken down and
+  /// manually put back should still come down again at its end date unless
+  /// someone changes it.
+  publishAt   DateTime?
+  unpublishAt DateTime?
+
   /// Editorial state. See PageWorkflow.
   workflow PageWorkflow @default(DRAFT)
 
@@ -884,6 +898,10 @@ model Page {
   @@index([workflow])
   @@index([deletedAt])
   @@index([updatedAt])
+  /// The scheduler's two queries: what is due to go up, and what is due to come
+  /// down. Both filter on the timestamp and the status together.
+  @@index([publishAt])
+  @@index([unpublishAt])
 }
 
 model PageSection {
