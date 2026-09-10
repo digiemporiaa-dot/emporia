@@ -21,6 +21,7 @@ import { siteDefaults } from "@/lib/seo/defaults";
 import { absoluteUrl } from "@/lib/seo/urls";
 import { db } from "@/lib/db";
 import { mediaIdsIn } from "@/lib/content/blocks";
+import { allowedBlocksOf } from "@/lib/content/templates";
 import { listInsertable } from "@/lib/services/reusable-section.service";
 import { taxonomyOptions } from "@/lib/services/taxonomy.service";
 import { EMPTY_TAXONOMY } from "@/lib/content/taxonomy";
@@ -134,6 +135,8 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
         reusables={reusables}
         taxonomy={taxonomy}
         canEdit={can(actor, "pages.edit")}
+        allowedBlocks={allowedBlocksOf(page.template?.allowedBlocks)}
+        templateName={page.template?.name ?? null}
       />
 
       <SchedulePanel

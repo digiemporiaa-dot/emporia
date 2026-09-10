@@ -878,6 +878,12 @@ model Page {
   publishAt   DateTime?
   unpublishAt DateTime?
 
+  /// The template this page was made from, kept for the answer to "which bands
+  /// may this page have". Nullable: pages predating templates, and pages made
+  /// from none, are ordinary pages with no restriction.
+  templateId String?
+  template   PageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
   /// Editorial state. See PageWorkflow.
   workflow PageWorkflow @default(DRAFT)
 
@@ -916,6 +922,56 @@ model Page {
   /// down. Both filter on the timestamp and the status together.
   @@index([publishAt])
   @@index([unpublishAt])
+  @@index([templateId])
+}
+
+/// A shape a new page starts in.
+///
+/// Three things, and each answers a question the page builder left open:
+/// which bands a page of this kind starts with, which bands may be added to it
+/// at all, and what its SEO should default to. A "service landing page" and a
+/// "legal page" are not the same object with different words in them.
+///
+/// Templates are applied at creation and then let go: the page owns its
+/// sections from that moment. Editing a template never reaches back into pages
+/// already made from it — that would be a second, invisible way to change a
+/// live page, and the builder is the only way there should be.
+model PageTemplate {
+  id String @id @default(cuid())
+
+  /// Stable handle, so a seed or a migration can name a template without
+  /// knowing its cuid.
+  key         String  @unique
+  name        String
+  description String?
+
+  /// The bands a page starts with: an ordered array of `{ type, content }`,
+  /// validated against the block schemas on save and migrated forward on use,
+  /// exactly as a PageVersion snapshot is.
+  sections Json
+
+  /// Block types this template permits, as an array of strings. **Empty means
+  /// every block**, which is what a general-purpose template wants; the
+  /// restriction exists for the templates that need one, not as a default.
+  allowedBlocks Json
+
+  /// What the page's SEO starts as. Null leaves the site defaults to derive it,
+  /// which is right for most pages.
+  defaultSchemaType  SchemaType @default(NONE)
+  defaultRobotsIndex Boolean    @default(true)
+
+  /// Off, rather than deleted: a template withdrawn from the New page list
+  /// should not take its own history with it.
+  isActive Boolean @default(true)
+
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages Page[]
+
+  @@index([isActive, order])
 }
 
 model PageSection {

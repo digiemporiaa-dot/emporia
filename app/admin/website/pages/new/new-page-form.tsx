@@ -6,7 +6,7 @@ import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle } from "lucide-react";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, Select } from "@/components/ui";
 import { slugify } from "@/lib/utils/slug";
 import { createPageAction, type PageActionState } from "../../actions";
 
@@ -30,12 +30,16 @@ function Submit() {
   );
 }
 
-export function NewPageForm() {
+export type TemplateChoice = { id: string; name: string; description: string | null };
+
+export function NewPageForm({ templates }: { templates: readonly TemplateChoice[] }) {
   const router = useRouter();
   const [state, formAction] = useActionState<PageActionState, FormData>(createPageAction, null);
   const [title, setTitle] = React.useState("");
   const [slug, setSlug] = React.useState("");
   const [slugTouched, setSlugTouched] = React.useState(false);
+  const [templateId, setTemplateId] = React.useState("");
+  const chosen = templates.find((template) => template.id === templateId) ?? null;
 
   React.useEffect(() => {
     if (state?.ok) router.push(`/admin/website/pages/${state.data.id}`);
@@ -59,6 +63,36 @@ export function NewPageForm() {
           <AlertCircle size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
           <span>{state.message}</span>
         </div>
+      ) : null}
+
+      {templates.length > 0 ? (
+        <Field
+          id="templateId"
+          label="Start from"
+          hint="A template gives the page its opening sections and decides which bands it may carry."
+          error={err("templateId")}
+        >
+          {(aria) => (
+            <>
+              <Select
+                {...aria}
+                name="templateId"
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+              >
+                <option value="">A blank page</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </Select>
+              {chosen?.description ? (
+                <p className="mt-1.5 text-xs text-ink-subtle">{chosen.description}</p>
+              ) : null}
+            </>
+          )}
+        </Field>
       ) : null}
 
       <Field id="title" label="Page title" required error={err("title")}>

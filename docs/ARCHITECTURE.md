@@ -2028,6 +2028,60 @@ The selection is capped at a hundred: this issues a query per record, and a
 selection of ten thousand would be a request that never returns. Anything past
 the cap is reported as refused rather than dropped.
 
+### 17.1b-x Page templates
+
+CMS 2.0 Phase 10. A template answers three questions the page builder left
+open: which bands a page of this kind starts with, which bands it may contain
+at all, and what its SEO defaults to. A service landing page and a legal page
+are not the same object with different words in them.
+
+**Applied once, then let go.** A template is used at creation and the page owns
+its sections from that moment. Editing a template never reaches back into pages
+already made from it. That is deliberate rather than unimplemented: propagating
+would be a second, invisible way to change a live page, and the builder should
+be the only way there is. The `templateId` is kept for exactly one purpose —
+answering "which bands may this page have".
+
+**The restriction is enforced in `addSection`, not in the picker.** Filtering
+the Add Section list is a courtesy; the server action is reachable without it,
+and a hidden button is not a rule (CLAUDE.md 2 rule 2). The builder is told the
+allowed list so it can both filter and _say_ what it is doing — "The Legal page
+template allows 2 of the 38 bands" — because a band someone expects and cannot
+find should read as a decision rather than a missing feature.
+
+**Empty means every block.** A restriction is a decision worth making
+deliberately — a legal page that may not carry a pricing table — not the default
+state of every template. `templatePermits` returns true for an empty list, so a
+page with no template, and a template that restricts nothing, both permit
+everything.
+
+**One create path.** `createPage` takes an optional `templateId` rather than
+there being a separate `createPageFromTemplate`: the slug derivation, the
+reserved-slug check and the audit row are the same work either way, and two
+paths would drift. The pure parts — `allowedBlocksOf`, `templatePermits`,
+`startingSections` — live in `lib/content/templates.ts` so both `page.service`
+and `template.service` can use them without importing each other.
+
+**Starting sections are stored parsed and migrated on use.** Each is validated
+against its own block schema on save, so a template cannot hold a shape the
+renderer has not agreed to, and run through the migration ladder on the way out,
+so a template written before a block changed still produces a page that renders
+(the same rule as a restored version, 17.1b-v). A band that no longer parses is
+dropped rather than failing the creation: a broken template should cost one
+section, not the page.
+
+The admin form posts only each band's _type_. The words are written on the page,
+not in the template — "start with a hero and an FAQ" rarely dictates the copy —
+so every block's library defaults must satisfy its own schema, or the form would
+offer a band it cannot save. `tests/templates.db.test.ts` asserts that for the
+whole library.
+
+**Managing templates needs `pages.publish`, not `pages.create`**, because a
+template decides what pages may contain, which is closer to publishing than to
+writing one page. Deleting one is refused while pages point at it: dropping the
+`templateId` would quietly lift its restriction on every page made from it.
+Switching it off removes it from the New page list without touching them.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

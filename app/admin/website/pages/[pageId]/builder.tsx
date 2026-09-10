@@ -26,6 +26,7 @@ import {
   isBlockType,
   type BlockType,
 } from "@/lib/content/blocks";
+import { templatePermits } from "@/lib/content/templates";
 import type { ActionResult } from "@/lib/errors";
 import type { TaxonomyOptions } from "@/lib/content/taxonomy";
 import { BlockFields, type Content } from "./block-fields";
@@ -82,6 +83,16 @@ type Props = {
   /** Filter options for the dynamic blocks, loaded once by the editor page. */
   taxonomy: TaxonomyOptions;
   canEdit: boolean;
+  /**
+   * Block types this page's template permits. **Empty means every block.**
+   *
+   * Filtering the picker with it is a courtesy; `addSection` refuses a
+   * disallowed type server-side regardless, because a hidden button is not a
+   * rule (CLAUDE.md 2 rule 2).
+   */
+  allowedBlocks: readonly string[];
+  /** Named on screen, so a missing block reads as a decision rather than a gap. */
+  templateName: string | null;
 };
 
 // Ordered beside the library itself, so a new group cannot be added there and
@@ -125,7 +136,16 @@ function summarise(section: BuilderSection): string {
   return "";
 }
 
-export function PageBuilder({ pageId, sections, media, reusables, taxonomy, canEdit }: Props) {
+export function PageBuilder({
+  pageId,
+  sections,
+  media,
+  reusables,
+  taxonomy,
+  canEdit,
+  allowedBlocks,
+  templateName,
+}: Props) {
   const router = useRouter();
   const { push } = useToast();
   const [pending, startTransition] = React.useTransition();
@@ -371,6 +391,8 @@ export function PageBuilder({ pageId, sections, media, reusables, taxonomy, canE
 
       {adding ? (
         <AddSectionDialog
+          allowedBlocks={allowedBlocks}
+          templateName={templateName}
           reusables={reusables}
           onClose={() => setAdding(false)}
           onPick={(type) => {
@@ -411,6 +433,7 @@ export function PageBuilder({ pageId, sections, media, reusables, taxonomy, canE
 
       {retyping ? (
         <ChangeTypeDialog
+          allowedBlocks={allowedBlocks}
           current={retyping.type}
           onClose={() => setRetypingId(null)}
           onPick={(type) => {
@@ -473,11 +496,15 @@ function IconButton({
 }
 
 function AddSectionDialog({
+  allowedBlocks,
+  templateName,
   reusables,
   onClose,
   onPick,
   onPickReusable,
 }: {
+  allowedBlocks: readonly string[];
+  templateName: string | null;
   reusables: readonly InsertableReusable[];
   onClose: () => void;
   onPick: (type: BlockType) => void;
@@ -521,8 +548,18 @@ function AddSectionDialog({
             </ul>
           </div>
         ) : null}
+        {allowedBlocks.length > 0 ? (
+          // Said out loud, so a band someone expects and cannot find reads as a
+          // decision the template made rather than a missing feature.
+          <p className="rounded-md border border-line bg-surface-muted px-3 py-2 text-xs text-ink-muted">
+            {templateName ? `The ${templateName} template` : "This page's template"} allows{" "}
+            {allowedBlocks.length} of the {BLOCK_LIBRARY.length} bands.
+          </p>
+        ) : null}
         {GROUPS.map((group) => {
-          const blocks = BLOCK_LIBRARY.filter((block) => block.group === group);
+          const blocks = BLOCK_LIBRARY.filter(
+            (block) => block.group === group && templatePermits(allowedBlocks, block.type),
+          );
           if (blocks.length === 0) return null;
           return (
             <div key={group}>
@@ -561,10 +598,12 @@ function AddSectionDialog({
  * discovered afterwards.
  */
 function ChangeTypeDialog({
+  allowedBlocks,
   current,
   onClose,
   onPick,
 }: {
+  allowedBlocks: readonly string[];
   current: string;
   onClose: () => void;
   onPick: (type: BlockType) => void;
@@ -579,7 +618,10 @@ function ChangeTypeDialog({
       <div className="space-y-5">
         {GROUPS.map((group) => {
           const blocks = BLOCK_LIBRARY.filter(
-            (block) => block.group === group && block.type !== current,
+            (block) =>
+              block.group === group &&
+              block.type !== current &&
+              templatePermits(allowedBlocks, block.type),
           );
           if (blocks.length === 0) return null;
           return (
