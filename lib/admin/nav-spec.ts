@@ -57,6 +57,7 @@ export const NAV: readonly NavSpec[] = [
     permission: "pages.view",
     children: [
       { href: "/admin/website/library", label: "Content library", permission: "pages.view" },
+      { href: "/admin/website/templates", label: "Templates", permission: "pages.view" },
       { href: "/admin/website/pages", label: "Pages", permission: "pages.view" },
       // Formerly a top-level item of its own. It is one of the Website
       // module's screens, and listing it twice in one sidebar read as two

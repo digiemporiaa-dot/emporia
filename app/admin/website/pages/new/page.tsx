@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { requirePermission } from "@/lib/auth/rbac";
+import { listTemplates } from "@/lib/services/template.service";
 import { NewPageForm } from "./new-page-form";
 
 export const metadata: Metadata = { title: "New page" };
@@ -9,6 +10,10 @@ export const metadata: Metadata = { title: "New page" };
 export default async function NewPagePage() {
   const actor = await requireActorPage("/admin/website/pages");
   requirePermission(actor, "pages.create");
+
+  // Only the ones switched on: a withdrawn template stays on the pages already
+  // made from it without being offered for new ones.
+  const templates = await listTemplates(actor);
 
   return (
     <>
@@ -27,7 +32,13 @@ export default async function NewPagePage() {
           The page is created as a draft. Nothing is public until you publish it.
         </p>
       </header>
-      <NewPageForm />
+      <NewPageForm
+        templates={templates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          description: template.description,
+        }))}
+      />
     </>
   );
 }

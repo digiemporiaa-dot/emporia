@@ -8,6 +8,7 @@ import { record, withAudit } from "@/lib/services/audit.service";
 import { paged, toSkipTake } from "@/lib/paging";
 import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
 import { BLOCK_SCHEMAS, blockDefinition, isBlockType, type BlockType } from "@/lib/content/blocks";
+import { allowedBlocksOf, startingSections, templatePermits } from "@/lib/content/templates";
 import { stampVersion } from "@/lib/content/migrations";
 import { snapshot } from "@/lib/services/page-version.service";
 import type { Actor } from "@/lib/actor/types";
@@ -58,6 +59,10 @@ const detailSelect = {
   reviewNote: true,
   deletedAt: true,
   previewToken: true,
+  templateId: true,
+  // Carried on the page so the builder can both filter its Add Section list
+  // and refuse a block the template does not allow, from the one source.
+  template: { select: { id: true, name: true, allowedBlocks: true } },
   seoId: true,
   seo: {
     select: {
@@ -166,19 +171,79 @@ const slugTaken = async (candidate: string): Promise<boolean> =>
   (await db.page.count({ where: { slug: candidate } })) > 0;
 
 /** Create an empty draft. Sections are added in the builder, not here. */
+/**
+ * Create a page, optionally from a template.
+ *
+ * One create path rather than two: a template contributes starting sections and
+ * SEO defaults, and everything else — the slug derivation, the reserved-slug
+ * check, the audit row — is the same work whether one was chosen or not.
+ */
 export async function createPage(actor: Actor, input: PageDraftInput) {
   requirePermission(actor, "pages.create");
 
   const slug = input.slug ?? (await uniqueSlug(input.title, slugTaken));
   await assertSlugFree(slug);
 
+  const template = input.templateId
+    ? await db.pageTemplate.findUnique({
+        where: { id: input.templateId },
+        select: {
+          id: true,
+          isActive: true,
+          sections: true,
+          defaultSchemaType: true,
+          defaultRobotsIndex: true,
+        },
+      })
+    : null;
+
+  if (input.templateId && !template) {
+    throw new ValidationError("That template does not exist.");
+  }
+  // Switched off means "not offered for new pages". Checked here too, so a form
+  // left open before it was withdrawn cannot still use it.
+  if (template && !template.isActive) {
+    throw new ValidationError("That template is switched off.");
+  }
+
+  const sections = template ? startingSections(template.sections) : [];
+
   // Audited under the generated id, not the slug: `withAudit` fixes entityId
   // before the row exists, and a page's slug is mutable — keying its history to
   // one makes the create unfindable by id and stale the moment it is renamed.
   const page = await db.$transaction(async (tx) => {
+    const seo = template
+      ? await tx.seo.create({
+          data: {
+            schemaType: template.defaultSchemaType,
+            robotsIndex: template.defaultRobotsIndex,
+          },
+          select: { id: true },
+        })
+      : null;
+
     const created = await tx.page.create({
-      data: { title: input.title, slug, status: "DRAFT" },
+      data: {
+        title: input.title,
+        slug,
+        status: "DRAFT",
+        templateId: template?.id ?? null,
+        ...(seo ? { seoId: seo.id } : {}),
+        ...(sections.length
+          ? {
+              sections: {
+                create: sections.map((section, order) => ({
+                  type: section.type,
+                  order,
+                  content: section.content as InputJsonValue,
+                  name: blockDefinition(section.type).label,
+                })),
+              },
+            }
+          : {}),
+      },
     });
+
     await record(
       { actor, action: "CREATE", entityType: "Page", entityId: created.id, after: created },
       tx,
@@ -538,10 +603,22 @@ async function getSectionOr404(id: string) {
  */
 export async function addSection(actor: Actor, pageId: string, type: string) {
   requirePermission(actor, "pages.edit");
-  await getPage(actor, pageId);
+  const page = await getPage(actor, pageId);
 
   if (!isBlockType(type)) {
     throw new ValidationError("That is not a block you can add.");
+  }
+
+  // A template may restrict which blocks its pages can carry. Enforced here
+  // rather than by filtering the Add Section list: hiding a button is not a
+  // rule, and the action is reachable without the picker.
+  if (page.template) {
+    const allowed = allowedBlocksOf(page.template.allowedBlocks);
+    if (!templatePermits(allowed, type)) {
+      throw new ValidationError(
+        `The ${page.template.name} template does not allow a ${blockDefinition(type).label} band.`,
+      );
+    }
   }
 
   const last = await db.pageSection.findFirst({

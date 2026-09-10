@@ -55,6 +55,9 @@ export async function createPageAction(
     const parsed = pageDraftSchema.safeParse({
       title: raw["title"],
       ...(typeof raw["slug"] === "string" && raw["slug"] ? { slug: raw["slug"] } : {}),
+      ...(typeof raw["templateId"] === "string" && raw["templateId"]
+        ? { templateId: raw["templateId"] }
+        : {}),
     });
     if (!parsed.success) {
       return {

@@ -42,6 +42,11 @@ export type PageInput = z.infer<typeof pageSchema>;
 export const pageDraftSchema = z.object({
   title: z.string().trim().min(2, "Enter a page title.").max(160),
   slug: pageSlugSchema.optional(),
+  /**
+   * Optional. A blank page is still a page, and requiring a choice would make
+   * templates a tax rather than a shortcut.
+   */
+  templateId: z.string().trim().min(1).max(40).optional(),
 });
 export type PageDraftInput = z.infer<typeof pageDraftSchema>;
 

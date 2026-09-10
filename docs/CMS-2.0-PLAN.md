@@ -303,11 +303,23 @@ reconstructing the whole record.
 than built as a button that is disabled for nine tenths of a selection.
 See ARCHITECTURE 17.1b-ix.
 
-### Phase 10 — Templates
+### Phase 10 — Templates — **DONE**
 
 Page templates defining default sections, allowed sections and default SEO
 shape. Deliberately after the block library, so templates are assembled from
 blocks that exist.
+
+Delivered. `PageTemplate` plus `/admin/website/templates`. The restriction is
+enforced in `addSection` rather than by filtering the picker — the action is
+reachable without it — and the builder states what the template allows rather
+than silently omitting bands. Empty means every block, so restricting is opt-in
+per template. A template is applied at creation and then let go; editing one
+never reaches back into pages already made from it, because propagating would be
+a second, invisible way to change a live page. `createPage` gained an optional
+`templateId` rather than a second create path. Starting sections are stored
+parsed and migrated on use, and a band that no longer parses is dropped rather
+than failing the page. Managing templates needs `pages.publish`, and deleting one
+is refused while pages use it. See ARCHITECTURE 17.1b-x.
 
 ### Phase 11 — Page analytics and content → revenue
 

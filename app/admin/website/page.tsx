@@ -55,6 +55,14 @@ export default async function WebsiteHubPage() {
     permission: Permission;
   }[] = [
     {
+      href: "/admin/website/templates",
+      title: "Templates",
+      detail: "The shape a page starts in",
+      description:
+        "Opening bands, the bands a page may carry, and its SEO defaults. Applied when a page is created, then let go.",
+      permission: "pages.view",
+    },
+    {
       href: "/admin/website/library",
       title: "Content library",
       detail: "Every type at once",
