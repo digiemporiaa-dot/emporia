@@ -74,7 +74,16 @@ export function wordCount(text: string): number {
   return trimmed.split(/\s+/).length;
 }
 
-/** Also picks up links written inline in rich text, which `walk` cannot see. */
+/**
+ * Also picks up links written inline in rich text, which `walk` cannot see.
+ *
+ * Both site paths and full URLs. It matched only paths until the analyzer
+ * needed to count external links as well — an outbound link written in body
+ * copy was simply invisible, so a page full of them reported none.
+ * Callers that want one kind filter for it.
+ */
 export function inlineLinks(body: string): string[] {
-  return [...body.matchAll(/\[[^\]]+\]\((\/[^)\s]*)\)/g)].map((match) => match[1] ?? "");
+  return [...body.matchAll(/\[[^\]]+\]\(((?:\/|https?:\/\/)[^)\s]*)\)/g)].map(
+    (match) => match[1] ?? "",
+  );
 }

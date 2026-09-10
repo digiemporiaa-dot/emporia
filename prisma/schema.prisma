@@ -2300,6 +2300,14 @@ model Seo {
   metaDescription String?
   canonical       String?
 
+  /// The phrase this page is meant to rank for.
+  ///
+  /// One, deliberately. A page written for six keywords ranks for none, and
+  /// the analyzer can only say something useful about presence and density if
+  /// it knows which phrase to look for. Blank means the checks that need one
+  /// are simply not run — an unanswered question, not a failure.
+  targetKeyword String?
+
   ogTitle       String?
   ogDescription String?
   ogImageId     String?

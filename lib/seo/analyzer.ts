@@ -1,5 +1,6 @@
 import { blockWarnings, mediaIdsIn } from "@/lib/content/blocks";
 import { inlineLinks, sectionText, wordCount } from "@/lib/content/text";
+import { containsPhrase, countPhrase, density } from "@/lib/seo/keyword";
 
 /**
  * The SEO analyzer.
@@ -26,6 +27,16 @@ const DESCRIPTION_MAX = 160;
 /** Below this a landing page is thin, whatever else is right about it. */
 const THIN_WORDS = 150;
 const HEALTHY_WORDS = 300;
+/**
+ * Keyword density worth arguing with.
+ *
+ * Below the floor the phrase is barely on the page; above the ceiling it reads
+ * as stuffing, which is actively penalised rather than merely unhelpful. Both
+ * are conventions, not published rules — the point of naming them here is that
+ * changing them changes the product in one place.
+ */
+const DENSITY_MIN = 0.5;
+const DENSITY_MAX = 3;
 
 export type CheckStatus = "pass" | "warn" | "fail";
 
@@ -45,7 +56,18 @@ export type SeoReport = {
   checks: SeoCheck[];
   counts: { pass: number; warn: number; fail: number };
   /** Facts the panel shows alongside the checks. */
-  stats: { words: number; internalLinks: number; images: number; imagesWithAlt: number };
+  stats: {
+    words: number;
+    internalLinks: number;
+    externalLinks: number;
+    /** Internal links whose target the caller could not find. */
+    brokenLinks: string[];
+    images: number;
+    imagesWithAlt: number;
+    /** Null when no target keyword is set — an unanswered question, not zero. */
+    keywordDensity: number | null;
+    keywordCount: number | null;
+  };
 };
 
 export type AnalyzerSection = {
@@ -70,10 +92,27 @@ export type AnalyzerInput = {
     robotsIndex: boolean;
     robotsFollow: boolean;
     schemaType: string;
+    targetKeyword: string | null;
   } | null;
   /** Whether the site has a global OG image to fall back on. */
   hasGlobalOgImage: boolean;
+  /**
+   * Internal paths the caller has confirmed resolve — a published page, a
+   * service, a redirect, one of the fixed routes.
+   *
+   * Passed in rather than looked up, so this function stays pure and testable.
+   * Omitted means "not checked": the broken-link check is then skipped rather
+   * than reporting every link as broken, because a caller that could not do the
+   * lookup has not discovered that the links are bad.
+   */
+  knownPaths?: ReadonlySet<string>;
 };
+
+/** "the title and the description", rather than "the title,the description". */
+function listWords(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
 
 function check(
   id: string,
@@ -99,6 +138,10 @@ export function analysePage(input: AnalyzerInput): SeoReport {
   let hasHeadingBlock = false;
   let hasFaq = false;
   const warnings: string[] = [];
+  /** Sub-heading levels in document order, for the outline check. */
+  const headingLevels: number[] = [];
+  /** Sub-heading text, so the keyword check can look where it matters most. */
+  let headingText = "";
 
   for (const section of visible) {
     const extracted = sectionText(section.type, section.content);
@@ -114,7 +157,19 @@ export function analysePage(input: AnalyzerInput): SeoReport {
       }
     }
 
-    if (section.type === "heading") hasHeadingBlock = true;
+    if (section.type === "heading") {
+      hasHeadingBlock = true;
+      const level = content["level"];
+      headingLevels.push(level === 3 ? 3 : 2);
+      const text = content["text"];
+      if (typeof text === "string") headingText += ` ${text}`;
+    } else if (typeof content["heading"] === "string" && content["heading"].trim()) {
+      // Bands with a heading of their own render it as a sub-heading too, so
+      // they count towards the page having any structure at all.
+      hasHeadingBlock = true;
+      headingLevels.push(2);
+      headingText += ` ${content["heading"]}`;
+    }
     if (section.type === "faq") hasFaq = true;
 
     for (const id of mediaIdsIn(section.type, section.content)) {
@@ -138,7 +193,19 @@ export function analysePage(input: AnalyzerInput): SeoReport {
   }
 
   const words = wordCount(text);
-  const internalLinks = new Set(links.filter((href) => href.startsWith("/"))).size;
+  const internalPaths = new Set(links.filter((href) => href.startsWith("/")));
+  const internalLinks = internalPaths.size;
+  const externalLinks = new Set(links.filter((href) => /^https?:\/\//i.test(href))).size;
+
+  // Only checked when the caller supplied the paths it could resolve. Without
+  // that, every link would read as broken, which is a lie about the page.
+  const brokenLinks = input.knownPaths
+    ? [...internalPaths]
+        .map((href) => href.split(/[?#]/)[0] ?? href)
+        .map((href) => (href.length > 1 ? href.replace(/\/+$/, "") : href))
+        .filter((href) => !input.knownPaths?.has(href))
+        .sort()
+    : [];
 
   /**
    * A page with nothing on it must not collect passes for the checks that have
@@ -355,6 +422,144 @@ export function analysePage(input: AnalyzerInput): SeoReport {
       : check("blocks", "Finished blocks", 2, "warn", warnings.join(" · ")),
   );
 
+  // --- heading outline ------------------------------------------------------
+  // The page's <h1> is its title; the builder only emits h2 and h3. A level 3
+  // before any level 2 is a hole in the outline — a sub-point with nothing
+  // above it — which is what screen readers and crawlers actually trip on.
+  if (isEmpty) {
+    checks.push(vacuous("outline", "Heading outline", 2));
+  } else if (headingLevels.length === 0) {
+    checks.push(
+      check(
+        "outline",
+        "Heading outline",
+        2,
+        "warn",
+        "No sub-headings. A long page without them is one wall of text.",
+      ),
+    );
+  } else if (headingLevels[0] === 3) {
+    checks.push(
+      check(
+        "outline",
+        "Heading outline",
+        2,
+        "warn",
+        "The first sub-heading is a level 3 with no level 2 above it, which leaves a gap in the outline.",
+      ),
+    );
+  } else {
+    checks.push(
+      check("outline", "Heading outline", 2, "pass", `${headingLevels.length} sub-headings.`),
+    );
+  }
+
+  // --- broken internal links ------------------------------------------------
+  if (input.knownPaths) {
+    checks.push(
+      brokenLinks.length === 0
+        ? check("brokenLinks", "Links resolve", 3, "pass")
+        : check(
+            "brokenLinks",
+            "Links resolve",
+            3,
+            "fail",
+            `${brokenLinks.length} internal link${brokenLinks.length === 1 ? " goes" : "s go"} nowhere: ${brokenLinks
+              .slice(0, 3)
+              .join(", ")}${brokenLinks.length > 3 ? "…" : ""}. Fix the address or add a redirect.`,
+          ),
+    );
+  }
+
+  // --- target keyword -------------------------------------------------------
+  const keyword = input.seo?.targetKeyword?.trim() ?? "";
+  if (keyword) {
+    const inTitle = containsPhrase(title, keyword);
+    const inDescription = containsPhrase(description, keyword);
+    const inSlug = containsPhrase(input.slug, keyword);
+    const inHeadings = containsPhrase(headingText, keyword);
+
+    // One check for the places that carry the most weight, because four
+    // separate rows for one phrase reads as nagging rather than advice.
+    const placesMissing = [
+      inTitle ? null : "the title",
+      inDescription ? null : "the description",
+      inHeadings ? null : "any sub-heading",
+    ].filter(Boolean) as string[];
+
+    checks.push(
+      placesMissing.length === 0
+        ? check("keywordPlacement", "Keyword placement", 3, "pass", `Found in the title, description and headings.`)
+        : check(
+            "keywordPlacement",
+            "Keyword placement",
+            3,
+            placesMissing.length === 3 ? "fail" : "warn",
+            `"${keyword}" is missing from ${listWords(placesMissing)}.`,
+          ),
+    );
+
+    checks.push(
+      inSlug
+        ? check("keywordSlug", "Keyword in the address", 1, "pass")
+        : check(
+            "keywordSlug",
+            "Keyword in the address",
+            1,
+            "warn",
+            `/${input.slug} does not contain "${keyword}". Changing a live address costs its rankings, so weigh this against the page's age.`,
+          ),
+    );
+
+    const keywordCount = countPhrase(text, keyword);
+    const keywordDensity = density(text, keyword, words);
+    const shown = keywordDensity.toFixed(1);
+
+    if (words === 0) {
+      checks.push(vacuous("keywordDensity", "Keyword density", 2));
+    } else if (keywordCount === 0) {
+      checks.push(
+        check(
+          "keywordDensity",
+          "Keyword density",
+          2,
+          "fail",
+          `"${keyword}" does not appear in the page's text at all.`,
+        ),
+      );
+    } else if (keywordDensity > DENSITY_MAX) {
+      checks.push(
+        check(
+          "keywordDensity",
+          "Keyword density",
+          2,
+          "fail",
+          `${shown}% — ${keywordCount} use${keywordCount === 1 ? "" : "s"}. Over ${DENSITY_MAX}% reads as stuffing, which is penalised rather than ignored.`,
+        ),
+      );
+    } else if (keywordDensity < DENSITY_MIN) {
+      checks.push(
+        check(
+          "keywordDensity",
+          "Keyword density",
+          2,
+          "warn",
+          `${shown}% — ${keywordCount} use${keywordCount === 1 ? "" : "s"} in ${words} words. Thin for the phrase the page is written for.`,
+        ),
+      );
+    } else {
+      checks.push(
+        check(
+          "keywordDensity",
+          "Keyword density",
+          2,
+          "pass",
+          `${shown}% — ${keywordCount} use${keywordCount === 1 ? "" : "s"}.`,
+        ),
+      );
+    }
+  }
+
   const total = checks.reduce((sum, c) => sum + c.weight, 0);
   const earned = checks.reduce(
     (sum, c) => sum + (c.status === "pass" ? c.weight : c.status === "warn" ? c.weight / 2 : 0),
@@ -369,6 +574,15 @@ export function analysePage(input: AnalyzerInput): SeoReport {
       warn: checks.filter((c) => c.status === "warn").length,
       fail: checks.filter((c) => c.status === "fail").length,
     },
-    stats: { words, internalLinks, images, imagesWithAlt },
+    stats: {
+      words,
+      internalLinks,
+      externalLinks,
+      brokenLinks,
+      images,
+      imagesWithAlt,
+      keywordCount: keyword ? countPhrase(text, keyword) : null,
+      keywordDensity: keyword ? Number(density(text, keyword, words).toFixed(2)) : null,
+    },
   };
 }

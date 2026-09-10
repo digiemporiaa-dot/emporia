@@ -25,6 +25,9 @@ export default async function SettingsPage() {
   // Navigation and the AI provider are both "how the system is configured", so
   // both cards are gated on the same permission.
   const seesSettings = can(actor, "settings.view");
+  // Its own permission: a content role manages redirects without being able to
+  // change how the system is configured.
+  const seesRedirects = can(actor, "redirects.view");
   const ai = seesSettings ? await aiStatus() : null;
 
   return (
@@ -62,6 +65,22 @@ export default async function SettingsPage() {
                 <p className="mt-2 text-xs text-ink-subtle">
                   The header menu, the call-to-action button, the footer columns, social profiles
                   and contact details.
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
+        ) : null}
+
+        {seesRedirects ? (
+          <Link href="/admin/settings/redirects" className="group">
+            <Card className="h-full transition-colors group-hover:border-navy-300">
+              <CardBody>
+                <h2 className="font-display text-lg text-navy-800 group-hover:text-brand-red">
+                  Redirects
+                </h2>
+                <p className="mt-2 text-xs text-ink-subtle">
+                  Keep an old address working after a page is renamed, so its ranking moves with
+                  it rather than being lost.
                 </p>
               </CardBody>
             </Card>

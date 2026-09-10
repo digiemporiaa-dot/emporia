@@ -7,6 +7,7 @@ import { AlertCircle, Check, Copy, Link2, TriangleAlert, X } from "lucide-react"
 import { Button, Field, Input, Select, Textarea, useToast } from "@/components/ui";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
 import type { SeoReport } from "@/lib/seo/analyzer";
+import type { LinkSuggestion } from "@/lib/services/seo-links.service";
 import type { ActionResult } from "@/lib/errors";
 import {
   issuePreviewTokenAction,
@@ -27,6 +28,7 @@ type Seo = {
   metaTitle: string | null;
   metaDescription: string | null;
   canonical: string | null;
+  targetKeyword: string | null;
   ogTitle: string | null;
   ogDescription: string | null;
   ogImageId: string | null;
@@ -73,6 +75,7 @@ export function SeoPanel({
   pageId,
   seo,
   report,
+  linkSuggestions,
   ogImage,
   twitterImage,
   previewUrl,
@@ -82,6 +85,8 @@ export function SeoPanel({
   pageId: string;
   seo: Seo;
   report: SeoReport;
+  /** Pages this one names but does not link to. Suggestions only — see below. */
+  linkSuggestions: readonly LinkSuggestion[];
   ogImage: PickedMedia | null;
   twitterImage: PickedMedia | null;
   previewUrl: string | null;
@@ -131,6 +136,22 @@ export function SeoPanel({
               Saved.
             </div>
           ) : null}
+
+          <Field
+            id="targetKeyword"
+            label="Target keyword"
+            hint="One phrase this page is written to rank for. Blank switches the keyword checks off."
+            error={err("targetKeyword")}
+          >
+            {(aria) => (
+              <Input
+                {...aria}
+                name="targetKeyword"
+                defaultValue={seo?.targetKeyword ?? ""}
+                placeholder="digital marketing agency in gurgaon"
+              />
+            )}
+          </Field>
 
           <Field
             id="metaTitle"
@@ -298,6 +319,7 @@ export function SeoPanel({
 
       <div className="lg:col-span-5">
         <ScorePanel report={report} />
+        <LinkSuggestions suggestions={linkSuggestions} />
         {canEdit ? <PreviewLinkPanel pageId={pageId} previewUrl={previewUrl} /> : null}
       </div>
     </section>
@@ -333,8 +355,11 @@ function ScorePanel({ report }: { report: SeoReport }) {
         {report.counts.fail} to fix · {report.counts.warn} to review · {report.counts.pass} passing
       </p>
       <p className="mt-1 text-xs text-ink-subtle">
-        {report.stats.words} words · {report.stats.internalLinks} internal links ·{" "}
-        {report.stats.images} images
+        {report.stats.words} words · {report.stats.internalLinks} internal ·{" "}
+        {report.stats.externalLinks} external links · {report.stats.images} images
+        {report.stats.keywordDensity === null
+          ? ""
+          : ` · ${report.stats.keywordDensity.toFixed(1)}% keyword`}
       </p>
 
       <ul className="mt-4 space-y-2.5">
@@ -428,6 +453,42 @@ function PreviewLinkPanel({ pageId, previewUrl }: { pageId: string; previewUrl: 
           Create a preview link
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Pages this one mentions by name but does not link to.
+ *
+ * Suggestions, and only suggestions. There is no "apply": inserting a link into
+ * someone's copy means editing a sentence they wrote, and a tool that quietly
+ * rewrites what a page claims is not a tool anyone should trust. The editor is
+ * told what is missing and where; deciding whether the sentence should carry a
+ * link is theirs.
+ */
+function LinkSuggestions({ suggestions }: { suggestions: readonly LinkSuggestion[] }) {
+  if (suggestions.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-white p-4">
+      <h3 className="text-sm font-semibold text-navy-800">Could link to</h3>
+      <p className="mt-1 text-xs text-ink-muted">
+        This page names these by name without linking to them. Add a link where the sentence
+        genuinely calls for one — these are suggestions, and nothing here changes your copy.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {suggestions.map((item) => (
+          <li key={item.path} className="flex items-baseline justify-between gap-3">
+            <span className="min-w-0">
+              <span className="text-xs text-navy-800">{item.name}</span>
+              <span className="block truncate font-mono text-2xs text-ink-subtle">
+                {item.path}
+              </span>
+            </span>
+            <span className="shrink-0 text-2xs text-ink-subtle">{item.kind}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -255,12 +255,29 @@ position token. Tags reuse `Tag` via `MediaTag`, and the name-to-row
 reconciliation moved to `lib/services/tags.ts`, shared with the blog.
 See ARCHITECTURE 17.1b-vii.
 
-### Phase 8 — SEO 2.0
+### Phase 8 — SEO 2.0 — **DONE**
 
 Extends `lib/seo/analyzer.ts`: target keyword, keyword presence and density,
 H2 structure, internal/external link checks, image alt. Adds internal-link
 suggestions — **surfaced as suggestions, never auto-applied** — plus the
 redirect admin UI that the engine has been missing.
+
+Delivered. `Seo.targetKeyword` plus `lib/seo/keyword.ts`, which normalises case,
+punctuation and separators so a slug reads as a phrase, and matches on word
+boundaries so "seo" does not match inside "Seoul". Density is the share of the
+page's words the phrase occupies; over the ceiling **fails** rather than warns,
+because stuffing is penalised, not merely unhelpful. Placement is one check
+naming what is missing, not four rows about one phrase. The outline check looks
+for a level 3 before any level 2, which is the hole that actually hurts. Broken
+internal links are found by passing `knownPaths` into the analyzer, which stays
+a pure function — omitting the set skips the check rather than calling every
+link broken, and active redirects count as resolving. `inlineLinks` now captures
+external URLs, which it never did. Suggestions come from published entities the
+page names without linking to, one-word names excluded, and there is no apply.
+The redirect screen exposed that the service took no actor, checked no
+permission and wrote no audit; it does all three now, and gained delete and
+list. See ARCHITECTURE 17.1b-viii, including a stated known duplication between
+the two SEO forms and the parity test that now guards it.
 
 ### Phase 9 — CMS search and bulk operations
 
