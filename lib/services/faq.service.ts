@@ -119,6 +119,38 @@ export async function updateFaq(actor: Actor, id: string, input: FaqInput) {
   return faq;
 }
 
+/**
+ * Switch an FAQ on or off, without touching anything else.
+ *
+ * An FAQ has no draft state — it is shown or it is not — so this is an edit,
+ * gated on `faqs.edit`, rather than an act of publication. Separate from
+ * `updateFaq` because a bulk action must not have to reconstruct the whole
+ * record to change one flag.
+ */
+export async function setFaqActive(actor: Actor, id: string, isActive: boolean) {
+  requirePermission(actor, "faqs.edit");
+
+  const before = await getFaq(actor, id);
+
+  const faq = await withAudit(
+    {
+      actor,
+      action: isActive ? "PUBLISH" : "UNPUBLISH",
+      entityType: "FAQ",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.fAQ.update({ where: { id }, data: { isActive } }),
+  );
+
+  // The same three surfaces `updateFaq` busts: an FAQ is attached to a service,
+  // a city or a package, and any of them may now show or hide it.
+  revalidateTag(CACHE_TAGS.services);
+  revalidateTag("cities");
+  revalidateTag(CACHE_TAGS.packages);
+  return faq;
+}
+
 export async function deleteFaq(actor: Actor, id: string) {
   requirePermission(actor, "faqs.delete");
 

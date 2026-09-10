@@ -279,11 +279,29 @@ permission and wrote no audit; it does all three now, and gained delete and
 list. See ARCHITECTURE 17.1b-viii, including a stated known duplication between
 the two SEO forms and the parity test that now guards it.
 
-### Phase 9 — CMS search and bulk operations
+### Phase 9 — CMS search and bulk operations — **DONE**
 
 Server-side, paginated, filtered global search across pages and every content
-type. Bulk publish / unpublish / archive / tag, permission-checked, audited,
-with per-record validation and clear partial-failure reporting.
+type. Bulk publish / unpublish / archive, permission-checked, audited, with
+per-record validation and clear partial-failure reporting.
+
+Delivered as one screen — `/admin/website/library` — rather than selection
+bolted onto six list screens: those keep working, and a selection spanning types
+only makes sense somewhere every type appears. `lib/cms/registry.ts` is the
+single description of what content is, read by both search and bulk so they
+cannot disagree. Search queries ten tables in parallel rather than maintaining
+an index that would drift, and each type is read only if the actor holds its own
+view permission — a type filter naming something they cannot see returns nothing
+rather than widening. Bulk goes through each type's own publish path and never
+writes a status column, so a thin service-city page refuses here exactly as it
+would from its own screen, with its own words. Six types gained a `setStatus`
+function, because changing status through their full `update*` would have meant
+reconstructing the whole record.
+
+**Not done: bulk tagging.** Of these ten types only blog posts carry tags, so a
+"bulk tag" across the library would apply to one type. It is left out rather
+than built as a button that is disabled for nine tenths of a selection.
+See ARCHITECTURE 17.1b-ix.
 
 ### Phase 10 — Templates
 

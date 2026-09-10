@@ -173,6 +173,38 @@ export async function updateCaseStudy(actor: Actor, id: string, input: CaseStudy
   return study;
 }
 
+/**
+ * Set the publication status, without touching anything else.
+ *
+ * Separate from `updateCaseStudy` because bulk actions and the list screens need to
+ * publish a record without reconstructing its whole input — and reconstructing
+ * it is how a bulk action quietly overwrites a field nobody meant to change.
+ * Publishing needs `casestudies.publish`; anything else is an ordinary edit.
+ */
+export async function setCaseStudyStatus(
+  actor: Actor,
+  id: string,
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED",
+) {
+  requirePermission(actor, status === "PUBLISHED" ? "casestudies.publish" : "casestudies.edit");
+
+  const before = await getCaseStudy(actor, id);
+
+  const updated = await withAudit(
+    {
+      actor,
+      action: status === "PUBLISHED" ? "PUBLISH" : "UNPUBLISH",
+      entityType: "CaseStudy",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.caseStudy.update({ where: { id }, data: { status } }),
+  );
+
+  revalidateTag(CACHE_TAGS.caseStudies);
+  return updated;
+}
+
 export async function deleteCaseStudy(actor: Actor, id: string) {
   requirePermission(actor, "casestudies.delete");
 

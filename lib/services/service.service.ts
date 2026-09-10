@@ -153,6 +153,38 @@ export async function updateService(actor: Actor, id: string, input: ServiceInpu
  * while anything depends on it and says what. Archiving is the way to retire
  * one.
  */
+/**
+ * Set the publication status, without touching anything else.
+ *
+ * Separate from `updateService` because bulk actions and the list screens need to
+ * publish a record without reconstructing its whole input — and reconstructing
+ * it is how a bulk action quietly overwrites a field nobody meant to change.
+ * Publishing needs `catalog.publish`; anything else is an ordinary edit.
+ */
+export async function setServiceStatus(
+  actor: Actor,
+  id: string,
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED",
+) {
+  requirePermission(actor, status === "PUBLISHED" ? "catalog.publish" : "catalog.edit");
+
+  const before = await getService(actor, id);
+
+  const updated = await withAudit(
+    {
+      actor,
+      action: status === "PUBLISHED" ? "PUBLISH" : "UNPUBLISH",
+      entityType: "Service",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.service.update({ where: { id }, data: { status } }),
+  );
+
+  revalidateTag(CACHE_TAGS.services);
+  return updated;
+}
+
 export async function deleteService(actor: Actor, id: string) {
   requirePermission(actor, "catalog.delete");
 

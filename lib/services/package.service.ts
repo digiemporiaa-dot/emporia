@@ -181,3 +181,36 @@ export async function updatePackage(actor: Actor, id: string, input: PackageInpu
   revalidateTag(PACKAGE_TAG);
   return pkg;
 }
+
+/**
+ * Set the publication status, without touching anything else.
+ *
+ * Separate from `updatePackage` because bulk actions and the list screens need
+ * to publish a record without reconstructing its whole input — and
+ * reconstructing it is how a bulk action quietly overwrites a field nobody
+ * meant to change. Publishing needs `catalog.publish`; anything else is an
+ * ordinary edit.
+ */
+export async function setPackageStatus(
+  actor: Actor,
+  id: string,
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED",
+) {
+  requirePermission(actor, status === "PUBLISHED" ? "catalog.publish" : "catalog.edit");
+
+  const before = await getPackage(actor, id);
+
+  const updated = await withAudit(
+    {
+      actor,
+      action: status === "PUBLISHED" ? "PUBLISH" : "UNPUBLISH",
+      entityType: "ServicePackage",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.servicePackage.update({ where: { id }, data: { status } }),
+  );
+
+  revalidateTag(PACKAGE_TAG);
+  return updated;
+}

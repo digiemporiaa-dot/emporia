@@ -94,6 +94,38 @@ export async function updateTestimonial(actor: Actor, id: string, input: Testimo
   return testimonial;
 }
 
+/**
+ * Set the publication status, without touching anything else.
+ *
+ * Separate from `updateTestimonial` because bulk actions and the list screens need to
+ * publish a record without reconstructing its whole input — and reconstructing
+ * it is how a bulk action quietly overwrites a field nobody meant to change.
+ * Publishing needs `testimonials.publish`; anything else is an ordinary edit.
+ */
+export async function setTestimonialStatus(
+  actor: Actor,
+  id: string,
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED",
+) {
+  requirePermission(actor, status === "PUBLISHED" ? "testimonials.publish" : "testimonials.edit");
+
+  const before = await getTestimonial(actor, id);
+
+  const updated = await withAudit(
+    {
+      actor,
+      action: status === "PUBLISHED" ? "PUBLISH" : "UNPUBLISH",
+      entityType: "Testimonial",
+      entityId: id,
+      before,
+    },
+    (tx) => tx.testimonial.update({ where: { id }, data: { status } }),
+  );
+
+  revalidateTag(CACHE_TAGS.testimonials);
+  return updated;
+}
+
 export async function deleteTestimonial(actor: Actor, id: string) {
   requirePermission(actor, "testimonials.delete");
 

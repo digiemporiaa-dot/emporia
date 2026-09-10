@@ -55,6 +55,14 @@ export default async function WebsiteHubPage() {
     permission: Permission;
   }[] = [
     {
+      href: "/admin/website/library",
+      title: "Content library",
+      detail: "Every type at once",
+      description:
+        "Search across pages, posts, case studies, testimonials, FAQs and the catalogue — and publish, unpublish or archive a selection together.",
+      permission: "pages.view",
+    },
+    {
       href: "/admin/website/pages",
       title: "Pages",
       detail: published(livePages, pages),
