@@ -321,11 +321,21 @@ parsed and migrated on use, and a band that no longer parses is dropped rather
 than failing the page. Managing templates needs `pages.publish`, and deleting one
 is refused while pages use it. See ARCHITECTURE 17.1b-x.
 
-### Phase 11 — Page analytics and content → revenue
+### Phase 11 — Page analytics and content → revenue — **DONE**
 
 Per-page rollup on `Lead.landingPath` through opportunity, client and payment.
 Traffic metrics per decision D1; anything unavailable renders
 **"Not connected"**, never a zero.
+
+Delivered at `/admin/analytics/pages`. **D1 settled as (c)**: no pageview store
+and no analytics provider, so sessions read "Not connected" and the screen says
+why. Reversible — `lib/reporting` already defines the boundary GA4 would fill.
+Revenue is attributed once, to the first page that brought the client, reusing
+`convertingLeads`' existing first-touch rule so the column sums to money
+actually received. Built on `revenueByClient` and `convertingLeads` rather than
+beside them. Paths are normalised so query strings and trailing slashes gather
+into one row. Revenue is withheld by the service without `invoices.view`, and
+lead figures inherit `visibilityFilter`. See ARCHITECTURE 17.1b-xi.
 
 ### Phase 12 — Personalization
 
@@ -359,7 +369,12 @@ phases. They are acceptance criteria applied to every phase above.
 
 ## Part D — Decisions needed before Phase 1
 
-**D1 — Traffic metrics.** Which?
+**D1 — Traffic metrics. Settled: (c), in Phase 11.** Neither store nor provider
+was built. (b) needs a Google service-account credential this build does not
+have, and (a) would add a write path to every public request for a phase whose
+purpose is the CRM rollup. Sessions render "Not connected" and the reporting
+provider boundary is where a traffic source slots in later. The options as
+weighed:
 
 - **(a) First-party pageview store** — one lightweight event table plus an
   ingest route. Full control, correct attribution joins, no third party. Cost:
