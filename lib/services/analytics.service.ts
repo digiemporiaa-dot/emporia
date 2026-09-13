@@ -61,6 +61,7 @@ async function revenueByClient(
 
 type ConvertingLead = {
   clientId: string;
+  landingPath: string | null;
   sourceId: string;
   serviceId: string | null;
   cityId: string | null;
@@ -76,6 +77,7 @@ async function convertingLeads(where: Prisma.LeadWhereInput): Promise<Converting
     orderBy: [{ convertedAt: "asc" }, { createdAt: "asc" }],
     select: {
       convertedClientId: true,
+      landingPath: true,
       sourceId: true,
       serviceId: true,
       cityId: true,
@@ -647,4 +649,143 @@ export async function revenueByDimension(
       .sort((a, b) => new Decimal(b.revenue).comparedTo(new Decimal(a.revenue)));
 
   return { service: toRows(service, "service"), city: toRows(city, "city") };
+}
+
+// ---------------------------------------------------------------------------
+// Content → revenue, per page
+// ---------------------------------------------------------------------------
+
+/**
+ * What a page is worth.
+ *
+ * The chain the whole product is built around, read backwards: a landing page
+ * captured a lead, the lead was qualified, it became a client, and that client
+ * paid. Every arrow is a real foreign key (CLAUDE.md 1), so this is a join
+ * rather than an estimate.
+ *
+ * ## Revenue is attributed once, to the first page that brought the client
+ *
+ * A client can arrive through two leads from two different pages. Adding their
+ * payments under both would make the column sum to more money than the agency
+ * received, which is the kind of number that gets quoted in a meeting and then
+ * cannot be defended. `convertingLeads` already resolves each client to its
+ * earliest converting lead, so every payment is counted under exactly one page
+ * — the same rule the service and city breakdowns use.
+ *
+ * ## Traffic is absent, not zero
+ *
+ * There is no pageview store and no analytics provider implemented
+ * (`lib/reporting` defines the boundary and nothing fills it). Sessions and
+ * conversion rate are therefore `null`, and the screen says "Not connected".
+ * A zero would read as "this page gets no visitors", which is a claim nobody
+ * has the data to make (CLAUDE.md 5).
+ */
+export type PageFunnelRow = {
+  /** The landing path exactly as captured, normalised. */
+  path: string;
+  /** The page's admin title where one matches the path, else null. */
+  title: string | null;
+  /** Where to edit it, where the path resolves to a CMS page. */
+  pageId: string | null;
+  leads: number;
+  qualified: number;
+  clients: number;
+  /** Fixed-precision string. Payments captured in range, attributed once. */
+  revenue: string;
+  /** Null, always, until a traffic source exists. Never zero. */
+  sessions: number | null;
+};
+
+/**
+ * A landing path, reduced to something two rows can agree on.
+ *
+ * `/pricing?utm_source=x` and `/pricing/` are the same page to a reader, and
+ * splitting them across three rows would understate every one of them.
+ */
+function landingKey(path: string | null): string {
+  if (!path) return UNATTRIBUTED;
+  const trimmed = path.trim();
+  if (!trimmed) return UNATTRIBUTED;
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  const withoutQuery = withSlash.split(/[?#]/)[0] ?? withSlash;
+  return withoutQuery.length > 1 ? withoutQuery.replace(/\/+$/, "") : "/";
+}
+
+/** Which lead statuses count as having got somewhere. */
+const QUALIFIED: readonly string[] = [
+  "QUALIFIED",
+  "PROPOSAL",
+  "NEGOTIATION",
+  "WON",
+];
+
+export async function pageFunnel(actor: Actor, range: DateRange): Promise<PageFunnelRow[]> {
+  requirePermission(actor, "analytics.view");
+
+  // Revenue needs the invoicing permission, so an actor without it gets the
+  // funnel with no money column rather than being refused the whole report.
+  const seesRevenue = can(actor, "invoices.view");
+
+  const [leads, converting, revenue] = await Promise.all([
+    db.lead.findMany({
+      where: { ...visibilityFilter(actor), deletedAt: null, createdAt: rangeFilter(range) },
+      select: { landingPath: true, status: true },
+    }),
+    convertingLeads(visibilityFilter(actor)),
+    seesRevenue ? revenueByClient(range) : Promise.resolve(null),
+  ]);
+
+  const rows = new Map<string, { leads: number; qualified: number; clients: number; revenue: Decimal }>();
+  const blank = () => ({ leads: 0, qualified: 0, clients: 0, revenue: ZERO });
+
+  for (const lead of leads) {
+    const key = landingKey(lead.landingPath);
+    const entry = rows.get(key) ?? blank();
+    entry.leads += 1;
+    if (QUALIFIED.includes(lead.status)) entry.qualified += 1;
+    rows.set(key, entry);
+  }
+
+  for (const lead of converting) {
+    const key = landingKey(lead.landingPath);
+    const entry = rows.get(key) ?? blank();
+    entry.clients += 1;
+    const received = revenue?.received.get(lead.clientId);
+    if (received) entry.revenue = entry.revenue.plus(received);
+    rows.set(key, entry);
+  }
+
+  // Name the paths that are CMS pages, so a row is something to click rather
+  // than a string to go and look up.
+  const paths = [...rows.keys()].filter((key) => key !== UNATTRIBUTED);
+  const slugs = paths.map((path) => path.replace(/^\//, "")).filter(Boolean);
+  const pages = slugs.length
+    ? await db.page.findMany({
+        where: { slug: { in: slugs }, deletedAt: null },
+        select: { id: true, slug: true, title: true },
+      })
+    : [];
+  const bySlug = new Map(pages.map((page) => [page.slug, page]));
+
+  return [...rows.entries()]
+    .map(([path, value]) => {
+      const page = bySlug.get(path.replace(/^\//, ""));
+      return {
+        path: path === UNATTRIBUTED ? "Unknown" : path,
+        title: page?.title ?? null,
+        pageId: page?.id ?? null,
+        leads: value.leads,
+        qualified: value.qualified,
+        clients: value.clients,
+        revenue: toMoneyString(value.revenue),
+        // Not zero: nobody has the data to claim this page had no visitors.
+        sessions: null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        new Decimal(b.revenue).comparedTo(new Decimal(a.revenue)) ||
+        b.leads - a.leads ||
+        a.path.localeCompare(b.path),
+    );
 }

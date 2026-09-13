@@ -2082,6 +2082,53 @@ writing one page. Deleting one is refused while pages point at it: dropping the
 `templateId` would quietly lift its restriction on every page made from it.
 Switching it off removes it from the New page list without touching them.
 
+### 17.1b-xi What each page is worth
+
+CMS 2.0 Phase 11. The spine of the product read backwards: a landing page
+captured a lead, the lead was qualified, it became a client, and that client
+paid. Every arrow is a foreign key, so `/admin/analytics/pages` is a join
+rather than an estimate.
+
+**Decision D1, settled: (c).** Traffic is not collected. A first-party pageview
+store would add a write path to every public request plus bot filtering to get
+right; the GA4 Data API needs a Google service-account credential this build
+does not have, and CLAUDE.md 15 rule 5 says flag a missing credential rather
+than paper over it. So the report ships the half that is real — leads through
+to revenue, which is the half that matters commercially — and sessions read
+**"Not connected"**. Not zero: a zero claims the page has no visitors, which is
+a claim nobody here has the data to make.
+
+That is reversible rather than final. `lib/reporting/types.ts` already defines
+the provider boundary and already names GA4; a traffic source slots in there and
+fills `sessions` without anything above it changing.
+
+**Revenue is attributed once, to the first page that brought the client.** A
+client can arrive through two leads from two pages. Adding their payments under
+both would make the column sum to more money than the agency received — the kind
+of number that gets quoted in a meeting and then cannot be defended.
+`convertingLeads` already resolves each client to its earliest converting lead,
+so this reuses the rule the service and city breakdowns established rather than
+inventing a second one. The test that matters asserts the second page reads
+zero.
+
+**Built on the existing rollup, not beside it.** `revenueByClient` and
+`convertingLeads` were already there and already correct; `pageFunnel` adds
+`landingPath` to the converting-lead projection and a funnel query for the
+counts. No new service module, no second definition of what revenue means.
+
+**Paths are normalised into one row.** `/pricing`, `/pricing/` and
+`/pricing?utm_source=x` are the same page to a reader, and three rows would
+understate every one of them. A path matching a CMS page slug is named and
+linked; one that does not is left as the bare path rather than given an invented
+name. Leads with no landing path gather under "Unknown" rather than being
+dropped.
+
+**Permissions narrow the report rather than refusing it.** Revenue needs
+`invoices.view` and is withheld by the service, not hidden by the screen. Lead
+figures pass through `visibilityFilter`, so a sales executive without
+`leads.view.team` sees only the pages their own leads landed on — the report
+inherits that rule rather than working around it.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

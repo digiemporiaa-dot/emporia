@@ -119,6 +119,9 @@ export const NAV: readonly NavSpec[] = [
   {
     item: { kind: "link", href: "/admin/analytics", label: "Analytics", icon: "analytics" },
     permission: "analytics.view",
+    children: [
+      { href: "/admin/analytics/pages", label: "Page performance", permission: "analytics.view" },
+    ],
   },
   {
     item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" },
