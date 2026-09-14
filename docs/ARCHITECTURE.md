@@ -2182,6 +2182,62 @@ A rule with no conditions set is refused: it would match everyone, which is what
 having no rule already means, so saving it would read as "targeted" while doing
 nothing.
 
+### 17.1b-xiii Experiments
+
+CMS 2.0 Phase 13. A band can belong to an arm of an A/B test, and a share of
+visitors sees it.
+
+**Assignment is derived, not stored.** `lib/experiments/assign.ts` hashes the
+visitor id with the experiment key, so the same person sees the same arm on
+every visit with no lookup and no write on the render path. Salted by
+experiment key, so two tests running at once do not assign the same people the
+same way and confound each other; ordered by variant key, so renaming an arm or
+a differently-ordered query does not move the buckets and reassign everyone
+mid-test.
+
+**Exposures are stored, once per visitor per experiment.** That is the one write
+this feature adds, and it is unavoidable: a sample size cannot be derived from
+anything else, and without one a verdict is a guess. The unique constraint is
+the point — a visitor counts once however many times they reload, so the
+denominator is people rather than page views. It is written by a beacon _after_
+the page renders, following the popup event route, because counting a sample
+must never sit on the critical path of serving one.
+
+**Conversions come through the attribution the CRM already records.** A lead's
+first or last touch carries a `visitorId`; an exposure carries the same id. No
+new tracking and no second definition of what a conversion is.
+
+**The reading refuses more often than it declares.** A two-proportion z-test,
+with a floor of 100 visitors per arm and 10 conversions between them; below that
+it reports how far off it is rather than a percentage that would be read as a
+result. It refuses three arms outright rather than applying no correction for
+multiple comparisons. It names the higher arm as "ahead", never "the winner".
+The p-values are checked in `tests/experiment-stats.test.ts` against values
+computed independently — the first two references written there were both wrong
+by hand, and a statistics module checked against a bad reference is worse than
+one checked against none.
+
+**Peeking is stated on screen** because the tool cannot prevent it: checking a
+running test repeatedly and stopping at the first significant reading inflates
+the false-positive rate well past the nominal 5%.
+
+A draft or stopped test never leaks its arm onto the live site — `runningExperimentsFor`
+filters on status, and a band whose experiment is not running is dropped rather
+than shown. A visitor with no id yet sees the page without its variant bands
+rather than being assigned arbitrarily, because assigning them would mean a
+different arm on their next request.
+
+Deleting a test with exposures is refused: those rows are the only record of
+what the site showed people. Returning a test that has run to draft is refused
+for the same reason.
+
+> **A pre-existing bug this phase surfaced.** `NextResponse.json(x, { status: 204 })`
+> throws "Invalid response status code 204" — a 204 carries no body. The popup
+> event route shipped with exactly that, so every beacon from a visitor with no
+> cookie was answered 500 instead of being quietly ignored. It was found by
+> copying the pattern into the exposure route and then actually calling it. Both
+> are fixed, and `tests/beacon-204.test.ts` fails if either comes back.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

@@ -55,6 +55,14 @@ export default async function WebsiteHubPage() {
     permission: Permission;
   }[] = [
     {
+      href: "/admin/website/experiments",
+      title: "Experiments",
+      detail: "A/B tests on a page",
+      description:
+        "Show some visitors a different band and see which produces more enquiries. No winner is declared without a defensible sample.",
+      permission: "pages.view",
+    },
+    {
       href: "/admin/website/templates",
       title: "Templates",
       detail: "The shape a page starts in",

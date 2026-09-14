@@ -54,6 +54,14 @@ export type PublishedPage = {
    * *visitor* is not cached with them; see `forVisitor`.
    */
   audiences: Record<string, AudienceRule[]>;
+  /**
+   * Experiment arm per section id, for the bands that belong to one.
+   *
+   * Cached with the page for the same reason the audience rules are: which arm
+   * a band belongs to changes when the page does. Which arm the *visitor* is in
+   * is decided per request, outside the cache.
+   */
+  variants: Record<string, string>;
   seo: EntitySeo | null;
 };
 
@@ -123,6 +131,7 @@ export const publishedPageSections = unstable_cache(
                 referrerContains: true,
               },
             },
+            variantId: true,
           },
         },
       },
@@ -140,9 +149,11 @@ export const publishedPageSections = unstable_cache(
     // a band dropped as unparseable cannot leave a rule behind.
     const parsedIds = new Set(sections.map((section) => section.id));
     const audiences: Record<string, AudienceRule[]> = {};
+    const variants: Record<string, string> = {};
     for (const row of page.sections) {
-      if (!parsedIds.has(row.id) || row.audiences.length === 0) continue;
-      audiences[row.id] = row.audiences;
+      if (!parsedIds.has(row.id)) continue;
+      if (row.audiences.length > 0) audiences[row.id] = row.audiences;
+      if (row.variantId) variants[row.id] = row.variantId;
     }
 
     return {
@@ -152,6 +163,7 @@ export const publishedPageSections = unstable_cache(
       sections,
       images: Object.fromEntries(images),
       audiences,
+      variants,
     };
   },
   ["published-page"],

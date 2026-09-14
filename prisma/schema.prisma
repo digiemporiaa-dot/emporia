@@ -977,6 +977,95 @@ model SectionAudience {
   @@index([sectionId])
 }
 
+enum ExperimentStatus {
+  DRAFT
+  RUNNING
+  STOPPED
+}
+
+/// An A/B test on a page.
+///
+/// Assignment is **deterministic**, not stored: a visitor's variant is a hash
+/// of their visitor id and the experiment's key, so the same person sees the
+/// same thing on every visit without a lookup, and without a write on the read
+/// path.
+///
+/// Exposures *are* stored, once per visitor, because a sample size cannot be
+/// derived from anything else — and without a sample size a verdict is a guess
+/// (CLAUDE.md 5). That is the one write this feature adds, and it is the data
+/// the feature is fundamentally about.
+model Experiment {
+  id String @id @default(cuid())
+
+  key  String @unique
+  name String
+
+  /// What this test is trying to find out. Recorded so the result is read
+  /// against the question that was asked, rather than a question invented
+  /// afterwards to fit the numbers.
+  hypothesis String?
+
+  status ExperimentStatus @default(DRAFT)
+
+  startedAt DateTime?
+  stoppedAt DateTime?
+
+  variants  ExperimentVariant[]
+  exposures ExperimentExposure[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+/// One arm of an experiment.
+model ExperimentVariant {
+  id           String     @id @default(cuid())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  /// Stable handle within the experiment, e.g. `control`, `b`.
+  key  String
+  name String
+
+  /// Relative share of traffic. Two variants at 1 and 1 split evenly; 3 and 1
+  /// sends three quarters to the first.
+  weight Int @default(1)
+
+  /// Bands that belong to this arm. A section with no variant is part of the
+  /// page itself and is shown to everyone in the test.
+  sections  PageSection[]
+  exposures ExperimentExposure[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([experimentId, key])
+  @@index([experimentId])
+}
+
+/// That a visitor was shown an arm, recorded once.
+///
+/// The unique constraint is the whole point: a visitor counts once towards the
+/// sample however many times they reload, so the denominator is people rather
+/// than page views.
+model ExperimentExposure {
+  id           String     @id @default(cuid())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  variantId String
+  variant   ExperimentVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  visitorId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([experimentId, visitorId])
+  @@index([variantId])
+  @@index([visitorId])
+}
+
 model PageTemplate {
   id String @id @default(cuid())
 
@@ -1034,6 +1123,11 @@ model PageSection {
   /// Who this band is for. Empty means everyone — see SectionAudience.
   audiences SectionAudience[]
 
+  /// The experiment arm this band belongs to, if any. A section with no variant
+  /// is part of the page itself and is shown to everyone in the test.
+  variantId String?
+  variant   ExperimentVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
   /// When set, this slot renders a ReusableSection instead of its own content.
   /// `type` and `content` are still populated: they hold the last resolved
   /// snapshot, so a reusable section that is deleted or unpublished degrades
@@ -1047,6 +1141,7 @@ model PageSection {
 
   @@index([pageId, order])
   @@index([reusableSectionId])
+  @@index([variantId])
 }
 
 /// A section authored once and placed on many pages.

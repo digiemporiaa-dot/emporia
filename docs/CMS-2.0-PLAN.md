@@ -359,11 +359,25 @@ device, new/returning, UTM source/medium/campaign, referrer — with the choice 
 the URL so it can be shared, and the UI states the absence rather than hiding
 it. See ARCHITECTURE 17.1b-xii.
 
-### Phase 13 — Experiments
+### Phase 13 — Experiments — **DONE**
 
 Deterministic variant assignment, conversion tracked through the existing CRM
 join. **No winner declared without a defensible sample**; the UI shows sample
 size and refuses a verdict below threshold rather than guessing.
+
+Delivered. Assignment is a hash of visitor id and experiment key — derived, not
+stored, so no write on the render path and the same visitor always sees the same
+arm. Exposures are stored once per visitor (the unique constraint makes the
+denominator people, not page views), written by a beacon after render.
+Conversions join through `UTMTracking.visitorId`, which the CRM already records.
+The reading is a two-proportion z-test with a floor of 100 visitors per arm and
+10 conversions, refuses three arms rather than skipping a correction, names the
+higher arm "ahead" rather than "the winner", and states the peeking caveat on
+screen. p-values are checked against independently computed references.
+
+Also fixed a **pre-existing bug** found by copying the popup beacon pattern and
+testing it: `NextResponse.json` with status 204 throws, so every popup beacon
+from a cookie-less visitor was a 500. See ARCHITECTURE 17.1b-xiii.
 
 ### Phase 14 — AI CMS assistant
 

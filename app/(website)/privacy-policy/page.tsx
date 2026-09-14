@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publishedPageSections } from "@/lib/content/queries";
 import { visibleSections } from "@/lib/content/personalise";
+import { PageExperiments } from "@/components/website/page-experiments";
 import { PageSections } from "@/components/website/page-sections";
 import { buildMetadata, privateMetadata } from "@/lib/seo/metadata";
 
@@ -31,10 +32,13 @@ export default async function Page() {
   if (!page) notFound();
 
   return (
-    <PageSections
-      sections={await visibleSections(page)}
-      title={page.title}
-      images={page.images}
-    />
+    <>
+      <PageSections
+        sections={await visibleSections(page)}
+        title={page.title}
+        images={page.images}
+      />
+      <PageExperiments page={page} />
+    </>
   );
 }

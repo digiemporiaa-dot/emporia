@@ -1,6 +1,8 @@
 import "server-only";
 import { readVisitorContext } from "@/lib/attribution/server";
 import { forVisitor } from "@/lib/content/queries";
+import { assign } from "@/lib/experiments/assign";
+import { runningExperimentsFor } from "@/lib/services/experiment.service";
 import type { AudienceVisitor } from "@/lib/content/audience";
 import type { ParsedSection } from "@/lib/content/sections";
 import type { PublishedPage } from "@/lib/content/queries";
@@ -20,12 +22,93 @@ import type { PublishedPage } from "@/lib/content/queries";
  * cache serving one visitor's variant to everybody.
  */
 export async function visibleSections(page: PublishedPage): Promise<ParsedSection[]> {
-  // Nothing on this page is targeted, so nothing about the visitor matters.
-  // Skipping the read keeps such a page as static as it was before.
-  if (Object.keys(page.audiences).length === 0) return page.sections;
+  const targeted = Object.keys(page.audiences).length > 0;
+  const inTest = Object.keys(page.variants).length > 0;
+
+  // Nothing on this page varies, so nothing about the visitor matters. Skipping
+  // the read keeps such a page as static as it was before either feature.
+  if (!targeted && !inTest) return page.sections;
 
   const context = await readVisitorContext();
-  return forVisitor(page, visitorFrom(context));
+  const sections = targeted ? forVisitor(page, visitorFrom(context)) : [...page.sections];
+
+  if (!inTest) return sections;
+  return experimentSections(page, sections, context.visitorId);
+}
+
+/**
+ * Drop the bands belonging to an arm this visitor is not in.
+ *
+ * Assignment is derived, not looked up, so this costs one query for the running
+ * experiments and no write. The exposure — the thing that *is* written — is
+ * recorded by a client beacon after the page has rendered, so counting a sample
+ * never sits on the critical path of serving one.
+ *
+ * A visitor with no id yet (a first request, before the cookie is set) is shown
+ * the page without its variant bands rather than assigned arbitrarily. Assigning
+ * them would mean a different arm on their next request, which is the one thing
+ * deterministic assignment exists to prevent.
+ */
+async function experimentSections(
+  page: PublishedPage,
+  sections: readonly ParsedSection[],
+  visitorId: string,
+): Promise<ParsedSection[]> {
+  const variantIds = [...new Set(Object.values(page.variants))];
+  const running = await runningExperimentsFor(variantIds);
+
+  // An arm whose experiment is not running is not part of the page at all: a
+  // draft or stopped test must not leak its variant onto the live site.
+  const live = new Set(running.keys());
+
+  if (!visitorId) {
+    return sections.filter((section) => !page.variants[section.id]);
+  }
+
+  const chosen = new Map<string, string | null>();
+  for (const [variantId, experiment] of running) {
+    if (chosen.has(experiment.experimentId)) continue;
+    const pick = assign(visitorId, experiment.experimentKey, experiment.variants);
+    chosen.set(experiment.experimentId, pick?.id ?? null);
+    void variantId;
+  }
+
+  return sections.filter((section) => {
+    const variantId = page.variants[section.id];
+    if (!variantId) return true;
+    if (!live.has(variantId)) return false;
+
+    const experiment = running.get(variantId);
+    if (!experiment) return false;
+    return chosen.get(experiment.experimentId) === variantId;
+  });
+}
+
+/**
+ * Which arm this visitor is in, for the bands on this page.
+ *
+ * Returned to the client so it can report the exposure. Only the arm the
+ * visitor is actually in is sent — the others, and their targeting, stay on the
+ * server.
+ */
+export async function assignedArms(
+  page: PublishedPage,
+  visitorId: string,
+): Promise<{ experimentId: string; variantId: string }[]> {
+  if (!visitorId || Object.keys(page.variants).length === 0) return [];
+
+  const running = await runningExperimentsFor([...new Set(Object.values(page.variants))]);
+  const seen = new Set<string>();
+  const arms: { experimentId: string; variantId: string }[] = [];
+
+  for (const experiment of running.values()) {
+    if (seen.has(experiment.experimentId)) continue;
+    seen.add(experiment.experimentId);
+    const pick = assign(visitorId, experiment.experimentKey, experiment.variants);
+    if (pick) arms.push({ experimentId: experiment.experimentId, variantId: pick.id });
+  }
+
+  return arms;
 }
 
 /** The attribution context, reduced to what an audience rule may look at. */
