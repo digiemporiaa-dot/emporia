@@ -13,6 +13,7 @@ import {
   Pencil,
   Plus,
   Replace,
+  Sparkles,
   Trash2,
   Unlink,
   Users,
@@ -30,11 +31,14 @@ import {
 import { templatePermits } from "@/lib/content/templates";
 import { describeRule, type AudienceRule } from "@/lib/content/audience";
 import { AudienceDialog } from "./audience-dialog";
+import { DraftSectionsDialog } from "./draft-dialog";
+import { AssistProvider } from "./rewrite-control";
 import type { ActionResult } from "@/lib/errors";
 import type { TaxonomyOptions } from "@/lib/content/taxonomy";
 import { BlockFields, type Content } from "./block-fields";
 import { AdvancedFields, GridFields, LayoutFields, StyleFields } from "./style-fields";
 import {
+  addDraftedSectionsAction,
   addSectionAction,
   changeSectionTypeAction,
   detachSectionAction,
@@ -98,6 +102,8 @@ type Props = {
   allowedBlocks: readonly string[];
   /** Named on screen, so a missing block reads as a decision rather than a gap. */
   templateName: string | null;
+  /** Whether drafting is offered: the permission is held and a provider is configured. */
+  aiReady: boolean;
 };
 
 // Ordered beside the library itself, so a new group cannot be added there and
@@ -150,6 +156,7 @@ export function PageBuilder({
   canEdit,
   allowedBlocks,
   templateName,
+  aiReady,
 }: Props) {
   const router = useRouter();
   const { push } = useToast();
@@ -162,6 +169,7 @@ export function PageBuilder({
 
   const [dragId, setDragId] = React.useState<string | null>(null);
   const [adding, setAdding] = React.useState(false);
+  const [drafting, setDrafting] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
   const [retypingId, setRetypingId] = React.useState<string | null>(null);
@@ -233,10 +241,23 @@ export function PageBuilder({
           </p>
         </div>
         {canEdit ? (
-          <Button size="sm" onClick={() => setAdding(true)} disabled={pending}>
-            <Plus size={14} aria-hidden="true" />
-            Add section
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {aiReady ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setDrafting(true)}
+                disabled={pending}
+              >
+                <Sparkles size={14} aria-hidden="true" />
+                Draft sections
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={() => setAdding(true)} disabled={pending}>
+              <Plus size={14} aria-hidden="true" />
+              Add section
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -426,6 +447,21 @@ export function PageBuilder({
         />
       ) : null}
 
+      {drafting ? (
+        <DraftSectionsDialog
+          pageId={pageId}
+          allowedBlocks={allowedBlocks}
+          onClose={() => setDrafting(false)}
+          onAdded={(blocks) => {
+            setDrafting(false);
+            run(
+              () => addDraftedSectionsAction({ pageId, blocks }),
+              `${blocks.length} section${blocks.length === 1 ? "" : "s"} added.`,
+            );
+          }}
+        />
+      ) : null}
+
       {adding ? (
         <AddSectionDialog
           allowedBlocks={allowedBlocks}
@@ -444,28 +480,33 @@ export function PageBuilder({
       ) : null}
 
       {editing && isBlockType(editing.type) ? (
-        <SectionEditor
-          key={editing.id}
-          pageId={pageId}
-          section={editing}
-          type={editing.type}
-          media={
-            media[String(((editing.content ?? {}) as Record<string, unknown>)["mediaId"] ?? "")] ??
-            null
-          }
-          cardMedia={media}
-          taxonomy={taxonomy}
-          onClose={() => setEditingId(null)}
-          onSaved={(options) => {
-            setEditingId(null);
-            router.refresh();
-            // The preview renders through the same code the public site uses,
-            // so what an editor checks there is what will ship.
-            if (options?.preview) {
-              window.open(`/admin/website/pages/${pageId}/preview`, "_blank", "noopener");
+        // The per-field rewrite controls live at the bottom of the block-field
+        // tree; this is the one place that tells them whether to appear.
+        <AssistProvider enabled={aiReady}>
+          <SectionEditor
+            key={editing.id}
+            pageId={pageId}
+            section={editing}
+            type={editing.type}
+            media={
+              media[
+                String(((editing.content ?? {}) as Record<string, unknown>)["mediaId"] ?? "")
+              ] ?? null
             }
-          }}
-        />
+            cardMedia={media}
+            taxonomy={taxonomy}
+            onClose={() => setEditingId(null)}
+            onSaved={(options) => {
+              setEditingId(null);
+              router.refresh();
+              // The preview renders through the same code the public site uses,
+              // so what an editor checks there is what will ship.
+              if (options?.preview) {
+                window.open(`/admin/website/pages/${pageId}/preview`, "_blank", "noopener");
+              }
+            }}
+          />
+        </AssistProvider>
       ) : null}
 
       {retyping ? (

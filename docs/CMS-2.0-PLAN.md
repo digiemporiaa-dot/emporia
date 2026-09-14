@@ -379,13 +379,30 @@ Also fixed a **pre-existing bug** found by copying the popup beacon pattern and
 testing it: `NextResponse.json` with status 204 throws, so every popup beacon
 from a cookie-less visitor was a 500. See ARCHITECTURE 17.1b-xiii.
 
-### Phase 14 — AI CMS assistant
+### Phase 14 — AI CMS assistant — **DONE**
 
 On the existing `AIService`: page generation into real block JSON, per-field
 rewrite / shorten / expand / tone, headline, CTA, FAQ, meta title/description,
 internal-link suggestions, translation. Everything returns `Draft<T>`, is
 labelled AI-generated, and requires human approval — the existing contract,
 extended, not replaced. AI quality checks fold into the analyzer from Phase 8.
+
+Delivered as three assists: rewrite one field (a closed list of actions, not a
+prompt box), draft a run of bands from a brief, and write the meta title and
+description from what the page says. Nothing an assist produces is written —
+each returns a draft, and putting one on the page is a separate ordinary write
+through `addSections`, which re-checks the permission and the template and
+parses every band against its own block schema before storing it. A band the
+model returned in a shape the page cannot use is dropped and named on screen.
+The meta assist refuses a page under twenty words. All three are hidden unless
+`ai.use` is held and a provider is configured. See ARCHITECTURE 17.1b-xiv.
+
+**Changed from the plan, twice.** Internal-link suggestions stay the
+deterministic Phase 8 implementation rather than becoming an AI one: it can only
+propose pages that exist, and an invented URL is a worse outcome than a missed
+suggestion. And AI quality checks are **not** folded into the SEO analyzer — it
+is a pure, deterministic function whose score people compare over time, and a
+number that moved because a model felt differently today is not a score.
 
 ### Phase 15 — Import / export
 

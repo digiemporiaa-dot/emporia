@@ -11,6 +11,13 @@ import {
 import * as pageService from "@/lib/services/page.service";
 import { pageSeoSchema } from "@/lib/validation/seo";
 import { sectionAudienceSchema } from "@/lib/validation/audience";
+import {
+  addDraftedSectionsSchema,
+  generateBlocksSchema,
+  generateMetaSchema,
+  rewriteSchema,
+} from "@/lib/validation/ai-cms";
+import { generateBlocks, generateMeta, rewriteField } from "@/lib/services/ai.service";
 import * as reusableService from "@/lib/services/reusable-section.service";
 import * as versionService from "@/lib/services/page-version.service";
 import {
@@ -679,6 +686,116 @@ export async function setSectionAudienceAction(
     return { ok: true, data: { id: sectionId } };
   } catch (error) {
     actionLog.warn({ err: error }, "set section audience refused");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The CMS assistant
+// ---------------------------------------------------------------------------
+
+/**
+ * Every action here **returns a draft and writes nothing**.
+ *
+ * Applying one is an ordinary save the editor makes afterwards, through the
+ * same action a hand-typed change goes through, with the same permission and
+ * the same audit row. There is deliberately no "generate and save" path: the
+ * master brief's rule is that AI output stays a draft until a person approves
+ * it, and the way to make that true is to give the model no way to write.
+ */
+
+export async function rewriteFieldAction(
+  input: unknown,
+): Promise<ActionResult<{ text: string; model: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = rewriteSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the text.",
+      };
+    }
+
+    const draft = await rewriteField(actor, parsed.data);
+    return { ok: true, data: { text: draft.data, model: draft.model } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "rewrite refused");
+    return toActionFailure(error);
+  }
+}
+
+export async function generateBlocksAction(
+  input: unknown,
+): Promise<ActionResult<{ blocks: { type: string; content: unknown }[]; rejected: string[]; model: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = generateBlocksSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the brief.",
+      };
+    }
+
+    const draft = await generateBlocks(actor, parsed.data);
+    return {
+      ok: true,
+      data: { blocks: draft.data.blocks, rejected: draft.data.rejected, model: draft.model },
+    };
+  } catch (error) {
+    actionLog.warn({ err: error }, "block draft refused");
+    return toActionFailure(error);
+  }
+}
+
+/**
+ * Put a set of drafted bands onto the page.
+ *
+ * A separate step from drafting them, and the only one that writes. The
+ * service parses each band against its own schema before storing it, so the
+ * draft gets no shortcut past the validation a hand-built band goes through.
+ */
+export async function addDraftedSectionsAction(
+  input: unknown,
+): Promise<ActionResult<{ added: number }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = addDraftedSectionsSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Those bands could not be added.",
+      };
+    }
+
+    const sections = await pageService.addSections(actor, parsed.data.pageId, parsed.data.blocks);
+
+    revalidatePath(BUILDER_PATH(parsed.data.pageId));
+    return { ok: true, data: { added: sections.length } };
+  } catch (error) {
+    actionLog.error({ err: error }, "adding drafted sections failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function generateMetaAction(
+  pageId: string,
+): Promise<ActionResult<{ metaTitle: string; metaDescription: string; model: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = generateMetaSchema.safeParse({ pageId });
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: "Unknown page." };
+    }
+
+    const draft = await generateMeta(actor, parsed.data);
+    return { ok: true, data: { ...draft.data, model: draft.model } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "meta draft refused");
     return toActionFailure(error);
   }
 }

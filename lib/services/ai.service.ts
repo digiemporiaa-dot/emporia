@@ -4,6 +4,15 @@ import { NotFoundError, RateLimitedError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
 import { visibilityFilter } from "@/lib/services/crm.service";
+import { BLOCK_SCHEMAS, blockDefinition, isBlockType } from "@/lib/content/blocks";
+import { allowedBlocksOf, templatePermits } from "@/lib/content/templates";
+import { sectionText, wordCount } from "@/lib/content/text";
+import type {
+  GenerateBlocksInput,
+  GenerateMetaInput,
+  RewriteAction,
+  RewriteInput,
+} from "@/lib/validation/ai-cms";
 import { overview, breakdowns } from "@/lib/services/analytics.service";
 import { resolveRange, RANGE_LABEL } from "@/lib/analytics/range";
 import { toMoneyString } from "@/lib/money";
@@ -68,6 +77,12 @@ const BUDGET: Record<AITask, { limit: number; windowMs: number }> = {
   generateContent: { limit: 20, windowMs: 60_000 },
   generateSEOContent: { limit: 20, windowMs: 60_000 },
   analyzeCRM: { limit: 6, windowMs: 60_000 },
+  // Field rewriting is the one an editor does repeatedly while drafting, so its
+  // allowance is the largest — a limit that interrupts ordinary writing is a
+  // limit people work around.
+  rewriteField: { limit: 60, windowMs: 60_000 },
+  generateBlocks: { limit: 10, windowMs: 60_000 },
+  generateMeta: { limit: 30, windowMs: 60_000 },
 };
 
 async function guardBudget(actor: Actor, task: AITask): Promise<void> {
@@ -544,4 +559,291 @@ export async function analyzeCRM(
     model: result.model,
     task: "analyzeCRM",
   };
+}
+
+// ---------------------------------------------------------------------------
+// The CMS assistant
+// ---------------------------------------------------------------------------
+
+/**
+ * ## What the assistant may and may not do
+ *
+ * Everything here returns a `Draft<T>` like the rest of this service:
+ * labelled, editable, and **never written anywhere**. These functions read the
+ * database and call the model; not one of them updates a row. Applying a draft
+ * is a separate, ordinary save the editor makes through the normal service,
+ * with the normal permission and the normal audit row. That is the master
+ * brief's rule — AI output stays a draft until a person approves it — and
+ * making it structural rather than a convention means there is no path where a
+ * model writes to the site.
+ *
+ * The system prompts forbid inventing facts, but a prompt is not a guarantee,
+ * so the shape of each task limits the damage: rewriting is given the text it
+ * is editing, block generation is validated against the block schemas before
+ * an editor ever sees it, and nothing here is allowed to produce a number that
+ * lands anywhere near a metric.
+ */
+
+const REWRITE_INSTRUCTION: Record<RewriteAction, string> = {
+  rewrite: "Rewrite this so it reads better. Keep the same meaning and length.",
+  shorten: "Make this shorter without losing anything it actually says.",
+  expand:
+    "Say more, using only what is already here or what is generally true of the subject. Add no facts, figures or claims.",
+  formal: "Make the tone more formal and precise. Keep it readable.",
+  plain: "Rewrite this in plainer English. Shorter sentences, fewer abstractions.",
+  translate: "Translate this.",
+};
+
+/**
+ * Rewrite one field.
+ *
+ * `content.edit` is not the right permission here — this edits website copy —
+ * so it is gated on `pages.edit` alongside `ai.use`. Nothing is saved either
+ * way; the gate is about who may spend a call and see a suggestion for a page
+ * they could not otherwise change.
+ */
+export async function rewriteField(
+  actor: Actor,
+  input: RewriteInput,
+): Promise<Draft<string>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "pages.edit");
+  await guardBudget(actor, "rewriteField");
+
+  const instruction =
+    input.action === "translate"
+      ? `Translate this into ${input.language}. Keep the meaning exactly; do not localise claims or figures.`
+      : REWRITE_INSTRUCTION[input.action];
+
+  const result = await (await ai()).complete({
+    task: "rewriteField",
+    system: SYSTEM_PROMPTS.rewriteField,
+    prompt: `${instruction}\n\nText:\n${input.text}`,
+    // Room to expand, but not room to write an essay in place of a heading.
+    maxTokens: 1_500,
+  });
+
+  await auditCall(
+    actor,
+    "rewriteField",
+    { type: "PageSection", id: input.action },
+    result.usage,
+    result.model,
+  );
+
+  return { data: result.text.trim(), generated: true, model: result.model, task: "rewriteField" };
+}
+
+/** One drafted band: a block type and content that has already been validated. */
+export type DraftedBlock = { type: string; content: unknown };
+
+export type BlockDraft = {
+  blocks: DraftedBlock[];
+  /**
+   * Bands the model produced that did not survive validation.
+   *
+   * Reported rather than hidden: an editor who asked for five bands and got
+   * three should know the other two were rejected, not wonder whether they
+   * asked wrongly.
+   */
+  rejected: string[];
+};
+
+/**
+ * Draft the bands of a page.
+ *
+ * The model's output is parsed against **the real block schemas** before it
+ * reaches anyone. A band that does not validate is dropped, not repaired and
+ * not shown: the alternative is an editor pasting something the renderer will
+ * refuse, and discovering that on the live page.
+ *
+ * The editor chooses which bands to draft. Letting the model choose its own
+ * structure produced pages that ignored the template's allowed blocks, so the
+ * shape is the human's decision and the words are the model's.
+ */
+export async function generateBlocks(
+  actor: Actor,
+  input: GenerateBlocksInput,
+): Promise<Draft<BlockDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "pages.edit");
+  await guardBudget(actor, "generateBlocks");
+
+  const page = await db.page.findFirst({
+    where: { id: input.pageId, deletedAt: null },
+    select: {
+      title: true,
+      slug: true,
+      template: { select: { name: true, allowedBlocks: true } },
+    },
+  });
+  if (!page) throw new NotFoundError("That page does not exist.");
+
+  // A template's restriction applies to a draft too. Offering an editor a band
+  // they cannot then add would be a suggestion designed to be refused.
+  const allowed = allowedBlocksOf(page.template?.allowedBlocks);
+  const wanted = input.blocks.filter((type) => templatePermits(allowed, type));
+  if (wanted.length === 0) {
+    throw new ValidationError("None of those bands are allowed on this page's template.");
+  }
+
+  const prompt = [
+    factBlock({ page: page.title, address: `/${page.slug}`, template: page.template?.name }),
+    "",
+    `Brief:\n${input.brief}`,
+    "",
+    `Draft these bands, in this order: ${wanted.join(", ")}.`,
+    "Return one object per band, with its type and its fields.",
+  ].join("\n");
+
+  const result = await (await ai()).completeStructured<{ blocks: DraftedBlock[] }>({
+    task: "generateBlocks",
+    system: SYSTEM_PROMPTS.generateBlocks,
+    prompt,
+    maxTokens: 4_000,
+    schema: {
+      type: "object",
+      properties: {
+        blocks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: wanted },
+              // The fields differ per block, so the provider's schema cannot
+              // pin them; the block schemas below do, which is the check that
+              // actually matters.
+              content: { type: "object" },
+            },
+            required: ["type", "content"],
+          },
+        },
+      },
+      required: ["blocks"],
+    },
+    parse: (value) => {
+      const shape = value as { blocks?: unknown };
+      if (!Array.isArray(shape.blocks)) throw new Error("No blocks returned.");
+      return { blocks: shape.blocks as DraftedBlock[] };
+    },
+  });
+
+  const blocks: DraftedBlock[] = [];
+  const rejected: string[] = [];
+
+  for (const block of result.data.blocks) {
+    if (!isBlockType(block.type) || !templatePermits(allowed, block.type)) {
+      rejected.push(String(block.type));
+      continue;
+    }
+    // The block's own schema, applied to the model's output exactly as it is
+    // applied to a human's. Defaults fill what the model left out; anything it
+    // invented that the block has no field for is stripped.
+    const parsed = BLOCK_SCHEMAS[block.type].safeParse({
+      ...blockDefinition(block.type).defaults,
+      ...(block.content as Record<string, unknown>),
+    });
+    if (!parsed.success) {
+      rejected.push(block.type);
+      continue;
+    }
+    blocks.push({ type: block.type, content: parsed.data });
+  }
+
+  await auditCall(
+    actor,
+    "generateBlocks",
+    { type: "Page", id: input.pageId },
+    result.usage,
+    result.model,
+  );
+
+  return {
+    data: { blocks, rejected },
+    generated: true,
+    model: result.model,
+    task: "generateBlocks",
+  };
+}
+
+export type MetaDraft = { metaTitle: string; metaDescription: string };
+
+/**
+ * Draft the search-result title and description from what the page says.
+ *
+ * Built from the page's own visible text, so the description describes the
+ * page rather than the brief somebody wrote about it. A page with nothing on it
+ * is refused rather than described: there is nothing to summarise, and a
+ * plausible summary of an empty page is the worst possible output.
+ */
+export async function generateMeta(
+  actor: Actor,
+  input: GenerateMetaInput,
+): Promise<Draft<MetaDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "seo.edit");
+  await guardBudget(actor, "generateMeta");
+
+  const page = await db.page.findFirst({
+    where: { id: input.pageId, deletedAt: null },
+    select: {
+      title: true,
+      slug: true,
+      sections: {
+        where: { isVisible: true },
+        orderBy: { order: "asc" },
+        select: { type: true, content: true },
+      },
+    },
+  });
+  if (!page) throw new NotFoundError("That page does not exist.");
+
+  const body = page.sections
+    .map((section) => sectionText(section.type, section.content).text)
+    .join(" ")
+    .trim();
+
+  if (wordCount(body) < 20) {
+    throw new ValidationError(
+      "This page has too little on it to describe. Write the page first — a description of an empty page is a guess.",
+    );
+  }
+
+  const result = await (await ai()).completeStructured<MetaDraft>({
+    task: "generateMeta",
+    system: SYSTEM_PROMPTS.generateMeta,
+    prompt: [
+      factBlock({ page: page.title, address: `/${page.slug}` }),
+      "",
+      // Bounded: a very long page costs a very long call, and the first few
+      // hundred words are what a description is drawn from anyway.
+      `What the page says:\n${body.slice(0, 4_000)}`,
+    ].join("\n"),
+    maxTokens: 500,
+    schema: {
+      type: "object",
+      properties: {
+        metaTitle: { type: "string" },
+        metaDescription: { type: "string" },
+      },
+      required: ["metaTitle", "metaDescription"],
+    },
+    parse: (value) => {
+      const shape = value as { metaTitle?: unknown; metaDescription?: unknown };
+      if (typeof shape.metaTitle !== "string" || typeof shape.metaDescription !== "string") {
+        throw new Error("Incomplete meta draft.");
+      }
+      return { metaTitle: shape.metaTitle.trim(), metaDescription: shape.metaDescription.trim() };
+    },
+  });
+
+  await auditCall(
+    actor,
+    "generateMeta",
+    { type: "Page", id: input.pageId },
+    result.usage,
+    result.model,
+  );
+
+  return { data: result.data, generated: true, model: result.model, task: "generateMeta" };
 }

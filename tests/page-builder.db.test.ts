@@ -203,6 +203,135 @@ describeDb("page builder sections", () => {
     await expect(pageService.deleteSection(viewer, section.id)).rejects.toThrow(ForbiddenError);
   });
 
+  // ---------------------------------------------------------------------------
+  // Adding several at once — the path a drafted set of bands takes onto a page
+  // ---------------------------------------------------------------------------
+
+  it("appends a run of bands in the order given, after what is already there", async () => {
+    const page = await newPage("Batch add");
+    await pageService.addSection(editor, page.id, "heading");
+
+    const added = await pageService.addSections(editor, page.id, [
+      { type: "richText", content: { body: "First drafted band." } },
+      { type: "richText", content: { body: "Second drafted band." } },
+    ]);
+
+    expect(added.map((section) => section.type)).toEqual(["richText", "richText"]);
+    expect(await orderOf(page.id)).toEqual([0, 1, 2]);
+
+    const full = await pageService.getPage(editor, page.id);
+    expect(full.sections.map((section) => section.type)).toEqual([
+      "heading",
+      "richText",
+      "richText",
+    ]);
+  });
+
+  it("parses each band against its own schema, exactly as a hand-built one is", async () => {
+    const page = await newPage("Batch parsed");
+
+    const [section] = await pageService.addSections(editor, page.id, [
+      { type: "heading", content: { text: "  Drafted  ", level: 3, smuggled: "nope" } },
+    ]);
+
+    expect(section?.content).toEqual({
+      text: "Drafted",
+      level: 3,
+      align: "left",
+      version: CURRENT_VERSION,
+    });
+  });
+
+  it("fills what a draft left out from the block's defaults", async () => {
+    const page = await newPage("Batch defaults");
+
+    // A band the draft only half-filled is still a valid, renderable band
+    // rather than an error the editor has to clear before they can see it.
+    const [section] = await pageService.addSections(editor, page.id, [
+      { type: "heading", content: { text: "Only the text" } },
+    ]);
+
+    expect(section?.content).toMatchObject({ text: "Only the text", level: 2, align: "left" });
+  });
+
+  it("adds nothing at all when one band in the run is bad", async () => {
+    const page = await newPage("Batch all or nothing");
+    const before = await orderOf(page.id);
+
+    await expect(
+      pageService.addSections(editor, page.id, [
+        { type: "heading", content: { text: "Fine" } },
+        { type: "nonsense", content: {} },
+      ]),
+    ).rejects.toThrow(ValidationError);
+
+    // A page half-built from a draft, with the failure in a toast that is gone
+    // a moment later, is worse than a page unchanged.
+    expect(await orderOf(page.id)).toEqual(before);
+  });
+
+  it("refuses an empty run", async () => {
+    const page = await newPage("Batch empty");
+    await expect(pageService.addSections(editor, page.id, [])).rejects.toThrow(ValidationError);
+  });
+
+  it("needs pages.edit, like adding one by hand", async () => {
+    const page = await newPage("Batch permission");
+    const viewer = actorWith(editor.userId, ["pages.view"]);
+
+    await expect(
+      pageService.addSections(viewer, page.id, [{ type: "heading", content: { text: "No" } }]),
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it("obeys the template's allowed blocks", async () => {
+    const template = await db.pageTemplate.create({
+      data: {
+        key: `builder-batch-${Date.now()}`,
+        name: "Restricted",
+        sections: [],
+        allowedBlocks: ["heading"],
+      },
+      select: { id: true },
+    });
+    const page = await newPage("Batch template");
+    pages.push(page.id);
+    await db.page.update({ where: { id: page.id }, data: { templateId: template.id } });
+
+    await expect(
+      pageService.addSections(editor, page.id, [{ type: "richText", content: { body: "No" } }]),
+    ).rejects.toThrow(/does not allow/i);
+
+    const allowed = await pageService.addSections(editor, page.id, [
+      { type: "heading", content: { text: "Yes" } },
+    ]);
+    expect(allowed).toHaveLength(1);
+
+    await db.page.delete({ where: { id: page.id } });
+    await db.pageTemplate.delete({ where: { id: template.id } });
+  });
+
+  it("audits each band it added, not the run", async () => {
+    const page = await newPage("Batch audit");
+    await pageService.addSections(editor, page.id, [
+      { type: "heading", content: { text: "One" } },
+      { type: "richText", content: { body: "Two" } },
+    ]);
+
+    // A history reading "created a section" once for a run of six is a history
+    // that misreports what happened.
+    const entries = await db.auditLog.findMany({
+      where: { entityType: "PageSection", entityId: page.id, action: "CREATE" },
+      orderBy: { createdAt: "asc" },
+      select: { after: true },
+    });
+    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.after)).toEqual([
+      { type: "heading" },
+      { type: "richText" },
+    ]);
+  });
+
   it("will not touch a section belonging to a soft-deleted page", async () => {
     const page = await newPage("Deleted page sections");
     const section = await pageService.addSection(editor, page.id, "heading");

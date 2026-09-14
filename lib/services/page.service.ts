@@ -671,6 +671,96 @@ export async function addSection(actor: Actor, pageId: string, type: string) {
 }
 
 /**
+ * Add several blocks to the end of a page in one go.
+ *
+ * This is the path a drafted set of bands takes onto the page (17.1b-xiv). It
+ * is deliberately the *same* path a hand-added band takes — the block's own
+ * schema parses the content, the template's restriction applies, and an audit
+ * row is written — because a draft that arrived from a model has earned no
+ * exemption from any of it. The only thing it saves over adding each band by
+ * hand is the round trip.
+ *
+ * All or nothing: a page half-built from a draft, with the failure reported in
+ * a toast that is gone a moment later, is worse than a page unchanged and an
+ * error the editor can read.
+ */
+export async function addSections(
+  actor: Actor,
+  pageId: string,
+  drafts: readonly { type: string; content: unknown }[],
+) {
+  requirePermission(actor, "pages.edit");
+  const page = await getPage(actor, pageId);
+
+  if (drafts.length === 0) throw new ValidationError("There is nothing to add.");
+
+  const allowed = page.template ? allowedBlocksOf(page.template.allowedBlocks) : null;
+
+  const prepared = drafts.map((draft) => {
+    if (!isBlockType(draft.type)) {
+      throw new ValidationError("That is not a block you can add.");
+    }
+    if (allowed && !templatePermits(allowed, draft.type)) {
+      throw new ValidationError(
+        `The ${page.template?.name} template does not allow a ${blockDefinition(draft.type).label} band.`,
+      );
+    }
+    const definition = blockDefinition(draft.type);
+    return {
+      type: draft.type,
+      name: definition.label,
+      // Defaults underneath, so a band the draft left partly unfilled is still
+      // a valid, renderable band rather than an error the editor must clear.
+      content: parseBlockContent(draft.type, {
+        ...definition.defaults,
+        ...((draft.content ?? {}) as Record<string, unknown>),
+      }),
+    };
+  });
+
+  const last = await db.pageSection.findFirst({
+    where: { pageId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  const start = (last?.order ?? -1) + 1;
+
+  // One audit row per band rather than one for the run: each band is a section
+  // that now exists, and a history reading "created a section" once for six of
+  // them is a history that misreports what happened.
+  const sections = await db.$transaction(async (tx) => {
+    const created = [];
+    for (const [index, entry] of prepared.entries()) {
+      const section = await tx.pageSection.create({
+        data: {
+          pageId,
+          type: entry.type,
+          order: start + index,
+          content: entry.content,
+          name: entry.name,
+        },
+        select: sectionSelect,
+      });
+      await record(
+        {
+          actor,
+          action: "CREATE",
+          entityType: "PageSection",
+          entityId: pageId,
+          after: { type: entry.type },
+        },
+        tx,
+      );
+      created.push(section);
+    }
+    return created;
+  });
+
+  revalidateTag(PAGE_TAG);
+  return sections;
+}
+
+/**
  * Set who a section is for.
  *
  * Replaced wholesale rather than merged: the form sends the complete list it is

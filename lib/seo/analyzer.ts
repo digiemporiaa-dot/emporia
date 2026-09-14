@@ -450,7 +450,13 @@ export function analysePage(input: AnalyzerInput): SeoReport {
     );
   } else {
     checks.push(
-      check("outline", "Heading outline", 2, "pass", `${headingLevels.length} sub-headings.`),
+      check(
+        "outline",
+        "Heading outline",
+        2,
+        "pass",
+        `${headingLevels.length} sub-heading${headingLevels.length === 1 ? "" : "s"}.`,
+      ),
     );
   }
 
