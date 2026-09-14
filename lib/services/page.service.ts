@@ -12,6 +12,7 @@ import { allowedBlocksOf, startingSections, templatePermits } from "@/lib/conten
 import { stampVersion } from "@/lib/content/migrations";
 import { snapshot } from "@/lib/services/page-version.service";
 import type { Actor } from "@/lib/actor/types";
+import type { SectionAudienceInput } from "@/lib/validation/audience";
 import type { PageWorkflow } from "@/generated/prisma/enums";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
 import type { PageSeoInput } from "@/lib/validation/seo";
@@ -93,6 +94,16 @@ const detailSelect = {
       name: true,
       isVisible: true,
       reusableSectionId: true,
+      audiences: {
+        select: {
+          visitorType: true,
+          device: true,
+          utmSource: true,
+          utmMedium: true,
+          utmCampaign: true,
+          referrerContains: true,
+        },
+      },
     },
   },
 } as const;
@@ -562,6 +573,16 @@ const sectionSelect = {
   name: true,
   isVisible: true,
   reusableSectionId: true,
+  audiences: {
+    select: {
+      visitorType: true,
+      device: true,
+      utmSource: true,
+      utmMedium: true,
+      utmCampaign: true,
+      referrerContains: true,
+    },
+  },
 } as const;
 
 /**
@@ -643,6 +664,50 @@ export async function addSection(actor: Actor, pageId: string, type: string) {
         },
         select: sectionSelect,
       }),
+  );
+
+  revalidateTag(PAGE_TAG);
+  return section;
+}
+
+/**
+ * Set who a section is for.
+ *
+ * Replaced wholesale rather than merged: the form sends the complete list it is
+ * showing, so removing a rule has to mean removing it.
+ *
+ * `pages.edit` rather than `pages.publish`. Narrowing who sees a band is an
+ * edit to the page, not an act of publication — and a band nobody matches is
+ * still not public until the page is.
+ */
+export async function setSectionAudience(
+  actor: Actor,
+  sectionId: string,
+  rules: SectionAudienceInput["rules"],
+) {
+  requirePermission(actor, "pages.edit");
+
+  const before = await getSectionOr404(sectionId);
+
+  const section = await withAudit(
+    { actor, action: "UPDATE", entityType: "PageSection audience", entityId: sectionId, before },
+    async (tx) => {
+      await tx.sectionAudience.deleteMany({ where: { sectionId } });
+      if (rules.length > 0) {
+        await tx.sectionAudience.createMany({
+          data: rules.map((rule) => ({
+            sectionId,
+            visitorType: rule.visitorType,
+            device: rule.device,
+            utmSource: rule.utmSource ?? null,
+            utmMedium: rule.utmMedium ?? null,
+            utmCampaign: rule.utmCampaign ?? null,
+            referrerContains: rule.referrerContains ?? null,
+          })),
+        });
+      }
+      return tx.pageSection.findUniqueOrThrow({ where: { id: sectionId }, select: sectionSelect });
+    },
   );
 
   revalidateTag(PAGE_TAG);

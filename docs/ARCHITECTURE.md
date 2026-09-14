@@ -2129,6 +2129,59 @@ figures pass through `visibilityFilter`, so a sales executive without
 `leads.view.team` sees only the pages their own leads landed on — the report
 inherits that rule rather than working around it.
 
+### 17.1b-xii Personalisation
+
+CMS 2.0 Phase 12. A band on a page can be shown to some visitors and not
+others. `SectionAudience` is modelled directly on `PopupTarget` (12.6) — the
+same server-side, deterministic, inspectable shape — and `lib/content/audience.ts`
+mirrors `lib/popups/targeting.ts`: pure functions over rules and a visitor.
+
+**No rules means everyone.** This is the opposite of a popup, where no targets
+means never shown, and deliberately so: a popup with nobody to show it to is a
+mistake, whereas a section nobody has named an audience for is an ordinary
+section. Getting it backwards would have made every existing page disappear the
+day the feature shipped. Several rules on one band are OR-ed; within one rule
+every condition must hold.
+
+**The filter runs after the cache, never inside it.** `publishedPageSections` is
+`unstable_cache`d by slug, so personalising inside it would bake one visitor's
+variant into a value keyed only by the page and then serve it to everybody —
+the whole failure mode this feature has to avoid. The rules are cached _with_
+the page, because they change when the page does; the visitor is applied on
+every request by `forVisitor`, outside the cache. A page with no rules skips
+reading the visitor at all and stays exactly as static as it was.
+
+**Filtering is server-side, so a band never reaches a browser it is not for.**
+Hiding it client-side would ship every variant and its targeting to anyone
+reading the network tab — the same reasoning that made popup resolution
+server-side. The FAQ structured data on the landing-page route is built from the
+sections actually served, so the markup cannot describe an FAQ the visitor was
+not shown.
+
+**Six routes render CMS sections, and forgetting one would be silent** — no type
+error, no failing test, just a page quietly ignoring its own targeting. They all
+go through one helper, `visibleSections`, and `tests/personalisation.db.test.ts`
+reads each file and asserts it.
+
+**There is no location rule, and the UI says so.** This application has no
+geo-IP. A "visitor in Gurgaon" rule would have to guess, and a guessed audience
+is a fabricated one (CLAUDE.md 5). The attributes offered are the ones already
+captured for attribution and therefore genuinely known: device from the user
+agent, new-versus-returning from the visitor cookie, and UTM source, medium,
+campaign and referrer from the touch cookies. UTM matching uses **last** touch,
+not first — "show this to people arriving from today's ad" is about how they got
+here now. No sensitive attribute is read, and none is available to read.
+
+**Preview as somebody** puts the choice in the URL rather than in component
+state, so an editor can send "this page as a returning mobile visitor from the
+autumn campaign" to a colleague, and the picker needs no JavaScript. It runs the
+same matcher the live page runs — not a separate preview path, which is how a
+preview comes to disagree with the site.
+
+A rule with no conditions set is refused: it would match everyone, which is what
+having no rule already means, so saving it would read as "targeted" while doing
+nothing.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

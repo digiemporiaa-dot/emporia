@@ -337,11 +337,27 @@ beside them. Paths are normalised so query strings and trailing slashes gather
 into one row. Revenue is withheld by the service without `invoices.view`, and
 lead figures inherit `visibilityFilter`. See ARCHITECTURE 17.1b-xi.
 
-### Phase 12 — Personalization
+### Phase 12 — Personalization — **DONE**
 
 Rules modelled directly on `PopupTarget` + `resolveForPage` — the same
 server-side, deterministic, inspectable shape, evaluated before render.
-"Preview as a Gurgaon visitor" mode. No sensitive attributes.
+No sensitive attributes.
+
+Delivered as `SectionAudience` plus `lib/content/audience.ts`, mirroring
+`lib/popups/targeting.ts`. No rules means everyone — the opposite of a popup,
+and deliberately so. The filter runs **after** `unstable_cache`, never inside
+it: rules are cached with the page, the visitor is applied per request, so a
+cache keyed by slug cannot serve one visitor's variant to another. Filtering is
+server-side, so a band never reaches a browser it is not for. All six CMS render
+routes go through one `visibleSections` helper, with a test that reads each file
+and asserts it.
+
+**Changed from the plan: no "Gurgaon visitor" mode.** There is no geo-IP in this
+application, so a location rule would have to guess, and a guessed audience is a
+fabricated one. Preview-as-a-visitor ships over the attributes that are real —
+device, new/returning, UTM source/medium/campaign, referrer — with the choice in
+the URL so it can be shared, and the UI states the absence rather than hiding
+it. See ARCHITECTURE 17.1b-xii.
 
 ### Phase 13 — Experiments
 

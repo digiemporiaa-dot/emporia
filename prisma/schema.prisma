@@ -936,6 +936,47 @@ model Page {
 /// sections from that moment. Editing a template never reaches back into pages
 /// already made from it — that would be a second, invisible way to change a
 /// live page, and the builder is the only way there should be.
+/// Who a section is for.
+///
+/// Modelled directly on `PopupTarget` (docs/ARCHITECTURE.md 12.6): the same
+/// server-side, deterministic, inspectable shape, evaluated before render so a
+/// band a visitor should not see never reaches their browser.
+///
+/// **A section with no rules is shown to everyone.** That is the opposite of a
+/// popup, where no targets means never shown — and deliberately so: a popup
+/// with nobody to show it to is a mistake, whereas a section with nobody named
+/// is simply an ordinary section.
+///
+/// Several rules on one section are OR-ed, matching `targets.some(...)`. Within
+/// one rule every field must match.
+///
+/// Only attributes this application genuinely knows are here: the device from
+/// the user agent, new-versus-returning from the visitor cookie, and the UTM
+/// and referrer values already captured for attribution. There is no visitor
+/// city, because there is no geo-IP and inventing one would be a fabricated
+/// audience (CLAUDE.md 5).
+model SectionAudience {
+  id        String      @id @default(cuid())
+  sectionId String
+  section   PageSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  visitorType VisitorType @default(ANY)
+  device      DeviceType  @default(ANY)
+
+  /// Matched against the visitor's last touch, case-insensitively and exactly.
+  /// Null means "any".
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
+  /// Substring match on the referring URL. Null means "any".
+  referrerContains String?
+
+  createdAt DateTime @default(now())
+
+  @@index([sectionId])
+}
+
 model PageTemplate {
   id String @id @default(cuid())
 
@@ -989,6 +1030,9 @@ model PageSection {
   /// Hide/Show in the builder. A hidden section stays in the page and keeps
   /// its position; it is simply not rendered publicly. Distinct from deleting.
   isVisible Boolean @default(true)
+
+  /// Who this band is for. Empty means everyone — see SectionAudience.
+  audiences SectionAudience[]
 
   /// When set, this slot renders a ReusableSection instead of its own content.
   /// `type` and `content` are still populated: they hold the last resolved

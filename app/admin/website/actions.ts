@@ -10,6 +10,7 @@ import {
 } from "@/lib/validation/page";
 import * as pageService from "@/lib/services/page.service";
 import { pageSeoSchema } from "@/lib/validation/seo";
+import { sectionAudienceSchema } from "@/lib/validation/audience";
 import * as reusableService from "@/lib/services/reusable-section.service";
 import * as versionService from "@/lib/services/page-version.service";
 import {
@@ -647,6 +648,37 @@ export async function setScheduleAction(
     };
   } catch (error) {
     actionLog.error({ err: error, pageId }, "setSchedule failed");
+    return toActionFailure(error);
+  }
+}
+
+/**
+ * Set who a section is for.
+ *
+ * The rules arrive as a parsed array rather than FormData: the builder edits
+ * them in a dialog and posts the whole list, and the shape is nested enough
+ * that flattening it into form fields would be worse than passing it typed.
+ */
+export async function setSectionAudienceAction(
+  sectionId: string,
+  rules: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = sectionAudienceSchema.safeParse({ sectionId, rules });
+
+    if (!parsed.success) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: parsed.error.issues[0]?.message ?? "Check the rules.",
+      };
+    }
+
+    await pageService.setSectionAudience(actor, parsed.data.sectionId, parsed.data.rules);
+    return { ok: true, data: { id: sectionId } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "set section audience refused");
     return toActionFailure(error);
   }
 }

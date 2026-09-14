@@ -30,7 +30,16 @@ const DEVICES: { id: Device; label: string; Icon: typeof Monitor }[] = [
   { id: "mobile", label: "Phone", Icon: Smartphone },
 ];
 
-export function DevicePreview({ pageId, children }: { pageId: string; children: React.ReactNode }) {
+export function DevicePreview({
+  pageId,
+  children,
+  visitorQuery,
+}: {
+  pageId: string;
+  children: React.ReactNode;
+  /** The previewed visitor, carried into the iframe so it filters the same way. */
+  visitorQuery?: string;
+}) {
   const [device, setDevice] = React.useState<Device>("desktop");
 
   return (
@@ -66,8 +75,8 @@ export function DevicePreview({ pageId, children }: { pageId: string; children: 
           <iframe
             // Keyed on the device so switching remounts at the new width rather
             // than resizing a document that has already laid itself out.
-            key={device}
-            src={`/preview-frame/${pageId}`}
+            key={`${device}-${visitorQuery ?? ""}`}
+            src={`/preview-frame/${pageId}${visitorQuery ? `?${visitorQuery}` : ""}`}
             title={`${device === "tablet" ? "Tablet" : "Phone"} preview`}
             width={WIDTH[device]}
             className="h-[80vh] rounded-lg border border-line-strong bg-white shadow-sm"
