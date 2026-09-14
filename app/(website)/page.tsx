@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publishedPageWithCollections, siteSettings } from "@/lib/content/queries";
+import { visibleSections } from "@/lib/content/personalise";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { siteDefaults } from "@/lib/seo/defaults";
 import { organizationSchema, webSiteSchema } from "@/lib/seo/schema";
@@ -61,7 +62,7 @@ export default async function HomePage() {
     <>
       <JsonLd schema={schema} />
       <PageSections
-        sections={result.page.sections}
+        sections={await visibleSections(result.page)}
         title={result.page.title}
         images={result.page.images}
         collections={result.collections}

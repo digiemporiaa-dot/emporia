@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { Route } from "next";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { publishedPageSections } from "@/lib/content/queries";
+import { visibleSections } from "@/lib/content/personalise";
 import { PageSections } from "@/components/website/page-sections";
 import { JsonLd } from "@/components/website/json-ld";
 import { faqSchemaForSections, pageBreadcrumbs } from "@/lib/seo/page-schema";
@@ -63,6 +64,7 @@ export default async function LandingPage({
   if (slug) {
     const page = await publishedPageSections(slug);
     if (page) {
+      const sections = await visibleSections(page);
       return (
         <>
           <JsonLd
@@ -70,11 +72,13 @@ export default async function LandingPage({
               pageBreadcrumbs(page.title, slug),
               // Emitted only when the page has FAQ blocks AND an editor set the
               // schema type — markup that describes content the page does not
-              // show is what gets structured data penalised.
-              faqSchemaForSections(page.sections, page.schemaType),
+              // show is what gets structured data penalised. Built from the
+              // bands this visitor is actually served, so the markup cannot
+              // describe an FAQ they were not shown.
+              faqSchemaForSections(sections, page.schemaType),
             ]}
           />
-          <PageSections sections={page.sections} title={page.title} images={page.images} />
+          <PageSections sections={sections} title={page.title} images={page.images} />
         </>
       );
     }

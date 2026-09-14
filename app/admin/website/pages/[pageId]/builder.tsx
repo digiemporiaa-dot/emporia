@@ -15,6 +15,7 @@ import {
   Replace,
   Trash2,
   Unlink,
+  Users,
 } from "lucide-react";
 import { Button, Dialog, useToast } from "@/components/ui";
 import type { PickedMedia } from "@/components/admin/media-picker";
@@ -27,6 +28,8 @@ import {
   type BlockType,
 } from "@/lib/content/blocks";
 import { templatePermits } from "@/lib/content/templates";
+import { describeRule, type AudienceRule } from "@/lib/content/audience";
+import { AudienceDialog } from "./audience-dialog";
 import type { ActionResult } from "@/lib/errors";
 import type { TaxonomyOptions } from "@/lib/content/taxonomy";
 import { BlockFields, type Content } from "./block-fields";
@@ -63,6 +66,8 @@ export type BuilderSection = {
   isVisible: boolean;
   content: unknown;
   reusableSectionId: string | null;
+  /** Who this band is for. Empty means everyone. */
+  audiences: AudienceRule[];
 };
 
 export type InsertableReusable = {
@@ -160,6 +165,7 @@ export function PageBuilder({
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
   const [retypingId, setRetypingId] = React.useState<string | null>(null);
+  const [audienceFor, setAudienceFor] = React.useState<BuilderSection | null>(null);
 
   const run = (work: () => Promise<ActionResult<unknown>>, success: string) => {
     startTransition(async () => {
@@ -299,6 +305,17 @@ export function PageBuilder({
                   ) : null}
                 </div>
 
+                {section.audiences.length > 0 ? (
+                  // Said on the row, because a band that only some visitors see
+                  // is otherwise indistinguishable from one everybody sees.
+                  <span
+                    title={section.audiences.map(describeRule).join(" or ")}
+                    className="shrink-0 rounded-full bg-navy-700/10 px-2 py-0.5 text-2xs uppercase tracking-wide text-navy-700"
+                  >
+                    Targeted
+                  </span>
+                ) : null}
+
                 {!section.isVisible ? (
                   <span className="shrink-0 text-2xs uppercase tracking-wide text-ink-subtle">
                     Hidden
@@ -375,6 +392,13 @@ export function PageBuilder({
                       </IconButton>
                     ) : null}
                     <IconButton
+                      label={`Choose who sees ${section.name ?? section.type}`}
+                      disabled={pending}
+                      onClick={() => setAudienceFor(section)}
+                    >
+                      <Users size={14} aria-hidden="true" />
+                    </IconButton>
+                    <IconButton
                       label={`Delete ${section.name ?? section.type}`}
                       disabled={pending}
                       onClick={() => setConfirmDeleteId(section.id)}
@@ -388,6 +412,19 @@ export function PageBuilder({
           })}
         </ol>
       )}
+
+      {audienceFor ? (
+        <AudienceDialog
+          sectionId={audienceFor.id}
+          label={audienceFor.name ?? audienceFor.type}
+          rules={audienceFor.audiences}
+          onClose={() => setAudienceFor(null)}
+          onSaved={() => {
+            setAudienceFor(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       {adding ? (
         <AddSectionDialog

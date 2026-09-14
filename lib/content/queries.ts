@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { toMoneyString } from "@/lib/money";
 import { resolveSectionImages, type ResolvedImage, type SectionImages } from "@/lib/content/media";
 import { parseSections, type ParsedSection } from "@/lib/content/sections";
+import { audienceAllows, type AudienceRule, type AudienceVisitor } from "@/lib/content/audience";
 import { seoSelect, type EntitySeo } from "@/lib/seo/select";
 import { resolveCollections } from "@/lib/content/collections";
 
@@ -44,8 +45,38 @@ export type PublishedPage = {
   schemaType: string | null;
   /** Images referenced by the sections, resolved in one batched query. */
   images: Record<string, ResolvedImage>;
+  /**
+   * Audience rules per section id. Carried beside the sections rather than on
+   * them, so `ParsedSection` — a discriminated union every renderer switches
+   * on — does not have to change shape.
+   *
+   * These are cached with the page because they change when the page does. The
+   * *visitor* is not cached with them; see `forVisitor`.
+   */
+  audiences: Record<string, AudienceRule[]>;
   seo: EntitySeo | null;
 };
+
+/**
+ * Drop the bands this visitor is not the audience for.
+ *
+ * Runs **outside** the cache, on every request. Personalising inside
+ * `publishedPageSections` would bake one visitor's variant into a value keyed
+ * only by slug and then serve it to everyone — which is the whole failure mode
+ * personalisation has to avoid.
+ *
+ * Filtering here, on the server, also means a band a visitor should not see is
+ * never sent to their browser. Hiding it client-side would ship every variant
+ * and its targeting to anyone reading the network tab (CLAUDE.md 10).
+ */
+export function forVisitor(
+  page: PublishedPage,
+  visitor: AudienceVisitor,
+): ParsedSection[] {
+  return page.sections.filter((section) =>
+    audienceAllows(page.audiences[section.id] ?? [], visitor),
+  );
+}
 
 /**
  * A page plus the live business data its dynamic sections read.
@@ -77,7 +108,22 @@ export const publishedPageSections = unstable_cache(
           // the order; it simply does not reach the public page.
           where: { isVisible: true },
           orderBy: { order: "asc" },
-          select: { id: true, type: true, order: true, content: true },
+          select: {
+            id: true,
+            type: true,
+            order: true,
+            content: true,
+            audiences: {
+              select: {
+                visitorType: true,
+                device: true,
+                utmSource: true,
+                utmMedium: true,
+                utmCampaign: true,
+                referrerContains: true,
+              },
+            },
+          },
         },
       },
     });
@@ -90,12 +136,22 @@ export const publishedPageSections = unstable_cache(
     // serialisable).
     const images: SectionImages = await resolveSectionImages(sections);
 
+    // Keyed by section id and only for the sections that survived parsing, so
+    // a band dropped as unparseable cannot leave a rule behind.
+    const parsedIds = new Set(sections.map((section) => section.id));
+    const audiences: Record<string, AudienceRule[]> = {};
+    for (const row of page.sections) {
+      if (!parsedIds.has(row.id) || row.audiences.length === 0) continue;
+      audiences[row.id] = row.audiences;
+    }
+
     return {
       title: page.title,
       seo: page.seo,
       schemaType: page.seo?.schemaType ?? null,
       sections,
       images: Object.fromEntries(images),
+      audiences,
     };
   },
   ["published-page"],

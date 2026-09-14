@@ -10,6 +10,9 @@ import { resolveSectionImages } from "@/lib/content/media";
 import { PageSections } from "@/components/website/page-sections";
 import { PageStatusBadge } from "../../page-status";
 import { DevicePreview } from "./device-preview";
+import { VisitorPicker, visitorQuery } from "./visitor-picker";
+import { audienceAllows, type AudienceRule } from "@/lib/content/audience";
+import { previewVisitorSchema } from "@/lib/validation/audience";
 
 /**
  * Draft preview.
@@ -33,7 +36,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function PreviewPage({ params }: { params: Promise<{ pageId: string }> }) {
+export default async function PreviewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ pageId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { pageId } = await params;
   const actor = await requireActorPage("/admin/website/pages");
   requirePermission(actor, "pages.view");
@@ -46,9 +55,35 @@ export default async function PreviewPage({ params }: { params: Promise<{ pageId
     throw error;
   }
 
-  const sections = parseSections(page.sections);
+  const parsed = parseSections(page.sections);
+
+  // Preview as somebody. The same matcher the public page uses decides what
+  // they would see — not a separate preview code path, which is how a preview
+  // comes to disagree with the live site.
+  const raw = await searchParams;
+  const asVisitor = previewVisitorSchema.safeParse(raw);
+  const visitor = asVisitor.success ? asVisitor.data : previewVisitorSchema.parse({});
+
+  const audiences: Record<string, AudienceRule[]> = {};
+  for (const section of page.sections) {
+    if (section.audiences.length > 0) audiences[section.id] = section.audiences;
+  }
+  const targeted = Object.keys(audiences).length;
+
+  const sections = parsed.filter((section) =>
+    audienceAllows(audiences[section.id] ?? [], {
+      device: visitor.device,
+      isNewVisitor: visitor.visitor === "NEW",
+      utmSource: visitor.utmSource ?? null,
+      utmMedium: visitor.utmMedium ?? null,
+      utmCampaign: visitor.utmCampaign ?? null,
+      referrer: visitor.referrer ?? null,
+    }),
+  );
+
   const images = Object.fromEntries(await resolveSectionImages(sections));
-  const dropped = page.sections.length - sections.length;
+  const dropped = page.sections.length - parsed.length;
+  const withheld = parsed.length - sections.length;
   const hidden = page.sections.filter((section) => !section.isVisible).length;
 
   return (
@@ -70,6 +105,11 @@ export default async function PreviewPage({ params }: { params: Promise<{ pageId
               {hidden} hidden section{hidden === 1 ? "" : "s"} shown here, not on the live page
             </span>
           ) : null}
+          {withheld > 0 ? (
+            <span>
+              {withheld} band{withheld === 1 ? "" : "s"} hidden from this visitor
+            </span>
+          ) : null}
           {dropped > 0 ? (
             // Surfaced rather than swallowed: a section that fails its own
             // schema is skipped on the public page too, and an editor should
@@ -81,12 +121,16 @@ export default async function PreviewPage({ params }: { params: Promise<{ pageId
         </span>
       </div>
 
+      {targeted > 0 ? (
+        <VisitorPicker pageId={page.id} current={visitor} />
+      ) : null}
+
       {sections.length === 0 ? (
         <p className="px-4 py-16 text-center text-sm text-ink-subtle lg:px-6">
           Nothing to preview yet — this page has no renderable sections.
         </p>
       ) : (
-        <DevicePreview pageId={page.id}>
+        <DevicePreview pageId={page.id} visitorQuery={visitorQuery(visitor)}>
           <PageSections sections={sections} title={page.title} images={images} />
         </DevicePreview>
       )}

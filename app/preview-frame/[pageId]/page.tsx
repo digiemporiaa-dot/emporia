@@ -6,6 +6,8 @@ import { getPage } from "@/lib/services/page.service";
 import { isAppError } from "@/lib/errors";
 import { parseSections } from "@/lib/content/sections";
 import { resolveSectionImages } from "@/lib/content/media";
+import { audienceAllows, type AudienceRule } from "@/lib/content/audience";
+import { previewVisitorSchema } from "@/lib/validation/audience";
 import { PageSections } from "@/components/website/page-sections";
 
 /**
@@ -35,8 +37,10 @@ export const dynamic = "force-dynamic";
 
 export default async function PreviewFramePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ pageId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { pageId } = await params;
   const actor = await requireActorPage(`/admin/website/pages/${pageId}/preview`);
@@ -50,7 +54,31 @@ export default async function PreviewFramePage({
     throw error;
   }
 
-  const sections = parseSections(page.sections);
+  const parsed = parseSections(page.sections);
+
+  // Preview as somebody. The editor chooses a visitor and the same matcher the
+  // public page uses decides what they would see — not a separate "preview"
+  // code path, which is how a preview comes to disagree with the live site.
+  const raw = await searchParams;
+  const asVisitor = previewVisitorSchema.safeParse(raw);
+  const visitor = asVisitor.success ? asVisitor.data : previewVisitorSchema.parse({});
+
+  const audiences: Record<string, AudienceRule[]> = {};
+  for (const section of page.sections) {
+    if (section.audiences.length > 0) audiences[section.id] = section.audiences;
+  }
+
+  const sections = parsed.filter((section) =>
+    audienceAllows(audiences[section.id] ?? [], {
+      device: visitor.device,
+      isNewVisitor: visitor.visitor === "NEW",
+      utmSource: visitor.utmSource ?? null,
+      utmMedium: visitor.utmMedium ?? null,
+      utmCampaign: visitor.utmCampaign ?? null,
+      referrer: visitor.referrer ?? null,
+    }),
+  );
+
   const images = Object.fromEntries(await resolveSectionImages(sections));
 
   if (sections.length === 0) {
