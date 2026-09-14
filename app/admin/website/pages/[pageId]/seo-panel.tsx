@@ -3,11 +3,14 @@
 import * as React from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { AlertCircle, Check, Copy, Link2, TriangleAlert, X } from "lucide-react";
+import { AlertCircle, Check, Copy, Link2, Sparkles, TriangleAlert, X } from "lucide-react";
 import { Button, Field, Input, Select, Textarea, useToast } from "@/components/ui";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
 import type { SeoReport } from "@/lib/seo/analyzer";
 import type { LinkSuggestion } from "@/lib/services/seo-links.service";
+import { AIDraft, AIError } from "@/components/admin/ai-draft";
+import { useHydrated } from "@/lib/utils/hydrated";
+import { generateMetaAction } from "../../actions";
 import type { ActionResult } from "@/lib/errors";
 import {
   issuePreviewTokenAction,
@@ -81,6 +84,7 @@ export function SeoPanel({
   previewUrl,
   canEditSeo,
   canEdit,
+  aiReady,
 }: {
   pageId: string;
   seo: Seo;
@@ -92,6 +96,8 @@ export function SeoPanel({
   previewUrl: string | null;
   canEditSeo: boolean;
   canEdit: boolean;
+  /** Whether the meta assistant is offered: permission held and a provider configured. */
+  aiReady: boolean;
 }) {
   const [state, formAction] = useActionState<ActionResult<{ id: string }> | null, FormData>(
     savePageSeoAction,
@@ -135,6 +141,16 @@ export function SeoPanel({
             >
               Saved.
             </div>
+          ) : null}
+
+          {aiReady ? (
+            <MetaAssistant
+              pageId={pageId}
+              onApply={(draft) => {
+                setTitle(draft.metaTitle);
+                setDescription(draft.metaDescription);
+              }}
+            />
           ) : null}
 
           <Field
@@ -489,6 +505,83 @@ function LinkSuggestions({ suggestions }: { suggestions: readonly LinkSuggestion
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Draft the search-result title and description from what the page says.
+ *
+ * The draft fills the two fields but **saves nothing** — the editor still
+ * presses Save, and the change goes through the same action, permission and
+ * audit row a hand-typed one does. There is deliberately no path where the
+ * model writes to the page.
+ *
+ * A page with almost nothing on it is refused by the service rather than
+ * described: a plausible description of an empty page is the worst output this
+ * could produce.
+ */
+function MetaAssistant({
+  pageId,
+  onApply,
+}: {
+  pageId: string;
+  onApply: (draft: { metaTitle: string; metaDescription: string }) => void;
+}) {
+  const ready = useHydrated();
+  const [pending, start] = React.useTransition();
+  const [draft, setDraft] = React.useState<{
+    metaTitle: string;
+    metaDescription: string;
+    model: string;
+  } | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const ask = () => {
+    setError(null);
+    setDraft(null);
+    start(async () => {
+      const result = await generateMetaAction(pageId);
+      if (result.ok) setDraft(result.data);
+      else setError(result.message);
+    });
+  };
+
+  return (
+    <div className="space-y-2">
+      <Button type="button" size="sm" variant="secondary" disabled={pending || !ready} onClick={ask}>
+        <Sparkles size={13} aria-hidden="true" />
+        {pending ? "Reading the page…" : "Draft title and description"}
+      </Button>
+
+      {error ? <AIError message={error} /> : null}
+
+      {draft ? (
+        <AIDraft model={draft.model} onDismiss={() => setDraft(null)}>
+          <dl className="space-y-2 text-sm">
+            <div>
+              <dt className="text-2xs uppercase tracking-wide text-ink-subtle">Title</dt>
+              <dd className="text-ink">{draft.metaTitle}</dd>
+            </div>
+            <div>
+              <dt className="text-2xs uppercase tracking-wide text-ink-subtle">Description</dt>
+              <dd className="text-ink">{draft.metaDescription}</dd>
+            </div>
+          </dl>
+          <div className="mt-2.5">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                onApply(draft);
+                setDraft(null);
+              }}
+            >
+              Put these in the fields
+            </Button>
+          </div>
+        </AIDraft>
+      ) : null}
     </div>
   );
 }

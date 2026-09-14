@@ -2238,6 +2238,64 @@ for the same reason.
 > copying the pattern into the exposure route and then actually calling it. Both
 > are fixed, and `tests/beacon-204.test.ts` fails if either comes back.
 
+### 17.1b-xiv The CMS assistant
+
+CMS 2.0 Phase 14. Three assists on the page builder, on the `AIService` that
+already carried the six CRM and SEO ones (CLAUDE.md 16): rewrite one field,
+draft a run of bands from a brief, and write the search-result title and
+description from what the page actually says.
+
+**Nothing an assist produces is written.** Every function returns a `Draft<T>`.
+A rewrite appears *beside* the field, never in it — replacing an editor's words
+as the suggestion arrives destroys them before they have read the alternative,
+and an undo is a poor substitute for not having destroyed anything. Applying is
+one click and it is the editor's. `tests/ai-cms.db.test.ts` asserts the database
+is untouched after each call, because the rule is worth an enforcement rather
+than a comment.
+
+**Model output is validated against the real block schemas.** A drafted band is
+parsed by `BLOCK_SCHEMAS[type]` on top of that block's defaults, exactly as a
+hand-built one is: a field the model invented is stripped, a band whose shape
+does not parse is dropped and named on screen, and a type the template does not
+allow never leaves the service. Defaults underneath mean a band the draft left
+half-filled is still renderable rather than an error the editor must clear.
+
+**Putting a draft on the page is a separate, ordinary write.** `addSections`
+(page service) takes the accepted bands, re-checks `pages.edit` and the
+template's `allowedBlocks`, parses each band again, and writes them in one
+transaction — all or nothing, because a page half-built from a draft with the
+failure in a toast that is gone a moment later is worse than a page unchanged.
+It audits one row per band, not one for the run: a history reading "created a
+section" once for a run of six misreports what happened.
+
+**The editor chooses the structure; the model fills it.** Letting it choose its
+own produced drafts that ignored the template and had to be discarded. Likewise
+the rewrite actions are a closed list rather than a prompt box — an open
+instruction on a field is a prompt-injection surface and an unbounded cost, for
+the handful of things anyone actually asks for.
+
+**Every prompt opens by forbidding invention**, and the meta assist refuses a
+page under twenty words rather than describing it: a plausible description of an
+empty page is the worst output this could produce.
+
+Each task has its own budget in `BUDGET` — rewriting is what an editor does
+repeatedly while drafting, so it gets the largest; block generation the
+smallest. The guard is DB-backed, so it holds across processes.
+
+The assists appear only where `ai.use` is held **and** a provider is configured;
+`aiReady` is computed once on the builder page and passed down (through
+`AssistProvider`, a context, for the per-field control, which lives at the
+bottom of the block-field tree). A button whose only possible outcome is "AI is
+not configured" is worse than no button.
+
+**Two things this phase deliberately did not do.** Internal-link suggestions
+stay the deterministic Phase 8 implementation, which can only propose pages that
+exist — an AI one could invent a URL, and a broken internal link is a worse
+outcome than a missed suggestion. And AI quality checks are not folded into the
+SEO analyzer: it is a pure, deterministic function whose score people compare
+over time, and a number that moved because a model felt differently today is not
+a score.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

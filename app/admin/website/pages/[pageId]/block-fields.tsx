@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { RewriteControl } from "./rewrite-control";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
 import { ICON_LABELS, ICON_NAMES } from "@/lib/content/icons";
 import type { BlockType } from "@/lib/content/blocks";
@@ -651,6 +652,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               />
             )}
           </Field>
+          <RewriteControl
+            label="Body"
+            value={str(content["body"])}
+            onApply={(text) => set({ body: text })}
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <LabelledInput
@@ -1280,6 +1286,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               />
             )}
           </Field>
+          <RewriteControl
+            label="Body"
+            value={str(content["body"])}
+            onApply={(text) => set({ body: text })}
+          />
         </div>
       );
 
@@ -1418,6 +1429,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               />
             )}
           </Field>
+          <RewriteControl
+            label="Body"
+            value={str(content["body"])}
+            onApply={(text) => set({ body: text })}
+          />
           <CtaFields content={content} set={set} errors={errors} />
         </div>
       );
@@ -1483,6 +1499,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               />
             )}
           </Field>
+          <RewriteControl
+            label="Body"
+            value={str(content["body"])}
+            onApply={(text) => set({ body: text })}
+          />
           <StringList
             label="Bullets"
             values={list(content["bullets"])}
@@ -1600,6 +1621,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               />
             )}
           </Field>
+          <RewriteControl
+            label="Body"
+            value={str(content["body"])}
+            onApply={(text) => set({ body: text })}
+          />
           <Field id="align" label="Alignment" error={err("align")}>
             {(aria) => (
               <Select
@@ -1877,6 +1903,11 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               />
             )}
           </Field>
+          <RewriteControl
+            label="Body"
+            value={str(content["body"])}
+            onApply={(text) => set({ body: text })}
+          />
           <CtaFields content={content} set={set} errors={errors} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field id="secondaryLabel" label="Second button label" error={err("secondaryLabel")}>
@@ -2815,6 +2846,13 @@ function LabelledInput({
   );
 }
 
+/**
+ * The long-copy field, with the assistant attached.
+ *
+ * The rewrite control sits outside the `<label>` on purpose: a button inside
+ * one steals the click that should focus the textarea, so the label wraps only
+ * the field it names.
+ */
 function LabelledTextarea({
   label,
   value,
@@ -2829,13 +2867,16 @@ function LabelledTextarea({
   hint?: string;
 }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
-        {label}
-      </span>
-      <Textarea rows={rows} value={value} onChange={(e) => onChange(e.target.value)} />
+    <div className="block">
+      <label className="block">
+        <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+          {label}
+        </span>
+        <Textarea rows={rows} value={value} onChange={(e) => onChange(e.target.value)} />
+      </label>
       {hint ? <span className="mt-1 block text-2xs text-ink-subtle">{hint}</span> : null}
-    </label>
+      <RewriteControl label={label} value={value} onApply={onChange} />
+    </div>
   );
 }
 

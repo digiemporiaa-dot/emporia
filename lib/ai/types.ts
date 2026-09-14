@@ -21,7 +21,12 @@ export type AITask =
   | "generateProposal"
   | "generateContent"
   | "generateSEOContent"
-  | "analyzeCRM";
+  | "analyzeCRM"
+  // CMS assistant. Each returns a Draft like the rest: labelled, editable, and
+  // never written anywhere until a person saves it.
+  | "rewriteField"
+  | "generateBlocks"
+  | "generateMeta";
 
 export type CompletionRequest = {
   /** Which product feature is asking. Recorded, and used for logging. */

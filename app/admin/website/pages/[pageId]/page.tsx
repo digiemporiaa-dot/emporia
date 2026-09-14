@@ -22,6 +22,7 @@ import { absoluteUrl } from "@/lib/seo/urls";
 import { db } from "@/lib/db";
 import { mediaIdsIn } from "@/lib/content/blocks";
 import { allowedBlocksOf } from "@/lib/content/templates";
+import { isAIConfigured } from "@/lib/ai";
 import { listInsertable } from "@/lib/services/reusable-section.service";
 import { taxonomyOptions } from "@/lib/services/taxonomy.service";
 import { EMPTY_TAXONOMY } from "@/lib/content/taxonomy";
@@ -67,6 +68,10 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
   // Loaded once for the whole screen: the filter pickers on every dynamic block
   // share this rather than each fetching the same four lists.
   const taxonomy = can(actor, "pages.edit") ? await taxonomyOptions() : EMPTY_TAXONOMY;
+  // Whether the drafting assists appear at all. Both halves matter: the
+  // permission, and a provider actually configured. Offering a button whose
+  // only possible outcome is "AI is not configured" is worse than no button.
+  const aiReady = can(actor, "ai.use") && (await isAIConfigured());
   const versions = await listVersions(actor, page.id);
   // Gated on audit.view, so a role without it simply does not see the section.
   const audit = can(actor, "audit.view") ? await listPageAudit(actor, page.id) : null;
@@ -137,6 +142,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
         canEdit={can(actor, "pages.edit")}
         allowedBlocks={allowedBlocksOf(page.template?.allowedBlocks)}
         templateName={page.template?.name ?? null}
+        aiReady={aiReady && can(actor, "pages.edit")}
       />
 
       <SchedulePanel
@@ -180,6 +186,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
         previewUrl={page.previewToken ? absoluteUrl(`/preview/${page.previewToken}`) : null}
         canEditSeo={can(actor, "seo.edit")}
         canEdit={can(actor, "pages.edit")}
+        aiReady={aiReady && can(actor, "seo.edit")}
       />
 
       {audit ? <AuditTrail entries={audit} /> : null}
