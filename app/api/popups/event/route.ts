@@ -26,7 +26,10 @@ const bodySchema = z.object({
 export async function POST(request: Request): Promise<NextResponse> {
   const jar = await cookies();
   const visitorId = jar.get(COOKIE.visitorId)?.value;
-  if (!visitorId) return NextResponse.json({ ok: false }, { status: 204 });
+  // A 204 carries no body, and `NextResponse.json` with that status throws
+  // "Invalid response status code 204" — so every beacon from a visitor with
+  // no cookie was answered with a 500 rather than being quietly ignored.
+  if (!visitorId) return new NextResponse(null, { status: 204 });
 
   const limit = await checkRateLimit(`popup:event:${visitorId}`, { limit: 120, windowMs: 60_000 });
   if (!limit.allowed) return NextResponse.json({ ok: false }, { status: 429 });

@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import { publishedPageSections } from "@/lib/content/queries";
 import { visibleSections } from "@/lib/content/personalise";
+import { PageExperiments } from "@/components/website/page-experiments";
 import { PageSections } from "@/components/website/page-sections";
 import { JsonLd } from "@/components/website/json-ld";
 import { faqSchemaForSections, pageBreadcrumbs } from "@/lib/seo/page-schema";
@@ -79,6 +80,7 @@ export default async function LandingPage({
             ]}
           />
           <PageSections sections={sections} title={page.title} images={page.images} />
+          <PageExperiments page={page} />
         </>
       );
     }

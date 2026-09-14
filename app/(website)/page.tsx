@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { publishedPageWithCollections, siteSettings } from "@/lib/content/queries";
 import { visibleSections } from "@/lib/content/personalise";
+import { PageExperiments } from "@/components/website/page-experiments";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { siteDefaults } from "@/lib/seo/defaults";
 import { organizationSchema, webSiteSchema } from "@/lib/seo/schema";
@@ -67,6 +68,7 @@ export default async function HomePage() {
         images={result.page.images}
         collections={result.collections}
       />
+      <PageExperiments page={result.page} />
     </>
   );
 }
