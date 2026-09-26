@@ -426,6 +426,11 @@ enum AuditAction {
   SEND
   PUBLISH
   UNPUBLISH
+  // A whole content table leaving the building, or arriving. The individual
+  // writes an import makes are audited by the services doing them; these two
+  // record the run itself, which is the thing nothing else would show.
+  EXPORT
+  IMPORT
 }
 
 // ---------------------------------------------------------------------------

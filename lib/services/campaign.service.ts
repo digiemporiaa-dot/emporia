@@ -6,6 +6,8 @@ import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { withAudit } from "@/lib/services/audit.service";
 import { toMoneyString } from "@/lib/money";
 import { rangeFilter, type DateRange } from "@/lib/analytics/range";
+import { CsvError, parseCsv, type CsvRow } from "@/lib/csv/parse";
+import { unseparate } from "@/lib/csv/number";
 import { campaignMetricSchema } from "@/lib/validation/marketing";
 import type { CampaignInput, CampaignListParams } from "@/lib/validation/marketing";
 import type { Actor } from "@/lib/actor/types";
@@ -327,15 +329,22 @@ export async function importMetrics(
   });
   if (!campaign) throw new NotFoundError("That campaign does not exist.");
 
-  const lines = csv
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  // The shared reader (lib/csv), not a split on commas: an ad platform's export
+  // quotes its numbers the moment they pass a thousand, and `"1,204"` split on
+  // commas shifts every column after it without failing.
+  let lines: CsvRow[];
+  try {
+    lines = parseCsv(csv).filter((row) => row.some((cell) => cell.trim() !== ""));
+  } catch (error) {
+    if (error instanceof CsvError) {
+      throw new ValidationError(`Line ${error.line}: ${error.message}`);
+    }
+    throw error;
+  }
 
   if (lines.length === 0) throw new ValidationError("That file has no rows.");
 
-  const header = lines[0]?.toLowerCase() ?? "";
-  const hasHeader = header.includes("date");
+  const hasHeader = (lines[0] ?? []).join(",").toLowerCase().includes("date");
   const rows = hasHeader ? lines.slice(1) : lines;
 
   if (rows.length === 0) throw new ValidationError("That file has a header but no rows.");
@@ -344,23 +353,26 @@ export async function importMetrics(
   const rejected: string[] = [];
   const parsed: { date: Date; impressions: number; clicks: number; conversions: number; spend: string; revenue: string | null }[] = [];
 
-  rows.forEach((line, index) => {
+  rows.forEach((row, index) => {
     const lineNumber = index + (hasHeader ? 2 : 1);
-    const cells = line.split(",").map((cell) => cell.trim());
+    const cells = row.map((cell) => cell.trim());
 
     if (cells.length < 5) {
       rejected.push(`Line ${lineNumber}: expected date,impressions,clicks,conversions,spend[,revenue].`);
       return;
     }
 
+    // The numeric cells go through `unseparate` first: a platform export
+    // writes 1,204 for a thousand-odd impressions, and the schema's coercion
+    // reads that as not-a-number.
     const candidate = campaignMetricSchema.safeParse({
       campaignId,
       date: cells[0],
-      impressions: cells[1],
-      clicks: cells[2],
-      conversions: cells[3],
-      spend: cells[4],
-      revenue: cells[5] ? cells[5] : null,
+      impressions: unseparate(cells[1] ?? ""),
+      clicks: unseparate(cells[2] ?? ""),
+      conversions: unseparate(cells[3] ?? ""),
+      spend: unseparate(cells[4] ?? ""),
+      revenue: cells[5] ? unseparate(cells[5]) : null,
     });
 
     if (!candidate.success) {
