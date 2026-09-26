@@ -497,6 +497,9 @@ model User {
   blogPosts          BlogPost[]
   pageVersions       PageVersion[]         @relation("PageVersionAuthor")
 
+  socialAccountsConnected SocialAccount[]     @relation("SocialAccountConnectedBy")
+  socialPublications      SocialPublication[] @relation("SocialPublicationTriggeredBy")
+
   @@index([type, status])
   @@index([roleId])
   @@index([clientId])
@@ -1632,20 +1635,24 @@ model Client {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  portalUsers   User[]                @relation("ClientPortalUsers")
-  contacts      ClientContact[]
-  convertedFrom Lead[]                @relation("LeadConversion")
-  opportunities Opportunity[]
-  proposals     Proposal[]
-  contracts     Contract[]
-  projects      Project[]
-  campaigns     Campaign[]
-  invoices      Invoice[]
-  payments      Payment[]
-  retainers     Retainer[]
-  contentItems  ContentCalendarItem[]
-  approvals     Approval[]
-  messages      ClientMessage[]
+  portalUsers        User[]                 @relation("ClientPortalUsers")
+  contacts           ClientContact[]
+  convertedFrom      Lead[]                 @relation("LeadConversion")
+  opportunities      Opportunity[]
+  proposals          Proposal[]
+  contracts          Contract[]
+  projects           Project[]
+  campaigns          Campaign[]
+  invoices           Invoice[]
+  payments           Payment[]
+  retainers          Retainer[]
+  contentItems       ContentCalendarItem[]
+  approvals          Approval[]
+  messages           ClientMessage[]
+  socialAccounts     SocialAccount[]
+  socialPosts        SocialPost[]
+  socialPublications SocialPublication[]
+  socialMetrics      SocialMetricSnapshot[]
 
   @@index([deletedAt])
   @@index([ownerId])
@@ -1882,12 +1889,22 @@ model ContentCalendarItem {
   mediaId String?
   media   Media?  @relation("ContentItemMedia", fields: [mediaId], references: [id], onDelete: SetNull)
 
+  // The editorial campaign this belongs to — "Diwali 2026". A Campaign, not a
+  // second campaign model: `SOCIAL_ORGANIC` is a real platform value, a budget
+  // of zero is accurate for organic work, and Lead.campaignId already points
+  // here, so social work reaches revenue through the attribution the CRM
+  // already records (docs/SOCIAL-MODULE.md 2).
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  approvals Approval[]
+  approvals   Approval[]
+  socialPosts SocialPost[]
 
   @@index([clientId, stage])
+  @@index([campaignId])
   @@index([scheduledFor])
   @@index([projectId])
   @@index([ownerId])
@@ -1973,9 +1990,10 @@ model Campaign {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  metrics     CampaignMetric[]
-  leads       Lead[]
-  popupEvents PopupAnalytics[]
+  metrics      CampaignMetric[]
+  leads        Lead[]
+  popupEvents  PopupAnalytics[]
+  contentItems ContentCalendarItem[]
 
   @@index([clientId, status])
   @@index([ownerId])
@@ -2317,6 +2335,10 @@ model Media {
 
   tags MediaTag[]
 
+  socialAccountAvatars SocialAccount[]   @relation("SocialAccountAvatar")
+  socialPostMedia      SocialPostMedia[] @relation("SocialPostMedia")
+  socialPostThumbnails SocialPostMedia[] @relation("SocialPostThumbnail")
+
   @@index([folderId])
   @@index([type])
   @@index([deletedAt])
@@ -2593,4 +2615,295 @@ model IntegrationSetting {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Social media
+//
+// One content idea lives in a ContentCalendarItem — the model the delivery
+// calendar, the approval workflow and the client portal already use. What is
+// new below is everything platform-specific: the accounts a client has
+// connected, the per-platform version of a post, each attempt to publish one,
+// and the metrics that come back afterwards.
+//
+// Client isolation is by direct column. Every table here carries `clientId`
+// rather than deriving it through two joins, because the query that has to be
+// right every single time is the one that filters by it.
+// ---------------------------------------------------------------------------
+
+enum SocialProvider {
+  INSTAGRAM
+  FACEBOOK
+  LINKEDIN
+  YOUTUBE
+  X
+  GOOGLE_BUSINESS_PROFILE
+}
+
+enum SocialAccountStatus {
+  /// Credentials held and working.
+  CONNECTED
+  /// Held but rejected by the provider — expired, revoked, or scope changed.
+  NEEDS_RECONNECT
+  /// Deliberately disconnected. The row is kept so published history survives.
+  DISCONNECTED
+}
+
+/// What a post is, across every provider. Which of these a given provider
+/// accepts is declared by its adapter, never assumed.
+enum SocialPostType {
+  SINGLE_IMAGE
+  CAROUSEL
+  VIDEO
+  REEL
+  STORY
+  TEXT
+  LINK
+  YOUTUBE_VIDEO
+  YOUTUBE_SHORT
+  GBP_POST
+}
+
+enum SocialPostStatus {
+  DRAFT
+  /// Approved and waiting for its scheduled time.
+  SCHEDULED
+  /// Claimed by a scheduler run. Nothing else may claim it.
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum PublicationStatus {
+  QUEUED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+/// A platform account a client has connected.
+///
+/// The token itself is never a column anyone can read casually: it is
+/// encrypted with the same AES-256-GCM helper the AI key and the Meta
+/// Conversions token use (lib/security/secret.ts), and no service returns it.
+model SocialAccount {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  provider SocialProvider
+
+  /// The provider's own id for the account. Unique per provider: the same
+  /// Instagram account cannot be connected to two clients at once, which would
+  /// make "whose post is this" unanswerable.
+  externalId String
+  name       String
+  username   String?
+  profileUrl String?
+
+  avatarId String?
+  avatar   Media?  @relation("SocialAccountAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
+
+  status SocialAccountStatus @default(CONNECTED)
+
+  /// Encrypted. Read only by the provider adapter, never returned by a service.
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  /// The scopes the provider actually granted, so a missing permission is a
+  /// diagnosable state rather than a mystery failure at publish time.
+  scopes         String[]  @default([])
+
+  lastSyncedAt  DateTime?
+  lastSyncError String?
+  /// Consecutive failures. Reset on success; used to surface a failing account
+  /// before somebody notices their posts stopped going out.
+  failureCount  Int       @default(0)
+
+  connectedById String?
+  connectedBy   User?   @relation("SocialAccountConnectedBy", fields: [connectedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  posts SocialPost[]
+
+  @@unique([provider, externalId])
+  @@index([clientId, status])
+  @@index([provider, status])
+  @@index([avatarId])
+  @@index([connectedById])
+}
+
+/// One platform's version of one content idea.
+///
+/// The reason this model exists: the same idea reads differently on Instagram,
+/// LinkedIn and a Google Business Profile, and forcing one caption onto all of
+/// them is the thing agencies most complain about in scheduling tools.
+model SocialPost {
+  id String @id @default(cuid())
+
+  contentItemId String
+  contentItem   ContentCalendarItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  /// Denormalised from the content item, exactly as the item denormalises it
+  /// from its project: this is the column every isolation check filters on.
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  accountId String?
+  account   SocialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  provider SocialProvider
+  type     SocialPostType
+  status   SocialPostStatus @default(DRAFT)
+
+  // Copy. Which fields a provider actually uses is its adapter's business; the
+  // editor only shows the ones that provider supports.
+  caption      String?
+  headline     String?
+  hashtags     String[] @default([])
+  mentions     String[] @default([])
+  callToAction String?
+  /// Posted as a reply immediately after publication, where the provider
+  /// supports it — the usual home for hashtags on LinkedIn and Instagram.
+  firstComment String?
+  linkUrl      String?
+
+  /// UTM values applied to `linkUrl` at publication. Stored so the link that
+  /// went out can be reconstructed, and so attribution is server-side.
+  utmCampaign String?
+  utmContent  String?
+
+  scheduledFor DateTime?
+  publishedAt  DateTime?
+
+  externalPostId String?
+  externalUrl    String?
+
+  /// The last failure, in words a person can act on.
+  lastError     String?
+  lastAttemptAt DateTime?
+  attemptCount  Int       @default(0)
+
+  /// Ordering within a content item, so the editor lists versions predictably.
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media        SocialPostMedia[]
+  publications SocialPublication[]
+  metrics      SocialMetricSnapshot[]
+
+  @@index([clientId, status])
+  @@index([contentItemId])
+  @@index([accountId])
+  @@index([status, scheduledFor])
+  @@index([provider, publishedAt])
+}
+
+/// Creatives attached to a post, in order — a carousel is this table with
+/// several rows. Media is referenced, never copied (CLAUDE.md 3: the app
+/// server filesystem is never permanent storage).
+model SocialPostMedia {
+  id     String     @id @default(cuid())
+  postId String
+  post   SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  mediaId String
+  media   Media  @relation("SocialPostMedia", fields: [mediaId], references: [id], onDelete: Restrict)
+
+  /// A video's poster frame, where the provider takes one.
+  thumbnailId String?
+  thumbnail   Media?  @relation("SocialPostThumbnail", fields: [thumbnailId], references: [id], onDelete: SetNull)
+
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, order])
+  @@index([mediaId])
+  @@index([thumbnailId])
+}
+
+/// One attempt to publish one post.
+///
+/// A row per attempt rather than a counter on the post, because a retry needs
+/// the previous failure's provider error to be diagnosable, and because the
+/// idempotency key has to live on the attempt for a duplicate scheduler run to
+/// collide with it rather than publish twice.
+model SocialPublication {
+  id     String     @id @default(cuid())
+  postId String
+  post   SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  provider SocialProvider
+  status   PublicationStatus @default(QUEUED)
+
+  /// Unique. This is what makes publication idempotent: a second scheduler
+  /// run, a retried request and a replayed webhook all derive the same key and
+  /// the second insert fails instead of posting again.
+  idempotencyKey String @unique
+
+  attempt     Int       @default(1)
+  attemptedAt DateTime  @default(now())
+  completedAt DateTime?
+
+  externalPostId String?
+  externalUrl    String?
+
+  /// Human-readable, for the screen. The provider's raw response is logged
+  /// server-side, not stored here — it can carry tokens.
+  error String?
+
+  triggeredById String?
+  triggeredBy   User?   @relation("SocialPublicationTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([postId, attempt])
+  @@index([clientId, status])
+  @@index([status, attemptedAt])
+  @@index([triggeredById])
+}
+
+/// A day's metrics for a published post.
+///
+/// Every figure is nullable, and that is the point: no provider reports all of
+/// these, and a zero where a platform reports nothing is a fabricated metric
+/// (CLAUDE.md 2 rule 5). One row per post per day, so trends are a query
+/// rather than a guess.
+model SocialMetricSnapshot {
+  id     String     @id @default(cuid())
+  postId String
+  post   SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  capturedOn DateTime @db.Date
+
+  reach            Int?
+  impressions      Int?
+  likes            Int?
+  comments         Int?
+  shares           Int?
+  saves            Int?
+  clicks           Int?
+  videoViews       Int?
+  watchTimeSeconds Int?
+  profileVisits    Int?
+  followersGained  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([postId, capturedOn])
+  @@index([clientId, capturedOn])
 }
