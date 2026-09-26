@@ -290,6 +290,83 @@ export async function credentialsFor(id: string): Promise<ProviderCredentials | 
   };
 }
 
+/**
+ * Ask the provider whether the connection still works, and refresh what it
+ * tells us about the account.
+ *
+ * This is both "Test connection" and "Sync now": there is no useful difference
+ * between them at this stage, and two buttons that do the same thing is two
+ * things to keep in step. A success updates the account's name, handle and
+ * avatar URL — people rename accounts — and clears the failure state. A
+ * failure is recorded against the account rather than thrown away, so the
+ * accounts screen can show *why* something is amber.
+ *
+ * Returns the outcome instead of throwing, because the caller is a button and
+ * the interesting answer is "it did not work, here is what to do".
+ */
+export async function syncAccount(
+  actor: Actor,
+  id: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  requirePermission(actor, "social.accounts.manage");
+
+  const account = await db.socialAccount.findUnique({
+    where: { id },
+    select: { id: true, clientId: true, provider: true, status: true },
+  });
+  if (!account) throw new NotFoundError("That account does not exist.");
+  await resolveClientScope(actor, account.clientId);
+
+  if (account.status === "DISCONNECTED") {
+    return { ok: false, message: "This account is disconnected. Connect it again to use it." };
+  }
+
+  const credentials = await credentialsFor(id);
+  if (!credentials) {
+    return {
+      ok: false,
+      message: "The stored credentials could not be read. Reconnect the account.",
+    };
+  }
+
+  const { socialProvider } = await import("@/lib/social");
+  const adapter = await socialProvider(account.provider);
+  if (!adapter.configured) {
+    return {
+      ok: false,
+      message: `${PROVIDER_LABEL[account.provider]} is not configured in this deployment.`,
+    };
+  }
+
+  try {
+    const fresh = await adapter.getAccount(credentials);
+    await db.socialAccount.update({
+      where: { id },
+      data: {
+        name: fresh.name,
+        username: fresh.username,
+        profileUrl: fresh.profileUrl,
+        scopes: [...fresh.scopes],
+      },
+    });
+    await recordSyncResult(id, { ok: true });
+    return { ok: true };
+  } catch (error) {
+    const message =
+      error instanceof Error && "publicMessage" in error
+        ? String((error as { publicMessage: string }).publicMessage)
+        : "The provider could not be reached.";
+
+    // A 401/403 means the credentials themselves are gone, which is a
+    // different state from a bad minute and is marked immediately.
+    const rejected = /reconnect|rejected|expired/i.test(message);
+    await recordSyncResult(id, { ok: false, error: message, credentialsRejected: rejected });
+
+    accountLog.warn({ accountId: id, provider: account.provider }, "social account sync failed");
+    return { ok: false, message };
+  }
+}
+
 /** Health, for the accounts screen. Derived, never stored. */
 export type AccountHealth = "HEALTHY" | "EXPIRING" | "ATTENTION" | "DISCONNECTED";
 

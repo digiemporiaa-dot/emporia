@@ -200,3 +200,103 @@ real provider adapter. Those are Phases 2–8, each with its own screen and its
 own tests. `SocialBrandProfile`, `SocialContentPillar` and `SocialStrategy` land
 with Phase 9, where AI drafting consumes them — tables nothing reads are
 surface a schema has not earned.
+
+---
+
+## 4. Phase 2 — client social account management
+
+Connecting a client's account: the agency's app credentials, the OAuth round
+trip, the accounts screen, and the first real provider adapter.
+
+### The OAuth flow, and what it refuses
+
+```
+Admin → Client → Social → Connect
+  → /api/social/oauth/<provider>?clientId=…      (authenticate, authorize, sign state, set nonce cookie)
+  → the provider's consent screen
+  → /api/social/oauth/<provider>/callback         (verify signature + nonce, exchange, read account)
+  → connectAccount                                 (encrypt, audit, mark connected)
+  → back to the accounts screen with the outcome
+```
+
+**The client id is signed into the `state`, never read from the query string.**
+The provider returns every client to one callback URL, so the callback has to
+learn which client this was for from somewhere — and taking it from a parameter
+the browser controls is precisely the failure the whole module is built to
+avoid.
+
+**A signature alone is not enough**, because a signed state is still replayable
+by whoever obtains it. So the state also carries a nonce, and the same nonce
+goes into an httpOnly cookie scoped to `/api/social/oauth`. The callback
+requires both. An attacker can forge neither our HMAC nor the victim's cookie,
+and a flow left open more than ten minutes is refused as stale.
+
+`tests/social-oauth.test.ts` proves each check fails closed: an edited payload,
+an absent cookie, someone else's cookie, an expired flow, and malformed input
+all return a reason instead of a connection. The expiry test moves the clock
+rather than editing the payload, because an old `issuedAt` cannot be forged
+past the signature — a test that claimed to check expiry while actually
+checking something else would be worse than none.
+
+### The first adapter: LinkedIn
+
+Chosen to be first because its OAuth is plain OAuth 2.0 and its profile is one
+OpenID Connect call, so account connection can be built and *verified* without
+the page-token dance Meta requires. Instagram and Facebook follow in their own
+phase precisely because they are not this simple.
+
+`tests/social-linkedin.test.ts` runs the **real adapter** — real URL building,
+form encoding, parsing, error mapping — against a local wire-level stand-in, the
+same approach `lib/ai/anthropic.ts` is tested with. Only the host moves. It
+covers the round trip, a refresh response that omits its refresh token (kept
+rather than dropped, which would force a needless reconnect), a rejected token
+becoming a "reconnect" instruction, rate limiting, and that **the provider's
+response body never reaches the message** — a failed token exchange can echo
+the request, and that request carries the client secret.
+
+`publish` and `getMetrics` belong to Phases 6 and 8 and **say so** rather than
+returning a plausible nothing.
+
+### Credentials, in two layers
+
+- **App credentials** (the client id and secret the platform issues to the
+  agency) live in `IntegrationSetting`, the row shape the AI provider already
+  uses, with the secret encrypted. The settings screen reads a **mask** and
+  never decrypts; a blank secret field means "keep the stored one", because the
+  form shows a mask and submitting it unchanged must not wipe the credential.
+- **Account tokens** (per client connection) are encrypted columns no service
+  returns, as Phase 1 established.
+
+The screen shows the exact redirect URI to register, because a mismatch there is
+the single most common reason an OAuth flow fails.
+
+### Three states, not one dead button
+
+A provider is *not available yet* (no adapter written), *not configured* (no
+credentials entered) or *ready*. These have different fixes, and the accounts
+screen and the settings screen both say which one applies rather than showing a
+button that cannot work.
+
+### Verified in a browser
+
+Settings and accounts screens render and are usable at 375px with no overflow.
+Credentials saved through the real form, stored encrypted, shown masked, and
+**not present in the page**. With LinkedIn configured, the connect button
+appears and `/api/social/oauth/linkedin` answers:
+
+```
+307 → https://www.linkedin.com/oauth/v2/authorization
+        ?response_type=code&client_id=…&redirect_uri=…&state=<signed>&scope=openid+profile+email+w_member_social
+set-cookie: emporia.social.oauth=…; Path=/api/social/oauth; Max-Age=600; HttpOnly; Secure; SameSite=lax
+```
+
+No client secret in the redirect. Unconfigured, the same route answers 503 with
+what to do about it; a forged callback answers 400 and writes nothing.
+
+Gate: lint, typecheck, **1483 tests across 91 files**, production build — clean.
+
+### Next
+
+Phase 3 is content and platform versioning: the editor where one idea becomes
+an Instagram post, a LinkedIn post and a Google Business Profile post, each with
+its own copy.
