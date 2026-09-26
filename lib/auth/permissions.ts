@@ -66,6 +66,28 @@ export const PERMISSIONS = [
   "content.publish",
 
   /**
+   * Social media. A separate namespace from `content.*` on purpose: the
+   * calendar permission lets somebody plan and schedule, while connecting a
+   * client's Instagram account and pushing a post to the public internet are
+   * different powers that different people hold.
+   *
+   * `social.publish` governs publishing *now* and retrying a failure;
+   * scheduling an approved post is an ordinary edit. `social.accounts.manage`
+   * is the sharpest of these — it grants authority over a client's live
+   * credentials — and is held by admins and the account's own manager, not by
+   * everyone who can write a caption.
+   */
+  "social.view",
+  "social.create",
+  "social.edit",
+  "social.delete",
+  "social.approve",
+  "social.publish",
+  "social.accounts.manage",
+  "social.analytics.view",
+  "social.reports.view",
+
+  /**
    * Website page CMS. Deliberately NOT folded into `content.*`: that namespace
    * is the content *calendar* (ContentCalendarItem — social posts, blog
    * scheduling), enforced in delivery-content.service.ts. Reusing it would
@@ -211,6 +233,7 @@ const READ_ONLY_BASELINE: Permission[] = [
   "tasks.view",
   "media.view",
   "content.view",
+  "social.view",
   "pages.view",
   "catalog.view",
 ];
@@ -333,6 +356,16 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "media.upload",
     "media.edit",
     "emails.view",
+    // Social is this role's job end to end, credentials included.
+    "social.view",
+    "social.create",
+    "social.edit",
+    "social.delete",
+    "social.approve",
+    "social.publish",
+    "social.accounts.manage",
+    "social.analytics.view",
+    "social.reports.view",
   ],
 
   CONTENT_MANAGER: [
@@ -379,6 +412,13 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "approvals.request",
     "projects.view",
     "tasks.view",
+    // Writes and schedules social content. Approving it, pushing it live and
+    // holding the client's credentials are someone else's call.
+    "social.view",
+    "social.create",
+    "social.edit",
+    "social.analytics.view",
+    "social.reports.view",
   ],
 
   PROJECT_MANAGER: [
@@ -404,6 +444,13 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "media.view",
     "media.upload",
     "analytics.view",
+    // Runs delivery, so signs off internally before a client ever sees it.
+    "social.view",
+    "social.create",
+    "social.edit",
+    "social.approve",
+    "social.analytics.view",
+    "social.reports.view",
   ],
 
   STAFF: READ_ONLY_BASELINE,

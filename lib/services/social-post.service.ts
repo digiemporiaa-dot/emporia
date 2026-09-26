@@ -1,0 +1,362 @@
+import "server-only";
+import { db } from "@/lib/db";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { requirePermission } from "@/lib/auth/rbac";
+import { withAudit } from "@/lib/services/audit.service";
+import { PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { resolveClientScope } from "@/lib/social/scope";
+import type { Prisma } from "@/generated/prisma/client";
+import type { SocialPostStatus } from "@/generated/prisma/enums";
+import type { Actor } from "@/lib/actor/types";
+import type { SocialPostInput, SocialPostListParams } from "@/lib/validation/social";
+
+/**
+ * Platform versions of a content item.
+ *
+ * One idea, several posts: the Instagram version, the LinkedIn version, the
+ * Google Business Profile version. They hang off the `ContentCalendarItem` the
+ * delivery calendar and the approval workflow already use, so a social post is
+ * not a second kind of content — it is the platform-shaped half of the content
+ * that already existed.
+ *
+ * Two rules this service exists to hold:
+ *
+ * 1. **`clientId` is copied from the content item, never accepted.** The item
+ *    already copies it from its project. A caller can name a content item; it
+ *    cannot name whose it is.
+ * 2. **A post that has gone out is not editable.** Once a post is PUBLISHING or
+ *    PUBLISHED its copy is a record of what was published. Editing it would
+ *    make the archive a description of something that never happened, and the
+ *    provider would not change the live post anyway.
+ */
+
+const postSelect = {
+  id: true,
+  clientId: true,
+  contentItemId: true,
+  accountId: true,
+  provider: true,
+  type: true,
+  status: true,
+  caption: true,
+  headline: true,
+  hashtags: true,
+  mentions: true,
+  callToAction: true,
+  firstComment: true,
+  linkUrl: true,
+  utmCampaign: true,
+  utmContent: true,
+  scheduledFor: true,
+  publishedAt: true,
+  externalPostId: true,
+  externalUrl: true,
+  lastError: true,
+  lastAttemptAt: true,
+  attemptCount: true,
+  order: true,
+  createdAt: true,
+  updatedAt: true,
+  account: { select: { id: true, name: true, username: true, status: true } },
+  contentItem: {
+    select: {
+      id: true,
+      title: true,
+      stage: true,
+      campaign: { select: { id: true, name: true } },
+    },
+  },
+  media: {
+    orderBy: { order: "asc" },
+    select: {
+      id: true,
+      order: true,
+      media: { select: { id: true, url: true, type: true, alt: true, mimeType: true } },
+      thumbnail: { select: { id: true, url: true } },
+    },
+  },
+} satisfies Prisma.SocialPostSelect;
+
+export type SocialPostRow = Prisma.SocialPostGetPayload<{ select: typeof postSelect }>;
+
+/** Statuses whose copy is a historical record rather than a draft. */
+const LOCKED: readonly SocialPostStatus[] = ["PUBLISHING", "PUBLISHED"];
+
+export async function listPosts(actor: Actor, params: SocialPostListParams) {
+  requirePermission(actor, "social.view");
+  const scope = await resolveClientScope(actor, params.clientId);
+
+  return db.socialPost.findMany({
+    where: {
+      clientId: scope,
+      ...(params.provider ? { provider: params.provider } : {}),
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.campaignId ? { contentItem: { campaignId: params.campaignId } } : {}),
+      ...(params.from || params.to
+        ? {
+            scheduledFor: {
+              ...(params.from ? { gte: params.from } : {}),
+              ...(params.to ? { lte: params.to } : {}),
+            },
+          }
+        : {}),
+    },
+    orderBy: [{ scheduledFor: "asc" }, { order: "asc" }],
+    select: postSelect,
+  });
+}
+
+export async function getPost(actor: Actor, id: string): Promise<SocialPostRow> {
+  requirePermission(actor, "social.view");
+
+  const post = await db.socialPost.findUnique({ where: { id }, select: postSelect });
+  if (!post) throw new NotFoundError("That post does not exist.");
+  await resolveClientScope(actor, post.clientId);
+  return post;
+}
+
+/** Every platform version of one idea, which is how the editor lists them. */
+export async function listPostsForItem(actor: Actor, contentItemId: string) {
+  requirePermission(actor, "social.view");
+
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: contentItemId },
+    select: { clientId: true },
+  });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  await resolveClientScope(actor, item.clientId);
+
+  return db.socialPost.findMany({
+    where: { contentItemId },
+    orderBy: { order: "asc" },
+    select: postSelect,
+  });
+}
+
+/**
+ * Create or update one platform version.
+ *
+ * The account is checked against the post's own client and provider: attaching
+ * a post to an account belonging to a different client, or to an Instagram
+ * account when the post says LinkedIn, is refused here rather than discovered
+ * at publication.
+ */
+export async function savePost(
+  actor: Actor,
+  id: string | null,
+  input: SocialPostInput,
+): Promise<SocialPostRow> {
+  requirePermission(actor, id ? "social.edit" : "social.create");
+
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: input.contentItemId },
+    select: { id: true, clientId: true },
+  });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  const scope = await resolveClientScope(actor, item.clientId);
+
+  let before: { status: SocialPostStatus; clientId: string } | null = null;
+  if (id) {
+    const existing = await db.socialPost.findUnique({
+      where: { id },
+      select: { status: true, clientId: true },
+    });
+    if (!existing) throw new NotFoundError("That post does not exist.");
+    await resolveClientScope(actor, existing.clientId);
+    if (LOCKED.includes(existing.status)) {
+      throw new ConflictError(
+        "This post has already gone out. Its copy is the record of what was published.",
+      );
+    }
+    before = existing;
+  }
+
+  if (input.accountId) {
+    const account = await db.socialAccount.findUnique({
+      where: { id: input.accountId },
+      select: { clientId: true, provider: true, status: true },
+    });
+    if (!account || account.clientId !== scope) {
+      throw new NotFoundError("That account does not exist.");
+    }
+    if (account.provider !== input.provider) {
+      throw new ValidationError(
+        `That account is ${PROVIDER_LABEL[account.provider]}, but the post is for ${PROVIDER_LABEL[input.provider]}.`,
+      );
+    }
+  }
+
+  const media = await resolveMedia(input.mediaIds);
+
+  const data = {
+    contentItemId: item.id,
+    clientId: scope,
+    accountId: input.accountId,
+    provider: input.provider,
+    type: input.type,
+    caption: input.caption,
+    headline: input.headline,
+    hashtags: input.hashtags,
+    mentions: input.mentions,
+    callToAction: input.callToAction,
+    firstComment: input.firstComment,
+    linkUrl: input.linkUrl,
+    scheduledFor: input.scheduledFor,
+  };
+
+  return withAudit(
+    {
+      actor,
+      action: id ? "UPDATE" : "CREATE",
+      entityType: "SocialPost",
+      entityId: id ?? item.id,
+      before,
+      after: { provider: input.provider, type: input.type, contentItemId: item.id },
+    },
+    async (tx) => {
+      const post = id
+        ? await tx.socialPost.update({ where: { id }, data, select: { id: true } })
+        : await tx.socialPost.create({
+            data: { ...data, order: await nextOrder(tx, item.id) },
+            select: { id: true },
+          });
+
+      // Replaced wholesale: the editor sends the complete ordered list it is
+      // showing, so removing a creative has to mean removing it.
+      await tx.socialPostMedia.deleteMany({ where: { postId: post.id } });
+      if (media.length > 0) {
+        await tx.socialPostMedia.createMany({
+          data: media.map((mediaId, order) => ({ postId: post.id, mediaId, order })),
+        });
+      }
+
+      return tx.socialPost.findUniqueOrThrow({ where: { id: post.id }, select: postSelect });
+    },
+  );
+}
+
+async function nextOrder(tx: Prisma.TransactionClient, contentItemId: string): Promise<number> {
+  const last = await tx.socialPost.findFirst({
+    where: { contentItemId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  return (last?.order ?? -1) + 1;
+}
+
+/** Media must exist and be usable; a dangling id would fail at publication. */
+async function resolveMedia(ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+
+  const rows = await db.media.findMany({
+    where: { id: { in: [...ids] }, deletedAt: null },
+    select: { id: true, type: true },
+  });
+  const found = new Set(rows.map((row) => row.id));
+
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0) {
+    throw new ValidationError(`${missing.length} of those files no longer exist.`);
+  }
+
+  const unusable = rows.filter((row) => row.type === "DOCUMENT");
+  if (unusable.length > 0) {
+    throw new ValidationError("A social post can carry images and video, not documents.");
+  }
+
+  // The caller's order is the carousel's order, so it is preserved exactly
+  // rather than taking whatever order the query returned.
+  return [...ids];
+}
+
+export async function deletePost(actor: Actor, id: string) {
+  requirePermission(actor, "social.delete");
+
+  const post = await db.socialPost.findUnique({
+    where: { id },
+    select: { id: true, clientId: true, status: true, provider: true, externalPostId: true },
+  });
+  if (!post) throw new NotFoundError("That post does not exist.");
+  await resolveClientScope(actor, post.clientId);
+
+  if (post.status === "PUBLISHED") {
+    throw new ConflictError(
+      "A published post cannot be deleted here — it is the record of what went out. Cancel it instead.",
+    );
+  }
+  if (post.status === "PUBLISHING") {
+    throw new ConflictError("This post is being published right now.");
+  }
+
+  await withAudit(
+    {
+      actor,
+      action: "DELETE",
+      entityType: "SocialPost",
+      entityId: id,
+      before: { provider: post.provider, status: post.status },
+    },
+    (tx) => tx.socialPost.delete({ where: { id }, select: { id: true } }),
+  );
+}
+
+/**
+ * Move a post between the states this phase owns.
+ *
+ * `PUBLISHING` and `PUBLISHED` are not reachable from here: only the
+ * publishing engine may set those, and only by claiming the row. Letting a
+ * screen mark something published would make the archive a claim rather than a
+ * record.
+ */
+const ALLOWED_TRANSITIONS: Record<SocialPostStatus, readonly SocialPostStatus[]> = {
+  DRAFT: ["SCHEDULED", "CANCELLED"],
+  SCHEDULED: ["DRAFT", "CANCELLED"],
+  PUBLISHING: [],
+  PUBLISHED: [],
+  FAILED: ["DRAFT", "SCHEDULED", "CANCELLED"],
+  CANCELLED: ["DRAFT"],
+};
+
+export async function setPostStatus(actor: Actor, id: string, status: SocialPostStatus) {
+  requirePermission(actor, "social.edit");
+
+  const post = await db.socialPost.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      clientId: true,
+      status: true,
+      scheduledFor: true,
+      accountId: true,
+      contentItem: { select: { stage: true } },
+    },
+  });
+  if (!post) throw new NotFoundError("That post does not exist.");
+  await resolveClientScope(actor, post.clientId);
+
+  if (!ALLOWED_TRANSITIONS[post.status].includes(status)) {
+    throw new ConflictError(`A ${post.status.toLowerCase()} post cannot become ${status.toLowerCase()}.`);
+  }
+
+  if (status === "SCHEDULED") {
+    // The rule the whole product turns on: nothing reaches a client's audience
+    // without the client having approved it (brief §14).
+    if (post.contentItem.stage !== "APPROVED" && post.contentItem.stage !== "SCHEDULED") {
+      throw new ForbiddenError("This content has not been approved yet.");
+    }
+    if (!post.scheduledFor) throw new ValidationError("Set a date and time before scheduling.");
+    if (!post.accountId) throw new ValidationError("Choose the account to post from.");
+  }
+
+  return withAudit(
+    {
+      actor,
+      action: "STATUS_CHANGE",
+      entityType: "SocialPost",
+      entityId: id,
+      before: { status: post.status },
+      after: { status },
+    },
+    (tx) => tx.socialPost.update({ where: { id }, data: { status }, select: postSelect }),
+  );
+}
