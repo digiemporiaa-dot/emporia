@@ -7,5 +7,5 @@ export default async function ClientSocialIndex({
   params: Promise<{ clientId: string }>;
 }) {
   const { clientId } = await params;
-  redirect(`/admin/clients/${clientId}/social/accounts`);
+  redirect(`/admin/clients/${clientId}/social/content`);
 }

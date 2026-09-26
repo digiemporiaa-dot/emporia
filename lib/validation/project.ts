@@ -150,6 +150,15 @@ export const contentItemSchema = z.object({
   ownerId: optionalId,
   scheduledFor: z.coerce.date().nullable().optional(),
   mediaId: optionalId,
+  /**
+   * The editorial campaign this belongs to — "Diwali 2026".
+   *
+   * A `Campaign`, not a second campaign model: `Lead.campaignId` already points
+   * there, so grouping content under one is what lets a campaign's social work
+   * reach revenue through the attribution the CRM already records
+   * (docs/SOCIAL-MODULE.md 2).
+   */
+  campaignId: optionalId,
 });
 
 export type ContentItemInput = z.infer<typeof contentItemSchema>;
