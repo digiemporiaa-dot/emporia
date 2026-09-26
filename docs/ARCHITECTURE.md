@@ -1952,15 +1952,25 @@ choices would let an admin pick one and be served another. The screen says so.
 Deletion is a hard delete: a redirect holds no history worth keeping, and
 `isActive` already means "off but kept".
 
-> **Known duplication, stated rather than hidden.** `components/admin/seo-fields.tsx`
-> was written to be the single definition of the SEO form, but the page
-> builder's panel carries its own copy, wrapped in a two-column layout with the
-> score report beside it. Adding `targetKeyword` to the shared component left
-> the page builder — the screen the field exists for — without it, and nothing
-> failed: no type error, no test, just a missing box that only opening the page
-> revealed. `tests/seo-form-parity.test.ts` now reads both files and asserts
-> every field the schema accepts is posted by both. That is a guard, not a fix;
-> consolidating the two forms is still owed.
+> **A duplication that was owed, and is now paid.** `components/admin/seo-fields.tsx`
+> was written to be the single definition of the SEO form, and the page
+> builder's panel carried its own copy anyway, wrapped in a two-column layout
+> with the score report beside it. Adding `targetKeyword` to the shared
+> component left the page builder — the screen the field exists for — without
+> it, and nothing failed: no type error, no test, just a missing box that only
+> opening the page revealed.
+>
+> The panel now renders the shared component. The one thing it needed that the
+> other callers do not — the AI meta assistant, which has to write into the
+> title and description — arrives as a render prop that is handed the function
+> filling those fields, so the state stays in the one place rather than being
+> lifted into every caller to satisfy the one caller that has an assistant.
+> Two near-identical wordings collapsed into the shared one along the way
+> ("index this" rather than "index this page").
+>
+> `tests/seo-form-parity.test.ts` now holds both halves: the one form covers
+> every field the schema accepts, **and** no wrapper posts an SEO field of its
+> own — which is what a fork looks like on the way back in.
 
 ### 17.1b-ix The content library — search and bulk operations
 

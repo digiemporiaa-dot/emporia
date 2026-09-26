@@ -4,8 +4,9 @@ import * as React from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertCircle, Check, Copy, Link2, Sparkles, TriangleAlert, X } from "lucide-react";
-import { Button, Field, Input, Select, Textarea, useToast } from "@/components/ui";
-import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
+import { Button, useToast } from "@/components/ui";
+import { SeoFields, type SeoValues } from "@/components/admin/seo-fields";
+import type { PickedMedia } from "@/components/admin/media-picker";
 import type { SeoReport } from "@/lib/seo/analyzer";
 import type { LinkSuggestion } from "@/lib/services/seo-links.service";
 import { AIDraft, AIError } from "@/components/admin/ai-draft";
@@ -27,50 +28,12 @@ import {
  * number would disagree with the page the moment someone walked away.
  */
 
-type Seo = {
-  metaTitle: string | null;
-  metaDescription: string | null;
-  canonical: string | null;
-  targetKeyword: string | null;
-  ogTitle: string | null;
-  ogDescription: string | null;
-  ogImageId: string | null;
-  ogImageAlt: string | null;
-  twitterTitle: string | null;
-  twitterDescription: string | null;
-  twitterImageId: string | null;
-  robotsIndex: boolean;
-  robotsFollow: boolean;
-  schemaType: string;
-} | null;
-
-const SCHEMA_TYPES = [
-  { value: "NONE", label: "None" },
-  { value: "FAQ_PAGE", label: "FAQ page" },
-  { value: "SERVICE", label: "Service" },
-  { value: "ARTICLE", label: "Article" },
-  { value: "LOCAL_BUSINESS", label: "Local business" },
-  { value: "ORGANIZATION", label: "Organization" },
-  { value: "WEBSITE", label: "Website" },
-] as const;
-
 function Submit() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
       {pending ? "Saving…" : "Save SEO"}
     </Button>
-  );
-}
-
-/** Character counter that turns amber outside the useful range. */
-function Counter({ value, min, max }: { value: string; min: number; max: number }) {
-  const n = value.trim().length;
-  const ok = n >= min && n <= max;
-  return (
-    <span className={ok ? "text-ink-subtle" : "text-warning"}>
-      {n} / {max}
-    </span>
   );
 }
 
@@ -87,7 +50,7 @@ export function SeoPanel({
   aiReady,
 }: {
   pageId: string;
-  seo: Seo;
+  seo: SeoValues;
   report: SeoReport;
   /** Pages this one names but does not link to. Suggestions only — see below. */
   linkSuggestions: readonly LinkSuggestion[];
@@ -103,15 +66,10 @@ export function SeoPanel({
     savePageSeoAction,
     null,
   );
-  const [title, setTitle] = React.useState(seo?.metaTitle ?? "");
-  const [description, setDescription] = React.useState(seo?.metaDescription ?? "");
-
   const fieldErrors = (state && !state.ok ? state.details : null) as
     | Record<string, string[]>
     | null
     | undefined;
-  const err = (name: string) => fieldErrors?.[name]?.[0];
-
   return (
     <section aria-labelledby="seo-heading" className="mt-10 grid gap-8 lg:grid-cols-12">
       <div className="lg:col-span-7">
@@ -143,187 +101,18 @@ export function SeoPanel({
             </div>
           ) : null}
 
-          {aiReady ? (
-            <MetaAssistant
-              pageId={pageId}
-              onApply={(draft) => {
-                setTitle(draft.metaTitle);
-                setDescription(draft.metaDescription);
-              }}
-            />
-          ) : null}
-
-          <Field
-            id="targetKeyword"
-            label="Target keyword"
-            hint="One phrase this page is written to rank for. Blank switches the keyword checks off."
-            error={err("targetKeyword")}
-          >
-            {(aria) => (
-              <Input
-                {...aria}
-                name="targetKeyword"
-                defaultValue={seo?.targetKeyword ?? ""}
-                placeholder="digital marketing agency in gurgaon"
-              />
-            )}
-          </Field>
-
-          <Field
-            id="metaTitle"
-            label="Meta title"
-            hint="Blank uses the page title."
-            error={err("metaTitle")}
-          >
-            {(aria) => (
-              <>
-                <Input
-                  {...aria}
-                  name="metaTitle"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-                <p className="mt-1 text-2xs">
-                  <Counter value={title} min={30} max={60} />
-                </p>
-              </>
-            )}
-          </Field>
-
-          <Field id="metaDescription" label="Meta description" error={err("metaDescription")}>
-            {(aria) => (
-              <>
-                <Textarea
-                  {...aria}
-                  name="metaDescription"
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-                <p className="mt-1 text-2xs">
-                  <Counter value={description} min={70} max={160} />
-                </p>
-              </>
-            )}
-          </Field>
-
-          <Field
-            id="canonical"
-            label="Canonical override"
-            hint="Blank derives it from this page's address, which is normally right."
-            error={err("canonical")}
-          >
-            {(aria) => <Input {...aria} name="canonical" defaultValue={seo?.canonical ?? ""} />}
-          </Field>
-
-          <fieldset className="rounded-lg border border-line p-4">
-            <legend className="px-1 text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
-              Open Graph
-            </legend>
-            <div className="space-y-4">
-              <Field
-                id="ogTitle"
-                label="OG title"
-                hint="Blank uses the meta title."
-                error={err("ogTitle")}
-              >
-                {(aria) => <Input {...aria} name="ogTitle" defaultValue={seo?.ogTitle ?? ""} />}
-              </Field>
-              <Field id="ogDescription" label="OG description" error={err("ogDescription")}>
-                {(aria) => (
-                  <Textarea
-                    {...aria}
-                    name="ogDescription"
-                    rows={2}
-                    defaultValue={seo?.ogDescription ?? ""}
-                  />
-                )}
-              </Field>
-              <MediaPicker name="ogImageId" label="OG image" accept="IMAGE" value={ogImage} />
-              <Field
-                id="ogImageAlt"
-                label="OG image alt"
-                hint="Required by the design system whenever an image is set."
-                error={err("ogImageAlt")}
-              >
-                {(aria) => (
-                  <Input {...aria} name="ogImageAlt" defaultValue={seo?.ogImageAlt ?? ""} />
-                )}
-              </Field>
-            </div>
-          </fieldset>
-
-          <fieldset className="rounded-lg border border-line p-4">
-            <legend className="px-1 text-2xs font-semibold uppercase tracking-widest text-ink-subtle">
-              Twitter
-            </legend>
-            <div className="space-y-4">
-              <Field
-                id="twitterTitle"
-                label="Twitter title"
-                hint="Blank uses the OG title."
-                error={err("twitterTitle")}
-              >
-                {(aria) => (
-                  <Input {...aria} name="twitterTitle" defaultValue={seo?.twitterTitle ?? ""} />
-                )}
-              </Field>
-              <Field
-                id="twitterDescription"
-                label="Twitter description"
-                error={err("twitterDescription")}
-              >
-                {(aria) => (
-                  <Textarea
-                    {...aria}
-                    name="twitterDescription"
-                    rows={2}
-                    defaultValue={seo?.twitterDescription ?? ""}
-                  />
-                )}
-              </Field>
-              <MediaPicker
-                name="twitterImageId"
-                label="Twitter image"
-                accept="IMAGE"
-                value={twitterImage}
-              />
-            </div>
-          </fieldset>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field id="schemaType" label="Structured data" error={err("schemaType")}>
-              {(aria) => (
-                <Select {...aria} name="schemaType" defaultValue={seo?.schemaType ?? "NONE"}>
-                  {SCHEMA_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-            <div className="space-y-2 self-end pb-1">
-              <label className="flex items-center gap-2 text-sm text-navy-800">
-                <input
-                  type="checkbox"
-                  name="robotsIndex"
-                  defaultChecked={seo?.robotsIndex ?? true}
-                  className="size-4 rounded-xs border-line-strong text-brand-red"
-                />
-                Allow search engines to index this page
-              </label>
-              <label className="flex items-center gap-2 text-sm text-navy-800">
-                <input
-                  type="checkbox"
-                  name="robotsFollow"
-                  defaultChecked={seo?.robotsFollow ?? true}
-                  className="size-4 rounded-xs border-line-strong text-brand-red"
-                />
-                Follow links from this page
-              </label>
-            </div>
-          </div>
+          <SeoFields
+            seo={seo}
+            ogImage={ogImage}
+            twitterImage={twitterImage}
+            titleHint="Blank uses the page title."
+            errors={fieldErrors}
+            assistant={
+              aiReady
+                ? (apply) => <MetaAssistant pageId={pageId} onApply={apply} />
+                : undefined
+            }
+          />
 
           {canEditSeo ? (
             <Submit />
