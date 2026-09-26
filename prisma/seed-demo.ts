@@ -1,6 +1,8 @@
 import "dotenv/config";
+import argon2 from "argon2";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
+import { ICON_NAMES } from "../lib/content/icons.js";
 
 /**
  * Demo content for the public website.
@@ -117,7 +119,7 @@ const SERVICES = [
     name: "Content Marketing",
     shortDescription:
       "Research-led writing that earns links, ranks, and gives your sales team something worth sending.",
-    icon: "pen",
+    icon: "pen-tool",
     order: 4,
     body: {
       intro:
@@ -161,7 +163,7 @@ const SERVICES = [
     name: "Marketing Analytics",
     shortDescription:
       "Attribution, dashboards and clean data so you can answer which spend produced which revenue.",
-    icon: "chart",
+    icon: "bar-chart",
     order: 6,
     body: {
       intro:
@@ -1015,6 +1017,26 @@ const CATALOG: {
   },
 ];
 
+/**
+ * An icon outside the curated set is not a cosmetic slip.
+ *
+ * The renderer only knows `ICON_NAMES`, so an unknown value draws nothing, and
+ * the service's own zod schema refuses it — which means the record cannot be
+ * saved from the admin or re-imported from its own export. Writing it straight
+ * through Prisma is the one path that bypasses both checks, so the seed makes
+ * that path fail loudly instead. Two icons shipped this way ("pen", "chart")
+ * before this guard existed.
+ */
+function assertIcon(name: string, service: string): string {
+  if (!(ICON_NAMES as readonly string[]).includes(name)) {
+    throw new Error(
+      `Service "${service}" uses icon "${name}", which is not in ICON_NAMES. ` +
+        `It would render as nothing. Choose one of: ${ICON_NAMES.join(", ")}.`,
+    );
+  }
+  return name;
+}
+
 async function seedServices(): Promise<void> {
   for (const s of SERVICES) {
     await upsertWithSeo(
@@ -1026,7 +1048,7 @@ async function seedServices(): Promise<void> {
             name: s.name,
             shortDescription: s.shortDescription,
             body: s.body,
-            icon: s.icon,
+            icon: assertIcon(s.icon, s.name),
             order: s.order,
             status: "PUBLISHED",
             seoId,
@@ -1039,7 +1061,7 @@ async function seedServices(): Promise<void> {
             name: s.name,
             shortDescription: s.shortDescription,
             body: s.body,
-            icon: s.icon,
+            icon: assertIcon(s.icon, s.name),
             order: s.order,
             status: "PUBLISHED",
           },
@@ -1567,6 +1589,250 @@ async function seedCatalog(): Promise<void> {
   console.log(`  catalog items: ${CATALOG.length}`);
 }
 
+// ---------------------------------------------------------------------------
+// A client, and someone who can sign in as them
+// ---------------------------------------------------------------------------
+
+/**
+ * One demo client with enough behind it to open every portal screen.
+ *
+ * The portal is a third of this product and, until this existed, the only way
+ * to look at it was to build a client, a portal user and a password by hand.
+ * Everything here hangs off one client so the isolation the portal enforces is
+ * visible: sign in as this account and you see exactly this client's work.
+ *
+ * The password is fixed and printed at the end of the run. That is safe because
+ * this command is deliberately separate from `db:seed` and never runs on a
+ * deploy — and the alternative, a random password nobody is told, makes the
+ * account useless for the thing it exists for.
+ */
+const DEMO_PORTAL_EMAIL = "client@emporia.test";
+const DEMO_PORTAL_PASSWORD = "demo-client-1234";
+
+async function seedClientPortal(staffId: string): Promise<void> {
+  const client = await prisma.client.upsert({
+    where: { slug: "northwind-studio" },
+    update: {},
+    create: {
+      name: "Northwind Studio",
+      slug: "northwind-studio",
+      industry: "Home furniture, direct to consumer",
+      website: "https://example.com",
+      status: "ACTIVE",
+      ownerId: staffId,
+    },
+    select: { id: true },
+  });
+
+  // A portal user carries a role like any other user; CLIENT_USER is the one
+  // the base seed creates for exactly this purpose.
+  const role = await prisma.role.findFirstOrThrow({
+    where: { name: "CLIENT_USER" },
+    select: { id: true },
+  });
+
+  const passwordHash = await argon2.hash(DEMO_PORTAL_PASSWORD, {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 4,
+  });
+
+  // ACTIVE explicitly: a User defaults to INVITED, and an invited account
+  // cannot sign in — which makes a seeded portal account that looks correct in
+  // the table and fails at the login form.
+  await prisma.user.upsert({
+    where: { email: DEMO_PORTAL_EMAIL },
+    update: { clientId: client.id, roleId: role.id, passwordHash, status: "ACTIVE" },
+    create: {
+      email: DEMO_PORTAL_EMAIL,
+      name: "Priya Raman",
+      type: "CLIENT",
+      status: "ACTIVE",
+      clientId: client.id,
+      roleId: role.id,
+      passwordHash,
+    },
+  });
+
+  const project = await prisma.project.upsert({
+    where: { code: "NWS-001" },
+    update: {},
+    create: {
+      code: "NWS-001",
+      name: "Search and content retainer",
+      clientId: client.id,
+      managerId: staffId,
+      status: "ACTIVE",
+      health: "ON_TRACK",
+      startsAt: new Date(Date.UTC(2026, 6, 1)),
+    },
+    select: { id: true },
+  });
+
+  // Replaced wholesale on each run rather than upserted one by one: these have
+  // no natural key, and matching on a title would break the moment one is
+  // renamed here.
+  await prisma.projectTask.deleteMany({ where: { projectId: project.id } });
+  await prisma.projectTask.createMany({
+    data: [
+      { projectId: project.id, title: "Technical audit and fix list", status: "DONE", order: 0 },
+      { projectId: project.id, title: "Rewrite the top ten landing pages", status: "IN_PROGRESS", order: 1 },
+      { projectId: project.id, title: "Monthly reporting pack", status: "TODO", order: 2 },
+      { projectId: project.id, title: "Waiting on brand photography", status: "BLOCKED", order: 3 },
+    ],
+  });
+
+  await prisma.projectMilestone.deleteMany({ where: { projectId: project.id } });
+  await prisma.projectMilestone.createMany({
+    data: [
+      {
+        projectId: project.id,
+        title: "Audit signed off",
+        status: "COMPLETED",
+        order: 0,
+        dueAt: new Date(Date.UTC(2026, 6, 20)),
+      },
+      {
+        projectId: project.id,
+        title: "First content batch live",
+        status: "PENDING",
+        order: 1,
+        dueAt: new Date(Date.UTC(2026, 8, 15)),
+      },
+    ],
+  });
+
+  // One paid invoice and one part-paid, so the portal shows both an outstanding
+  // balance and a payment history rather than a single state.
+  const invoices: {
+    number: string;
+    status: "PAID" | "PARTIALLY_PAID";
+    total: string;
+    paid: string;
+    issued: Date;
+    due: Date;
+  }[] = [
+    {
+      number: "INV-DEMO-0001",
+      status: "PAID",
+      total: "60000.00",
+      paid: "60000.00",
+      issued: new Date(Date.UTC(2026, 6, 1)),
+      due: new Date(Date.UTC(2026, 6, 15)),
+    },
+    {
+      number: "INV-DEMO-0002",
+      status: "PARTIALLY_PAID",
+      total: "60000.00",
+      paid: "25000.00",
+      issued: new Date(Date.UTC(2026, 7, 1)),
+      due: new Date(Date.UTC(2026, 7, 15)),
+    },
+  ];
+
+  for (const entry of invoices) {
+    const due = (Number(entry.total) - Number(entry.paid)).toFixed(2);
+    const invoice = await prisma.invoice.upsert({
+      where: { number: entry.number },
+      update: {},
+      create: {
+        number: entry.number,
+        clientId: client.id,
+        projectId: project.id,
+        status: entry.status,
+        issuedAt: entry.issued,
+        dueAt: entry.due,
+        subtotal: entry.total,
+        taxTotal: "0.00",
+        total: entry.total,
+        paidTotal: entry.paid,
+        dueTotal: due,
+        notes: "Monthly retainer.",
+      },
+      select: { id: true },
+    });
+
+    await prisma.invoiceItem.deleteMany({ where: { invoiceId: invoice.id } });
+    await prisma.invoiceItem.create({
+      data: {
+        invoiceId: invoice.id,
+        name: "Search and content retainer — one month",
+        quantity: "1.000",
+        unitPrice: entry.total,
+        lineTotal: entry.total,
+      },
+    });
+
+    if (Number(entry.paid) > 0) {
+      // The idempotency key is what stops a re-run crediting the same money
+      // twice — the same guarantee the Razorpay webhook relies on.
+      await prisma.payment.upsert({
+        where: { idempotencyKey: `demo-${entry.number}` },
+        update: {},
+        create: {
+          idempotencyKey: `demo-${entry.number}`,
+          invoiceId: invoice.id,
+          clientId: client.id,
+          amount: entry.paid,
+          status: "CAPTURED",
+          gateway: "BANK_TRANSFER",
+          receivedAt: entry.due,
+        },
+      });
+    }
+  }
+
+  // Something waiting on the client, so the portal's approvals badge is not
+  // permanently zero.
+  const existingApproval = await prisma.approval.findFirst({
+    where: { clientId: client.id, title: "August blog — three drafts" },
+    select: { id: true },
+  });
+  if (!existingApproval) {
+    const approval = await prisma.approval.create({
+      data: {
+        clientId: client.id,
+        projectId: project.id,
+        title: "August blog — three drafts",
+        status: "PENDING",
+        requestedById: staffId,
+      },
+      select: { id: true },
+    });
+    await prisma.approvalVersion.create({
+      data: {
+        approvalId: approval.id,
+        version: 1,
+        notes: "First drafts of the three August posts, for your comments.",
+        createdById: staffId,
+      },
+    });
+  }
+
+  const messages = await prisma.clientMessage.count({ where: { clientId: client.id } });
+  if (messages === 0) {
+    await prisma.clientMessage.createMany({
+      data: [
+        {
+          clientId: client.id,
+          authorId: staffId,
+          fromClient: false,
+          body: "August drafts are up for review — three posts, all in the approvals tab.",
+        },
+        {
+          clientId: client.id,
+          authorId: staffId,
+          fromClient: false,
+          body: "Reporting pack goes out on the 5th as usual.",
+        },
+      ],
+    });
+  }
+
+  console.log("  client portal: 1 client, 1 portal user, 1 project, 2 invoices, 1 approval");
+}
+
 async function main(): Promise<void> {
   console.log("Seeding DEMO content (npm run db:seed:demo).");
   console.log("This is sample data for development. Do not run it against production.\n");
@@ -1597,6 +1863,7 @@ async function main(): Promise<void> {
   await seedServiceCityPages();
   await seedPopups();
   await seedSiteSettings();
+  await seedClientPortal(author.id);
 
   // Auditable marker, so demo data can be identified and removed later.
   await prisma.siteSetting.upsert({
@@ -1606,6 +1873,18 @@ async function main(): Promise<void> {
   });
 
   console.log("\nDone. Marked in SiteSetting as demo.seededAt.");
+  console.log(
+    `\nPortal sign-in: ${DEMO_PORTAL_EMAIL} / ${DEMO_PORTAL_PASSWORD} (demo data only).`,
+  );
+  // Said here because it is not obvious and it looks like a bug when it bites:
+  // public pages are served from a tagged cache that only the app's own writes
+  // bust. A seed writes straight to Postgres, so a server started before this
+  // run keeps serving what it cached — including a 404 for a page this seed
+  // has just created.
+  console.log(
+    "\nIf a dev server is already running, restart it after clearing .next/cache —\n" +
+      "cached pages are only revalidated by writes made through the app.",
+  );
 }
 
 main()

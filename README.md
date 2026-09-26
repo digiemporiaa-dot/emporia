@@ -120,7 +120,7 @@ Sign in at `/auth/login`, then `/admin`.
 ```bash
 npm run dev              # local dev server
 npm run build            # prisma generate + next build
-npm run start            # NOTE: use the standalone server instead, see below
+npm run start            # production build, served the way the image serves it
 npm run lint
 npm run typecheck
 npm run test             # vitest; integration tests need TEST_DATABASE_URL
@@ -139,16 +139,19 @@ packages, case studies, blog posts and page content for development. Every demo
 run records `demo.seededAt` in `SiteSetting` so the data can be identified and
 removed later.
 
-> `next start` does **not** work with `output: "standalone"`. To run a
-> production build locally, copy the static assets next to the standalone server
-> and run it directly:
+> `next start` does **not** work with `output: "standalone"`, and it does not
+> fail cleanly: the server comes up and serves most of the site while some
+> routes answer 404. `npm run start` therefore runs `scripts/start-standalone.mjs`,
+> which does what the Dockerfile does — copies the static assets next to the
+> traced server and runs it:
 >
 > ```bash
 > npm run build
-> cp -r .next/static .next/standalone/.next/static
-> cp -r public .next/standalone/
-> node .next/standalone/server.js
+> npm run start            # == cp -r .next/static … && node .next/standalone/server.js
 > ```
+>
+> `npm run start:next` is still there if you explicitly want the unsupported
+> `next start`.
 >
 > The Docker image does exactly this.
 

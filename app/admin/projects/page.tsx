@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { listProjects, seesWholeTeam } from "@/lib/services/project.service";
-import { projectListParamsSchema } from "@/lib/validation/project";
+import { projectListParamsSchema, type ProjectListParamsInput } from "@/lib/validation/project";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
+import type { Actor } from "@/lib/actor/types";
 import { formatMoney } from "@/lib/money";
 import { Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
 import { ProjectFilters } from "./project-filters";
@@ -28,8 +31,9 @@ export default async function ProjectsPage({
   const parsed = projectListParamsSchema.safeParse(raw);
   const params = parsed.success ? parsed.data : projectListParamsSchema.parse({});
 
-  const [result, clients, staff] = await Promise.all([
-    listProjects(actor, params),
+  // Only what the filter bar needs. The rows are fetched below, inside a
+  // Suspense boundary, so the filters stay interactive while the query runs.
+  const [clients, staff] = await Promise.all([
     db.client.findMany({
       where: { deletedAt: null },
       orderBy: { name: "asc" },
@@ -43,9 +47,6 @@ export default async function ProjectsPage({
         })
       : Promise.resolve([]),
   ]);
-
-  const from = result.total === 0 ? 0 : (result.page - 1) * result.perPage + 1;
-  const to = Math.min(result.page * result.perPage, result.total);
 
   return (
     <>
@@ -69,7 +70,32 @@ export default async function ProjectsPage({
       <ProjectFilters params={params} clients={clients} staff={staff} />
 
       <div className="mt-4">
-        <TableWrap>
+        <Suspense key={JSON.stringify(params)} fallback={<TableSkeleton />}>
+          <ProjectsTable actor={actor} params={params} />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The rows themselves, so the filter bar above stays mounted and interactive
+ * while the query runs.
+ */
+async function ProjectsTable({
+  actor,
+  params,
+}: {
+  actor: Actor;
+  params: ProjectListParamsInput;
+}) {
+  const result = await listProjects(actor, params);
+  const from = result.total === 0 ? 0 : (result.page - 1) * result.perPage + 1;
+  const to = Math.min(result.page * result.perPage, result.total);
+
+  return (
+    <>
+      <TableWrap>
           <Table>
             <THead>
               <TR>
@@ -138,8 +164,7 @@ export default async function ProjectsPage({
               )}
             </TBody>
           </Table>
-        </TableWrap>
-      </div>
+      </TableWrap>
 
       {result.total > 0 ? (
         <nav

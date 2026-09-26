@@ -20,7 +20,7 @@ import {
 } from "@/components/ui";
 import { Pagination } from "@/components/admin/pagination";
 import { PageStatusBadge } from "../pages/page-status";
-import { TableSkeleton } from "../table-skeleton";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
 import type { Actor } from "@/lib/actor/types";
 import type { ReusableListInput } from "@/lib/validation/page";
 

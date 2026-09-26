@@ -10,7 +10,7 @@ import { Pagination } from "@/components/admin/pagination";
 import { PageFilters } from "./page-filters";
 import { PageStatusBadge } from "./page-status";
 import { PreviewLink, RowActions } from "./row-actions";
-import { TableSkeleton } from "../table-skeleton";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
 import type { Actor } from "@/lib/actor/types";
 import type { PageListInput } from "@/lib/validation/page";
 

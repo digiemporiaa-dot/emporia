@@ -367,6 +367,15 @@ Two things to keep in mind as you scale:
   than a correctness problem, but it is worth knowing before someone reports
   "I published it and it's still not live on refresh". A shared cache handler
   would close it; none is configured.
+- **A write made outside the app is never revalidated.** Tags are busted by the
+  services, so anything that writes straight to Postgres — a seed script, a
+  migration that backfills content, a manual `psql` fix — leaves every running
+  instance serving what it cached. It is worse than stale: a page that did not
+  exist when the instance started keeps answering **404** after it is created,
+  because the miss was cached too. On a container deploy the image is fresh and
+  this cannot bite. In development, and after any out-of-band write to a live
+  instance, clear `.next/cache` and restart, or publish the record once through
+  the admin so the tag is busted properly.
 
 ---
 

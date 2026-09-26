@@ -26,6 +26,7 @@ import {
   type TestimonialInput,
 } from "@/lib/validation/content";
 import { citySchema, type CityInput } from "@/lib/validation/local";
+import { ICON_NAMES } from "@/lib/content/icons";
 import * as blog from "@/lib/services/blog.service";
 import * as cities from "@/lib/services/city.service";
 import * as faqs from "@/lib/services/faq.service";
@@ -283,9 +284,18 @@ export const RULES: Record<TransferType, TypeRules> = {
       text("shortDescription"),
       {
         ...text("icon"),
-        // The schema refuses an icon outside the curated set, so a blank here
-        // must stay null rather than becoming the empty string.
-        read: (raw) => ({ ok: true, value: raw.trim() }),
+        // Checked here rather than left to the schema so the message names the
+        // value and the alternatives. The schema's "Choose an icon from the
+        // list" is fine beside a picker and useless beside a spreadsheet cell,
+        // where there is no list to choose from.
+        read: (raw) => {
+          const value = raw.trim();
+          if (value === "") return { ok: true, value: "" };
+          if (!(ICON_NAMES as readonly string[]).includes(value)) {
+            return { ok: false, message: `"${value}" is not an icon. Use one of: ${ICON_NAMES.join(", ")}.` };
+          }
+          return { ok: true, value };
+        },
         current: (row) => str(row, "icon") ?? "",
       },
       status("status", PUBLISHABLE),

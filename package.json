@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "node scripts/start-standalone.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -20,7 +20,8 @@
     "db:studio": "prisma studio",
     "db:sync": "tsx prisma/sync.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "db:seed:demo": "tsx prisma/seed-demo.ts"
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
+    "start:next": "next start"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
