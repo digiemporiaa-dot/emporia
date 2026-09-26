@@ -11,6 +11,17 @@ import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
  * offering different halves of the same record (CLAUDE.md 4). Every field is
  * optional: blank means "derive", which is what the fallback chains in
  * lib/seo/metadata.ts already do and the right answer for most entities.
+ *
+ * It was not always the only copy. The page builder's panel carried its own,
+ * and adding `targetKeyword` here left the one screen the field exists for
+ * without it — no type error, no failing test, just a missing box. The panel
+ * now renders this component, and `tests/seo-form-parity.test.ts` fails if a
+ * second copy appears.
+ *
+ * The one thing a caller may inject is the drafting assistant, which needs to
+ * write into the title and description. It arrives as a render prop rather
+ * than a node so that the state stays here, in one place, rather than being
+ * lifted into every caller to satisfy the one caller that has an assistant.
  */
 
 export type SeoValues = {
@@ -51,12 +62,15 @@ export function SeoCounter({ value, min, max }: { value: string; min: number; ma
   );
 }
 
+export type SeoDraft = { metaTitle: string; metaDescription: string };
+
 export function SeoFields({
   seo,
   ogImage,
   twitterImage,
   titleHint,
   errors,
+  assistant,
 }: {
   seo: SeoValues;
   ogImage: PickedMedia | null;
@@ -64,13 +78,26 @@ export function SeoFields({
   /** What the title falls back to when blank — differs per entity. */
   titleHint: string;
   errors?: Record<string, string[]> | null;
+  /**
+   * Optional drafting help, rendered above the fields. Given the function that
+   * fills the title and description, so a draft lands in the form without the
+   * caller having to own the state.
+   */
+  assistant?: (apply: (draft: SeoDraft) => void) => React.ReactNode;
 }) {
   const [title, setTitle] = React.useState(seo?.metaTitle ?? "");
   const [description, setDescription] = React.useState(seo?.metaDescription ?? "");
   const err = (name: string) => errors?.[name]?.[0];
 
+  const apply = (draft: SeoDraft) => {
+    setTitle(draft.metaTitle);
+    setDescription(draft.metaDescription);
+  };
+
   return (
     <div className="space-y-5">
+      {assistant ? assistant(apply) : null}
+
       <Field
         id="targetKeyword"
         label="Target keyword"

@@ -276,8 +276,10 @@ external URLs, which it never did. Suggestions come from published entities the
 page names without linking to, one-word names excluded, and there is no apply.
 The redirect screen exposed that the service took no actor, checked no
 permission and wrote no audit; it does all three now, and gained delete and
-list. See ARCHITECTURE 17.1b-viii, including a stated known duplication between
-the two SEO forms and the parity test that now guards it.
+list. See ARCHITECTURE 17.1b-viii. The duplication between the two SEO forms
+that this phase flagged and guarded with a parity test has since been paid off:
+the page builder's panel renders the shared component, and the test now also
+fails if a wrapper posts an SEO field of its own.
 
 ### Phase 9 — CMS search and bulk operations — **DONE**
 
