@@ -1,0 +1,214 @@
+import "server-only";
+import { db } from "@/lib/db";
+import { NotFoundError, ValidationError } from "@/lib/errors";
+import { requirePermission } from "@/lib/auth/rbac";
+import { withAudit } from "@/lib/services/audit.service";
+import { resolveClientScope } from "@/lib/social/scope";
+import type { Prisma } from "@/generated/prisma/client";
+import type { ContentStage } from "@/generated/prisma/enums";
+import type { Actor } from "@/lib/actor/types";
+
+/**
+ * Content ideas, seen from the social side.
+ *
+ * A "social content item" is a `ContentCalendarItem` — the same row the
+ * delivery calendar, the approval workflow and the client portal already use.
+ * What this service adds is the view social work needs: one idea with all of
+ * its platform versions beside it, scoped to a client, grouped by campaign.
+ *
+ * It does not create a second content system. Writing an item still goes
+ * through `delivery-content.service`, which owns the stage machine; what lives
+ * here is reading, and the one write that is genuinely social — starting a new
+ * idea inside a client's social section, where the project and the campaign
+ * are the context rather than the subject.
+ */
+
+const itemSelect = {
+  id: true,
+  clientId: true,
+  projectId: true,
+  channel: true,
+  title: true,
+  brief: true,
+  stage: true,
+  scheduledFor: true,
+  publishedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  owner: { select: { id: true, name: true } },
+  campaign: { select: { id: true, name: true } },
+  project: { select: { id: true, name: true, code: true } },
+  socialPosts: {
+    orderBy: { order: "asc" },
+    select: {
+      id: true,
+      provider: true,
+      type: true,
+      status: true,
+      caption: true,
+      scheduledFor: true,
+      publishedAt: true,
+      externalUrl: true,
+      lastError: true,
+      account: { select: { id: true, name: true, status: true } },
+      media: {
+        orderBy: { order: "asc" },
+        take: 1,
+        select: { media: { select: { id: true, url: true, type: true } } },
+      },
+      _count: { select: { media: true } },
+    },
+  },
+  approvals: {
+    orderBy: { createdAt: "desc" },
+    take: 1,
+    select: { id: true, status: true, currentVersion: true },
+  },
+} satisfies Prisma.ContentCalendarItemSelect;
+
+export type SocialContentItem = Prisma.ContentCalendarItemGetPayload<{ select: typeof itemSelect }>;
+
+export type SocialContentFilters = {
+  clientId: string | null;
+  campaignId?: string | null;
+  stage?: ContentStage | null;
+  search?: string | null;
+};
+
+export async function listContentItems(
+  actor: Actor,
+  filters: SocialContentFilters,
+): Promise<SocialContentItem[]> {
+  requirePermission(actor, "social.view");
+  const scope = await resolveClientScope(actor, filters.clientId);
+
+  return db.contentCalendarItem.findMany({
+    where: {
+      clientId: scope,
+      ...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
+      ...(filters.stage ? { stage: filters.stage } : {}),
+      ...(filters.search
+        ? { title: { contains: filters.search, mode: "insensitive" as const } }
+        : {}),
+    },
+    orderBy: [{ scheduledFor: "desc" }, { createdAt: "desc" }],
+    take: 200,
+    select: itemSelect,
+  });
+}
+
+export async function getContentItem(actor: Actor, id: string): Promise<SocialContentItem> {
+  requirePermission(actor, "social.view");
+
+  const item = await db.contentCalendarItem.findUnique({ where: { id }, select: itemSelect });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  await resolveClientScope(actor, item.clientId);
+  return item;
+}
+
+/**
+ * Start a new idea inside a client's social section.
+ *
+ * The difference from `saveContentItem` is the context: here the client is
+ * known and the project is chosen from that client's projects, rather than the
+ * project being the thing you navigated to. The client is still taken from the
+ * project rather than from the caller — the same rule, enforced the same way.
+ */
+export async function createSocialContent(
+  actor: Actor,
+  input: {
+    clientId: string;
+    projectId: string;
+    title: string;
+    brief: string | null;
+    campaignId: string | null;
+    ownerId: string | null;
+    scheduledFor: Date | null;
+  },
+): Promise<{ id: string }> {
+  requirePermission(actor, "social.create");
+  const scope = await resolveClientScope(actor, input.clientId);
+
+  const project = await db.project.findFirst({
+    where: { id: input.projectId, clientId: scope },
+    select: { id: true, clientId: true },
+  });
+  if (!project) throw new ValidationError("Choose a project belonging to this client.");
+
+  if (input.campaignId) {
+    // A campaign belonging to someone else would silently put this client's
+    // work under another client's reporting.
+    const campaign = await db.campaign.findFirst({
+      where: { id: input.campaignId, clientId: scope },
+      select: { id: true },
+    });
+    if (!campaign) throw new ValidationError("That campaign does not belong to this client.");
+  }
+
+  if (input.ownerId) {
+    const owner = await db.user.findFirst({
+      where: { id: input.ownerId, type: "STAFF" },
+      select: { id: true },
+    });
+    if (!owner) throw new ValidationError("That owner is not a member of staff.");
+  }
+
+  return withAudit(
+    {
+      actor,
+      action: "CREATE",
+      entityType: "ContentCalendarItem",
+      entityId: input.title,
+      after: { clientId: scope, campaignId: input.campaignId, source: "social" },
+    },
+    (tx) =>
+      tx.contentCalendarItem.create({
+        data: {
+          projectId: project.id,
+          clientId: project.clientId,
+          // The item's own channel is the first platform it is written for;
+          // the platform versions below carry the rest. Kept because the
+          // delivery calendar groups by it.
+          channel: "INSTAGRAM",
+          title: input.title,
+          brief: input.brief,
+          campaignId: input.campaignId,
+          ownerId: input.ownerId,
+          scheduledFor: input.scheduledFor,
+          stage: "DRAFT",
+        },
+        select: { id: true },
+      }),
+  );
+}
+
+/** The pickers a social content form needs, all scoped to the one client. */
+export async function contentFormOptions(actor: Actor, clientId: string) {
+  requirePermission(actor, "social.view");
+  const scope = await resolveClientScope(actor, clientId);
+
+  const [projects, campaigns, accounts, staff] = await Promise.all([
+    db.project.findMany({
+      where: { clientId: scope, status: { in: ["PLANNING", "ACTIVE"] } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, code: true },
+    }),
+    db.campaign.findMany({
+      where: { clientId: scope },
+      orderBy: { startsAt: "desc" },
+      select: { id: true, name: true, status: true },
+    }),
+    db.socialAccount.findMany({
+      where: { clientId: scope, status: { not: "DISCONNECTED" } },
+      orderBy: { provider: "asc" },
+      select: { id: true, provider: true, name: true, status: true },
+    }),
+    db.user.findMany({
+      where: { type: "STAFF", status: "ACTIVE" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
+  return { projects, campaigns, accounts, staff };
+}

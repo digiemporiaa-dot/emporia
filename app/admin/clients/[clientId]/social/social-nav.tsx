@@ -11,7 +11,10 @@ import { usePathname } from "next/navigation";
  * is a promise the product has not kept yet, so the later phases add their own
  * tab when they add their own page.
  */
-const TABS = [{ segment: "accounts", label: "Accounts" }] as const;
+const TABS = [
+  { segment: "content", label: "Content" },
+  { segment: "accounts", label: "Accounts" },
+] as const;
 
 export function SocialNav({ clientId }: { clientId: string }) {
   const pathname = usePathname();

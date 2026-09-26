@@ -297,6 +297,85 @@ Gate: lint, typecheck, **1483 tests across 91 files**, production build — clea
 
 ### Next
 
-Phase 3 is content and platform versioning: the editor where one idea becomes
-an Instagram post, a LinkedIn post and a Google Business Profile post, each with
-its own copy.
+Phase 3 is content and platform versioning.
+
+---
+
+## 5. Phase 3 — content and platform versioning
+
+One idea, a version per platform, each written against that platform's own
+rules. This is the screen the module exists for.
+
+### An idea is still a `ContentCalendarItem`
+
+`social-content.service.ts` adds the *view* social work needs — one idea with
+all of its platform versions beside it, scoped to a client, filterable by
+campaign — and nothing else. Writing an item still goes through
+`delivery-content.service`, which owns the stage machine. There is no second
+content system, and a test asserts the created row is the ordinary calendar row
+with the ordinary stage.
+
+`ContentCalendarItem` gained `campaignId` in Phase 1 and the form now sets it.
+A campaign belonging to another client is refused — otherwise this client's work
+lands under someone else's reporting.
+
+### The capability table drives the editor
+
+The editor has **no `provider === "INSTAGRAM"` branch anywhere**. The capability
+table is handed to the client and decides which fields render, which formats the
+picker lists, and what the caption counter counts down from. Add a platform to
+the table and the editor supports it.
+
+Seen side by side on one idea:
+
+| | Instagram | LinkedIn |
+|---|---|---|
+| Caption limit | 2,200 | 3,000 |
+| Link field | **absent** — a caption link is not clickable | present |
+| Call to action | absent | present |
+| First comment | present | present |
+
+Hashtags count towards the caption limit, because that is how the platforms
+count them. An editor should not find out at 7:30pm that a caption which looked
+fine does not fit.
+
+### What the editor will not let happen
+
+- A version that has gone out is not editable — its copy is the record of what
+  was published, and the provider would not change the live post anyway.
+- `PUBLISHING` and `PUBLISHED` are unreachable from any screen. Only the
+  publishing engine may claim a row.
+- Scheduling refuses an idea the client has not approved.
+- A new version lives in form state until its first save, so a half-written
+  caption is not a row somebody has to clean up.
+
+### Tests — 14 more
+
+`tests/social-content.db.test.ts`: the idea is an ordinary calendar row; the
+client comes from the project and not the caller; another client's campaign is
+refused; the pickers only offer this client's projects and campaigns; one idea
+holds genuinely different copy per platform (and Instagram's link field is null
+because it is not offered); the campaign filter works and another client's
+campaign matches nothing; copy a platform would reject is refused when written;
+an unapproved idea will not schedule; a published version's copy is locked.
+
+### Verified in a browser
+
+Created an idea, added an Instagram version and a LinkedIn version on it, and
+saw the two forms differ exactly as the table says — 2,200 against 3,000, no
+link field on Instagram, a call to action only on LinkedIn. Hashtags typed as
+`#diwali #festive` stored as `diwali festive`. Saved, listed, no page errors, no
+overflow at 375px.
+
+> **Not a bug, but worth writing down.** Several homepage 404s during this
+> phase's verification came from a stale `next-server` holding port 3000 while
+> each new `npm start` failed with `EADDRINUSE` — so the responses being read
+> were an older build's. Kill by PID and confirm the port is free before
+> concluding anything from a served page.
+
+Gate: lint, typecheck, **1497 tests across 92 files**, production build — clean.
+
+### Next
+
+Phase 4 is the calendar: month, week and list views over these versions, with
+the platform, campaign and status filters the brief asks for.

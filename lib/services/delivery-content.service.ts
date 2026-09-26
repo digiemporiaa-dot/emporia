@@ -153,6 +153,7 @@ export async function saveContentItem(actor: Actor, id: string | null, input: Co
         ownerId: input.ownerId || null,
         scheduledFor: input.scheduledFor ?? null,
         mediaId: input.mediaId || null,
+        campaignId: input.campaignId || null,
       };
 
       return id
