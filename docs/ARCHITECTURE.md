@@ -2296,6 +2296,75 @@ SEO analyzer: it is a pure, deterministic function whose score people compare
 over time, and a number that moved because a model felt differently today is not
 a score.
 
+### 17.1b-xv Import and export
+
+CMS 2.0 Phase 15. Services, cities, blog posts, testimonials and FAQs move in
+and out as CSV, through one screen at `/admin/website/transfer`.
+
+**One column table drives both directions** (`lib/transfer/columns.ts`). Export
+writes those columns in that order; import reads them by those headers. Written
+twice, the two would disagree the first time a field was added, and the
+disagreement would surface as somebody's whole catalogue quietly losing a
+column on a round trip. `tests/transfer.db.test.ts` exports one record of every
+type and re-imports it, asserting nothing changes.
+
+**A real CSV reader** (`lib/csv/parse.ts`), because there was already a
+`line.split(",")` in the campaign metric import and it is wrong for every
+description, quote and answer anybody exports from a spreadsheet — a naive
+split does not fail on such a file, it shifts every column after the comma and
+the operator finds out when the wrong text is on the website. The reader handles
+quoted fields, embedded commas and newlines, doubled quotes, CRLF and Excel's
+byte-order mark, and refuses an unclosed quote against the line that opened it.
+The campaign import now uses it too, along with `unseparate`, which strips the
+thousands separators every ad platform writes.
+
+On the way out, a cell beginning `=`, `+`, `-` or `@` is prefixed with a tab:
+opened in Excel or Sheets, such a cell is *executed*, which turns exported
+content into code running on someone else's machine. The prefix trims away on
+the way back in, so the round trip still holds.
+
+**A column absent from the file changes nothing.** Values are merged over the
+existing record rather than written from a blank slate. Somebody who exports,
+deletes every column but `slug` and `status` and imports the file back has
+published some records — not blanked everything else about them. What a *blank
+cell* means is stated per column rather than inferred, because both answers are
+silent data changes when they are wrong: `clear` for a field that can genuinely
+be unset (an excerpt, a latitude, an attached city), `keep` for one with no
+empty value to take (a status, a yes/no flag, a sort position). A blank
+`isActive` that read as `false` would take a city off the website.
+
+**Structured content is not importable and the screen says so.** A page body, a
+media reference and the SEO record are JSON or an opaque id; a CSV cannot
+express either honestly, so those columns do not exist and the fields are left
+alone whatever the file says.
+
+**Plan, then apply.** `planImport` says what it would do to every row — create,
+update (naming the columns that change), unchanged, or error — before anything
+is written. The preview sorts errors first, and the confirm button is not
+offered while any row has one. `commitImport` re-reads and re-plans from the
+file rather than accepting the browser's plan: a preview the server trusted
+would be a write path with its validation moved to the client.
+
+**Writing goes through the ordinary service functions** — the same
+`createService`, `updatePost` and `createFaq` the admin forms call, holding the
+permission check, the publish check, the slug collision check, the audit row and
+the cache invalidation. That is also why an import is **not one transaction**,
+and the code says so plainly: each service opens its own transaction for its own
+write, and calling them inside an outer one would not nest. The alternative —
+hand-rolled writes in a single transaction — means a second copy of five
+services' rules, and the copy is what would be missing a permission check in a
+year. Instead the whole file is validated first and refused outright if any row
+is bad, which removes the realistic failure; if a write still fails, the run
+stops at that row and reports exactly where rather than carrying on through a
+file whose assumptions have just been shown wrong.
+
+A file that names the same record twice is an error, not a race the second row
+wins. Headers the type does not know are ignored but named. Export is a `GET`
+route handler so the browser receives a real file with a filename and a
+charset — without the charset Excel reads UTF-8 as Latin-1 and turns every ₹
+into mojibake — and both directions write an `EXPORT` / `IMPORT` audit row for
+the run, on top of the per-record rows the services write.
+
 ### 17.1c SEO across entities
 
 CLAUDE.md 9 requires every indexable entity to carry the full SEO set through

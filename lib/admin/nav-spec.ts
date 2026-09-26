@@ -72,6 +72,10 @@ export const NAV: readonly NavSpec[] = [
         permission: "testimonials.view",
       },
       { href: "/admin/website/faqs", label: "FAQs", permission: "faqs.view" },
+      // Last in the list because it is a tool rather than a place content
+      // lives. It spans the Catalog types too; the screen itself offers only
+      // the types this person may see.
+      { href: "/admin/website/transfer", label: "Import and export", permission: "pages.view" },
     ],
   },
   {

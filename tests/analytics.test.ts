@@ -453,6 +453,25 @@ describeDb("analytics", () => {
     expect(rows[1]?.revenue).toBeNull();
   });
 
+  it("reads a platform export that quotes its thousands", async () => {
+    // Every ad platform quotes a number once it passes a thousand. Split on
+    // commas, `"1,204"` shifts every column after it and the row imports as
+    // something else entirely — which is why this goes through the shared CSV
+    // reader rather than a split.
+    const result = await importMetrics(
+      actor,
+      campaignId,
+      ['date,impressions,clicks,conversions,spend', '2026-05-01,"1,204",30,2,"1,500.00"'].join("\n"),
+    );
+
+    expect(result.rejected).toHaveLength(0);
+    const row = await prisma.campaignMetric.findFirstOrThrow({
+      where: { campaignId, date: new Date("2026-05-01") },
+    });
+    expect(row.impressions).toBe(1204);
+    expect(row.spend.toString()).toBe("1500");
+  });
+
   it("keeps the last row when a file repeats a day", async () => {
     await importMetrics(
       actor,

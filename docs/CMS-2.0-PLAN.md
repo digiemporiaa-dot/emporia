@@ -404,10 +404,32 @@ suggestion. And AI quality checks are **not** folded into the SEO analyzer — i
 is a pure, deterministic function whose score people compare over time, and a
 number that moved because a model felt differently today is not a score.
 
-### Phase 15 — Import / export
+### Phase 15 — Import / export — **DONE**
 
 CSV upload → validate → preview → show errors → confirm → transactional import,
 for blog posts, services, locations, FAQs and testimonials.
+
+Delivered as one screen covering both directions for all five types. One column
+table drives export and import, so a file exported, edited in a spreadsheet and
+imported back changes nothing — asserted per type. A column left out of the file
+changes nothing, and what a blank cell means is declared per column rather than
+guessed. Errors are shown against their line numbers before anything is written,
+and the confirm button does not appear while any row is wrong. See ARCHITECTURE
+17.1b-xv.
+
+**Changed from the plan: not one transaction, deliberately.** Writing goes
+through the ordinary service functions, which hold the permission, publish,
+slug, audit and cache rules; each opens its own transaction, and calling them
+inside an outer one would not nest. Hand-rolled writes in a single transaction
+would mean a second copy of five services' rules — and the copy is what ends up
+missing a permission check. Instead the whole file is validated first and
+refused outright if any row is bad, and a write that still fails stops the run
+and reports the line. Stated on the screen, not just here.
+
+**A bug this phase fixed on the way past.** The campaign metric import split
+rows on commas, so any quoted cell — which is every figure over a thousand in
+an ad platform's export — silently shifted every column after it. It now uses
+the shared CSV reader.
 
 Accessibility (23), performance (24), security (25) and admin UX (26) are not
 phases. They are acceptance criteria applied to every phase above.
