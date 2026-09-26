@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { db } from "@/lib/db";
@@ -9,6 +10,9 @@ import { Badge, Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR }
 import { PriorityBadge, ScoreBadge, StatusBadge } from "@/components/admin/lead-badges";
 import { LeadFilters } from "./lead-filters";
 import { PIPELINE_STAGES } from "@/lib/crm/pipeline";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
+import type { Actor } from "@/lib/actor/types";
+import type { LeadListParamsInput } from "@/lib/validation/crm";
 
 export const metadata: Metadata = { title: "Leads" };
 export const dynamic = "force-dynamic";
@@ -28,8 +32,9 @@ export default async function LeadsPage({
   const parsed = leadListParamsSchema.safeParse(raw);
   const params = parsed.success ? parsed.data : leadListParamsSchema.parse({});
 
-  const [result, sources, services, cities, staff] = await Promise.all([
-    listLeads(actor, params),
+  // Only what the filter bar itself needs. The rows are fetched below, inside
+  // a Suspense boundary, so the filters stay interactive while the query runs.
+  const [sources, services, cities, staff] = await Promise.all([
     db.leadSource.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     db.service.findMany({ orderBy: { order: "asc" }, select: { id: true, name: true } }),
     db.city.findMany({ orderBy: { order: "asc" }, select: { id: true, name: true } }),
@@ -41,9 +46,6 @@ export default async function LeadsPage({
         })
       : Promise.resolve([]),
   ]);
-
-  const from = (result.page - 1) * result.perPage + 1;
-  const to = Math.min(result.page * result.perPage, result.total);
 
   return (
     <>
@@ -74,7 +76,26 @@ export default async function LeadsPage({
       />
 
       <div className="mt-4">
-        <TableWrap>
+        <Suspense key={JSON.stringify(params)} fallback={<TableSkeleton />}>
+          <LeadsTable actor={actor} params={params} />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The rows themselves, so the filter bar above stays mounted and interactive
+ * while the query runs.
+ */
+async function LeadsTable({ actor, params }: { actor: Actor; params: LeadListParamsInput }) {
+  const result = await listLeads(actor, params);
+  const from = (result.page - 1) * result.perPage + 1;
+  const to = Math.min(result.page * result.perPage, result.total);
+
+  return (
+    <>
+      <TableWrap>
           <Table>
             <THead>
               <TR>
@@ -138,9 +159,8 @@ export default async function LeadsPage({
                 ))
               )}
             </TBody>
-          </Table>
-        </TableWrap>
-      </div>
+        </Table>
+      </TableWrap>
 
       {result.total > 0 ? (
         <nav

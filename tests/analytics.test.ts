@@ -11,6 +11,7 @@ import {
 import { createCampaign, importMetrics, recordMetric } from "@/lib/services/campaign.service";
 import { resolveRange } from "@/lib/analytics/range";
 import { ForbiddenError } from "@/lib/errors";
+import { Decimal } from "@/lib/money";
 import type { Actor } from "@/lib/actor/types";
 
 /**
@@ -27,6 +28,11 @@ const describeDb = connectionString ? describe : describe.skip;
 
 const RANGE = resolveRange("ytd");
 
+/** What the fixture added to a figure, as a money string. */
+function added(now: string | null, before: string): string {
+  return new Decimal(now ?? "0").minus(before).toFixed(2);
+}
+
 describeDb("analytics", () => {
   let prisma: PrismaClient;
   let actor: Actor;
@@ -41,6 +47,15 @@ describeDb("analytics", () => {
   let campaignId = "";
   let popupId = "";
   const clientIds: string[] = [];
+  /**
+   * What the figures were before this fixture existed.
+   *
+   * The test database is shared with development data, so an absolute revenue
+   * total is whatever else happens to be in the table. Asserting the *delta*
+   * keeps the arithmetic under test — the fixture contributes exactly one paid
+   * invoice — without depending on an empty database.
+   */
+  let baseline = { revenue: "0", pipelineValue: "0" };
 
   beforeAll(async () => {
     prisma = new PrismaClient({
@@ -85,6 +100,15 @@ describeDb("analytics", () => {
     };
 
     stranger = { ...base, permissions: new Set(["leads.view"]) };
+
+    // Read before a single fixture row exists, so the assertions below can
+    // measure what this fixture added rather than what the table happens to
+    // hold.
+    const before = await overview(actor, RANGE);
+    baseline = {
+      revenue: before.revenue ?? "0",
+      pipelineValue: before.pipelineValue ?? "0",
+    };
 
     // ── Fixture ───────────────────────────────────────────────────────────
     // "Referral" brings 1 lead worth real money. "Paid" brings 3 that are not.
@@ -326,8 +350,8 @@ describeDb("analytics", () => {
     expect(summary.won).toBeGreaterThanOrEqual(1);
     expect(summary.qualified).toBeGreaterThanOrEqual(1);
     // Stated budget on leads still in play: the three NEW/QUALIFIED paid leads.
-    expect(summary.pipelineValue).toBe("1500000.00");
-    expect(summary.revenue).toBe("750000.00");
+    expect(added(summary.pipelineValue, baseline.pipelineValue)).toBe("1500000.00");
+    expect(added(summary.revenue, baseline.revenue)).toBe("750000.00");
     expect(typeof summary.conversionRate).toBe("string");
   });
 

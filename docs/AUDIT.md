@@ -4,10 +4,10 @@ An audit of the whole project against `CLAUDE.md`, run at the close of the
 CMS 2.0 plan. Every line below was **executed**, not read: greps over the tree,
 queries against the database, and a running server driven in a real browser.
 
-Headline: **the ten non-negotiables hold.** Seven findings are recorded, none of
-them a correctness or security defect. Four are gaps against the quality bar in
-§12, two are local-environment or operational notes, and one is a spec item that
-was never built.
+Headline: **the ten non-negotiables hold.** Seven findings were recorded. Five
+stand, **two were wrong** (F1 and F7 — both are corrected in place rather than
+quietly deleted), four are fixed, and fixing them turned up four further defects
+the audit itself had missed. See §11.
 
 ---
 
@@ -133,23 +133,32 @@ the page builder at 189 kB, which is a dense editor and reasonable.
 
 Nothing here is a correctness or security defect. Listed worst first.
 
-### F1 — No `loading.tsx` anywhere *(quality bar, §12)*
-0 of 129 page segments have one. §12 requires "`loading.tsx`, `error.tsx`,
-`not-found.tsx` per route segment" and skeletons. Every navigation to a
-server-rendered admin screen currently shows nothing until the data arrives.
+### F1 — ~~No `loading.tsx` anywhere~~ — **this finding was wrong**
+0 of 129 segments have one, and that is **deliberate and correct**. A
+segment-level loading boundary also wraps that segment's children, and Next
+streams the shell before the child runs — so `notFound()` in a detail route
+answers a dead URL with 200 and a skeleton instead of a 404. It is recorded in
+`docs/ARCHITECTURE.md` 17.2, restated in `app/(website)/not-found.tsx`, and
+again in the shared `TableSkeleton`. The audit counted files without reading
+why they were absent.
 
-### F2 — The portal has no error boundary *(quality bar, §12)*
+The real gap is narrower: the documented substitute — an explicit `<Suspense>`
+with a skeleton inside the page — was used on **2 pages out of 103**, so every
+other list screen showed nothing at all while its query ran. Fixed for the
+filtered list screens; see §11.
+
+### F2 — The portal has no error boundary *(quality bar, §12)* — **fixed**
 `app/portal` has neither `error.tsx` nor `not-found.tsx`, so a client-facing
 failure falls through to the root boundary and shows a client the generic page.
 `app/(website)` likewise has no `error.tsx`. Present: `app/error.tsx`,
 `app/admin/error.tsx`, `app/admin/website/error.tsx` and four `not-found.tsx`.
 
-### F3 — No favicon, app icon or manifest
+### F3 — No favicon, app icon or manifest — **fixed**
 There is no `public/` directory and no `icon`/`apple-icon`/`favicon` route. Every
 page load 404s on `/favicon.ico`, which is the one console error in the sweep
 above.
 
-### F4 — The demo seed creates no client and no portal user
+### F4 — The demo seed creates no client and no portal user — **fixed**
 `db:seed:demo` covers the website, catalog and CRM but produces zero `Client`
 rows, so the portal's 13 screens cannot be opened without hand-building a
 fixture — which is what this audit had to do. The portal is covered at the
@@ -168,12 +177,29 @@ states in its own comment that a separate database means "a test run can never
 touch development data" — which is currently untrue. Local configuration, not
 shipped code, but it is how development data gets destroyed.
 
-### F7 — Cached pages go stale when the database is written from outside the app
-Public pages are served from `unstable_cache` and busted by `revalidateTag` on
-the app's own writes. A seed script or a direct SQL edit does neither, so the
-cache keeps serving the old answer — during this audit the homepage returned 404
-until `.next/cache` was cleared, with a published `home` page sitting in the
-table. Not a defect; a deployment-runbook item.
+### F7 — ~~Cached pages go stale after an out-of-band write~~ — **misdiagnosed**
+The evidence given for this was wrong. The homepage 404 that prompted it was
+not a caching problem at all: the whole audit was run against `npm run start`,
+which is `next start`, which **does not work with `output: "standalone"`** — and
+does not fail cleanly. The server comes up, serves most of the site, and answers
+404 on some routes. Next prints the warning on every boot and it scrolled past
+unread. Served the supported way, `/` returns 200 every time.
+
+Both the README and `docs/DEPLOYMENT.md` §9 already said so. The audit did not
+read them and diagnosed the symptom instead — the cache clears that appeared to
+fix it were coincidence.
+
+Two real things came out of it, and both are now done:
+
+- **`npm start` no longer serves a subtly broken app.** It runs
+  `scripts/start-standalone.mjs`, which does what the Dockerfile does — copies
+  the static assets next to the traced server and runs it. `npm run start:next`
+  remains for the unsupported command.
+- **Out-of-band writes genuinely are not revalidated**, which is true
+  independently of the above: tags are busted by the services, so a seed script
+  or a manual `psql` fix leaves running instances serving what they cached. That
+  is a staleness window, not a 404 machine. Documented in
+  `docs/DEPLOYMENT.md` §7 and printed by `db:seed:demo`.
 
 ---
 
@@ -199,3 +225,71 @@ scheduled publishing never fires. See `docs/DEPLOYMENT.md` §4 step 8.
 | `vitest` | 4.1.11 | 5.0.2 | Major |
 | `eslint` | 9.39.5 | 10.11.0 | Major; `eslint-config-next` is pinned to Next 15 |
 | `next-auth` | 5.0.0-beta.32 | — | "Latest" reads 4.24.15; v5 is still beta and is the correct line for App Router |
+
+---
+
+## 11. What the fixes changed, and what they uncovered
+
+F2, F3 and F4 are fixed; F1 is fixed as restated above. F5, F6 and F7 stand —
+F7 is now documented rather than left to be rediscovered.
+
+**F1 — loading states.** `TableSkeleton` moved to `components/admin/` and the
+`<Suspense>` pattern was applied to the three filtered list screens that lacked
+it: leads, invoices and projects. Each now streams its rows while the filter bar
+above stays mounted and interactive, which is the point of the pattern rather
+than the shimmer. The invoices header stopped waiting on the row query
+altogether: its "outstanding across every unpaid invoice" figure was being read
+from the filtered call, and now comes from `financeSummary`, which is what that
+sentence actually describes. The content calendar was left alone deliberately —
+it is a board, not a paginated table, and its header counts the items it would
+be streaming, so retrofitting the pattern means redesigning the header.
+
+**F2 — boundaries.** `app/portal/error.tsx`, `app/portal/not-found.tsx` and
+`app/(website)/error.tsx`. The portal's 404 says "not available to you" rather
+than "does not exist", because another client's project and a mistyped id reach
+it by the same path and the wording must not tell them apart.
+
+**F3 — icons.** `app/icon.tsx` and `app/apple-icon.tsx` draw the mark from the
+two brand colours through `ImageResponse`, so it cannot drift from the design
+system the way a checked-in `.ico` does, and `app/manifest.ts` takes its name
+and description from site settings.
+
+**F4 — the demo client.** `db:seed:demo` now creates Northwind Studio with a
+portal user, a project with tasks and milestones, two invoices (one paid, one
+part-paid) with their payments, a pending approval and a message thread — enough
+to open every portal screen. The command prints the sign-in at the end.
+
+### Four defects the fixes uncovered
+
+None of these were visible to the audit, and all three came from putting real
+data in front of real code.
+
+1. **Two demo services carried icons that do not exist** — `pen` and `chart`,
+   where the curated set has `pen-tool` and `bar-chart`. The renderer only knows
+   `ICON_NAMES`, so both services drew no icon on the public site, and the
+   service schema refuses the value, so neither could be re-imported from its
+   own export. Found by the Phase 15 round-trip test the moment the table held
+   more than a bare fixture. The values are corrected and the seed now asserts
+   every icon against `ICON_NAMES` — writing straight through Prisma was the one
+   path that bypassed both checks. The importer's message also names the
+   offending value now; "Choose an icon from the list" is useless beside a
+   spreadsheet cell.
+
+2. **The seeded portal user could not sign in.** `User.status` defaults to
+   `INVITED` and authentication requires `ACTIVE`. The row looked correct in the
+   table and failed at the login form — the kind of thing only actually signing
+   in finds.
+
+3. **`npm start` served a subtly broken app.** `next start` does not work with
+   `output: "standalone"` — some routes answer 404 while the rest of the site
+   works. It is documented in two places and warned about on every boot, and it
+   still cost this audit a false finding (F7). `npm start` now runs the build
+   the way the image does.
+
+4. **Three tests depended on an empty database.** They failed as soon as demo
+   data existed: a hard-coded reserved slug collided with the seeded `careers`
+   page, and two absolute money totals counted the demo invoices. All three now
+   measure what their own fixture contributes — the reserved-slug test claims
+   whichever slug is free, and the analytics test asserts the delta against a
+   baseline read before the fixture is built. This is F6 biting: with a shared
+   database the suite has to be written for one.

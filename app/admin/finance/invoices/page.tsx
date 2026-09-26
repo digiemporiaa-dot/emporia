@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import * as React from "react";
 import { requireActorPage } from "@/lib/actor";
 import { can, requirePermission } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
-import { listInvoices } from "@/lib/services/invoice.service";
-import { invoiceListParamsSchema } from "@/lib/validation/finance";
+import { financeSummary, listInvoices } from "@/lib/services/invoice.service";
+import { invoiceListParamsSchema, type InvoiceListParamsInput } from "@/lib/validation/finance";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
+import type { Actor } from "@/lib/actor/types";
 import { formatMoney } from "@/lib/money";
 import { Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
 import { InvoiceStatusBadge } from "@/components/admin/invoice-badges";
@@ -31,18 +34,19 @@ export default async function InvoicesPage({
   const parsed = invoiceListParamsSchema.safeParse(raw);
   const params = parsed.success ? parsed.data : invoiceListParamsSchema.parse({});
 
-  const [result, clients] = await Promise.all([
-    listInvoices(actor, params),
+  // Only what the filter bar needs. The rows are fetched below, inside a
+  // Suspense boundary, so the filters stay interactive while the query runs.
+  // The headline figure is "across every unpaid invoice", which does not depend
+  // on the filters — so it comes from the finance summary rather than from the
+  // filtered query, and the header no longer waits on the rows.
+  const [clients, summary] = await Promise.all([
     db.client.findMany({
       where: { deletedAt: null },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    financeSummary(actor),
   ]);
-
-  const from = result.total === 0 ? 0 : (result.page - 1) * result.perPage + 1;
-  const to = Math.min(result.page * result.perPage, result.total);
-  const now = new Date();
 
   return (
     <>
@@ -57,7 +61,7 @@ export default async function InvoicesPage({
           </nav>
           <h1 className="mt-1.5 text-2xl text-navy-800">Invoices</h1>
           <p className="mt-1.5 text-xs text-ink-subtle">
-            {formatMoney(result.outstandingTotal, "INR")} outstanding across every unpaid invoice.
+            {formatMoney(summary.outstandingTotal, "INR")} outstanding across every unpaid invoice.
           </p>
         </div>
         {can(actor, "invoices.create") ? (
@@ -70,7 +74,33 @@ export default async function InvoicesPage({
       <InvoiceFilters params={params} clients={clients} />
 
       <div className="mt-4">
-        <TableWrap>
+        <Suspense key={JSON.stringify(params)} fallback={<TableSkeleton />}>
+          <InvoicesTable actor={actor} params={params} />
+        </Suspense>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The rows themselves, so the filter bar above stays mounted and interactive
+ * while the query runs.
+ */
+async function InvoicesTable({
+  actor,
+  params,
+}: {
+  actor: Actor;
+  params: InvoiceListParamsInput;
+}) {
+  const result = await listInvoices(actor, params);
+  const from = result.total === 0 ? 0 : (result.page - 1) * result.perPage + 1;
+  const to = Math.min(result.page * result.perPage, result.total);
+  const now = new Date();
+
+  return (
+    <>
+      <TableWrap>
           <Table>
             <THead>
               <TR>
@@ -135,8 +165,7 @@ export default async function InvoicesPage({
               )}
             </TBody>
           </Table>
-        </TableWrap>
-      </div>
+      </TableWrap>
 
       {result.total > 0 ? (
         <nav

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { RESERVED_SLUGS } from "@/lib/utils/slug";
 import * as pageService from "@/lib/services/page.service";
 import { ForbiddenError } from "@/lib/errors";
 import type { Actor } from "@/lib/actor/types";
@@ -89,14 +90,22 @@ describeDb("page CMS service", () => {
     // bespoke route, and the route reads their sections by that slug. Applying
     // the reserved-slug rule to an unchanged slug made every one of them
     // unsavable — an edit to an untouched field failed on the slug.
+    // Whichever reserved slug is free, rather than a hard-coded one: the demo
+    // seed creates real pages on several of these, and a test that assumes an
+    // empty table fails on a database somebody has actually used.
+    const taken = new Set(
+      (await db.page.findMany({ select: { slug: true } })).map((row) => row.slug),
+    );
+    const free = [...RESERVED_SLUGS].find((slug) => !taken.has(slug));
+    if (!free) throw new Error("No reserved slug is free — this test needs one to claim.");
+
     const page = track(await pageService.createPage(editor, { title: "Holds a reserved slug" }));
-    await db.page.update({ where: { id: page.id }, data: { slug: "about-us-temp" } });
-    await db.page.update({ where: { id: page.id }, data: { slug: "careers" } });
+    await db.page.update({ where: { id: page.id }, data: { slug: free } });
 
     await expect(
       pageService.updatePage(editor, page.id, {
-        title: "Careers",
-        slug: "careers",
+        title: "Holds a reserved slug",
+        slug: free,
         status: "DRAFT",
         internalName: "edited",
       }),
