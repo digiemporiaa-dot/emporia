@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { decryptSecret } from "@/lib/security/secret";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { LinkedInProvider } from "@/lib/social/linkedin";
 import { UnconfiguredSocialProvider } from "@/lib/social/unconfigured";
 import type { SocialProvider } from "@/generated/prisma/enums";
 import type { SocialProviderAdapter } from "@/lib/social/types";
@@ -14,12 +15,11 @@ import type { SocialProviderAdapter } from "@/lib/social/types";
  * the same row shape the AI provider and the Meta Conversions API already use.
  * The secret half is encrypted at rest with `lib/security/secret`.
  *
- * No real adapter is registered yet. Each platform's API is a piece of work in
- * its own right and Phase 2 brings them in one at a time; until one lands, its
- * provider resolves to `UnconfiguredSocialProvider`, which reports its
- * capabilities and refuses every call with a typed error. That is deliberate:
- * a half-written adapter that silently no-ops is worse than an honest
- * "Not configured" on the screen.
+ Adapters arrive one platform at a time, because each platform's API is a
+ * piece of work in its own right. LinkedIn is implemented; the rest resolve to
+ * `UnconfiguredSocialProvider`, which reports its capabilities and refuses
+ * every call with a typed error. That is deliberate — a half-written adapter
+ * that silently no-ops is worse than an honest "Not configured" on the screen.
  */
 
 export const SOCIAL_PROVIDERS = [
@@ -68,12 +68,30 @@ export async function appConfig(provider: SocialProvider): Promise<SocialAppConf
   return { clientId, clientSecret };
 }
 
-/** The adapter for a provider. Never throws — an unusable one refuses on call. */
+/** Which providers have a real adapter written, configured or not. */
+const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>(["LINKEDIN"]);
+
+/**
+ * The adapter for a provider.
+ *
+ * Never throws: an unusable provider returns the unconfigured adapter, which
+ * refuses on call. That keeps "is this offered" a property a screen can read
+ * without a try/catch.
+ */
 export async function socialProvider(
   provider: SocialProvider,
 ): Promise<SocialProviderAdapter> {
-  // Phase 2 registers real adapters here, gated on `await appConfig(provider)`.
-  return new UnconfiguredSocialProvider(provider);
+  if (!IMPLEMENTED.has(provider)) return new UnconfiguredSocialProvider(provider);
+
+  const config = await appConfig(provider);
+  if (!config) return new UnconfiguredSocialProvider(provider);
+
+  switch (provider) {
+    case "LINKEDIN":
+      return new LinkedInProvider(config);
+    default:
+      return new UnconfiguredSocialProvider(provider);
+  }
 }
 
 /** What the admin needs to render the provider list, with no secret in it. */
@@ -94,7 +112,10 @@ export async function providerStatuses(): Promise<ProviderStatus[]> {
         provider,
         label: PROVIDER_LABEL[provider],
         configured: adapter.configured,
-        implemented: adapter.configured,
+        // Distinct from `configured`: "we have not written this adapter yet"
+        // and "you have not entered the credentials" are different problems
+        // with different fixes, and the screen should not conflate them.
+        implemented: IMPLEMENTED.has(provider),
         capabilities: CAPABILITIES[provider],
       };
     }),

@@ -144,6 +144,7 @@ export const NAV: readonly NavSpec[] = [
       { href: "/admin/settings/email", label: "Email templates", permission: "emails.view" },
       { href: "/admin/settings/redirects", label: "Redirects", permission: "redirects.view" },
       { href: "/admin/settings/ai", label: "AI and LLM", permission: "settings.view" },
+      { href: "/admin/settings/social", label: "Social platforms", permission: "settings.view" },
     ],
   },
 ];

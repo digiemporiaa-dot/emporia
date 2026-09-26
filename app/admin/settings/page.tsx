@@ -107,6 +107,21 @@ export default async function SettingsPage() {
             </Card>
           </Link>
         ) : null}
+
+        {seesSettings ? (
+          <Link href="/admin/settings/social" className="group">
+            <Card className="h-full transition-colors group-hover:border-navy-300">
+              <CardBody>
+                <h2 className="font-display text-lg text-navy-800 group-hover:text-brand-red">
+                  Social platforms
+                </h2>
+                <p className="mt-2 text-xs text-ink-subtle">
+                  The app credentials clients connect their own accounts through.
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
+        ) : null}
       </div>
 
       {!seesEmail && !seesSettings ? (
