@@ -379,3 +379,142 @@ Gate: lint, typecheck, **1497 tests across 92 files**, production build — clea
 
 Phase 4 is the calendar: month, week and list views over these versions, with
 the platform, campaign and status filters the brief asks for.
+
+---
+
+## 6. Phase 4 — the content calendar
+
+`/admin/clients/[clientId]/social/calendar`, a fourth tab beside Content and
+Accounts.
+
+### The calendar is over versions, not ideas
+
+One idea — "Festive living room refresh" — is a single row in the content list
+and **two cards** on the calendar: the Instagram reel on the 5th at 7pm and the
+LinkedIn post on the 6th at 10am. They are two things that have to be ready at
+two different times, and a calendar that collapsed them into one row would hide
+exactly the fact a planner opens a calendar to see.
+
+That decision drives everything else in the phase, including the rule below.
+
+### The rule that made a service necessary
+
+A version may carry its own `scheduledFor`, or leave it unset and take the
+idea's target date. So "when does this go out" is
+`post.scheduledFor ?? contentItem.scheduledFor`, and the fallback has to hold in
+the **query** as well as in the result — otherwise every version that inherits
+its date silently vanishes from the month it belongs to. Hence the OR in
+`calendarPosts`:
+
+```ts
+OR: [
+  { scheduledFor: window },
+  { scheduledFor: null, contentItem: { scheduledFor: window } },
+],
+```
+
+and `inherited: true` on the card, so the UI can say *from idea* rather than
+implying somebody chose that time. `tests/social-calendar.db.test.ts` pins both
+arms, including the case where an idea-level filter is applied at the same time
+— the case that breaks if the two relation filters are merged into one.
+
+### Timezones, and why the grid is not "local"
+
+This is the part that is quietly wrong in most calendars. A post is stored as an
+instant; a cell is a *day*; which day an instant lands on depends entirely on
+the zone you ask in. 01:00 IST on the 6th is still the 5th in UTC, so a grid
+built in UTC files that post a day early — every time, for everyone.
+
+Two ways out: render in the reader's own zone, which means rendering on the
+client and living with a server/browser disagreement at hydration; or pick one
+zone, render on the server, and say on screen which zone it is. **This takes the
+second.** The grid is deterministic, two people opening the same link see the
+same thing, the page stays a Server Component, and the header reads
+*times shown in GMT+5:30*.
+
+`lib/social/calendar.ts` is therefore pure and parameterised by an IANA zone
+rather than reaching for the runtime's. It holds the grid arithmetic (on a
+midday-UTC proxy, so adding days cannot trip over a DST transition), day
+bucketing via `Intl`, and `startOfZonedDay`, which converts a calendar day back
+to an instant by measuring and correcting its own guess — twice, because the
+correction can itself cross a DST boundary. 20 unit tests cover it, including
+New York on both sides of the November switch and a round-trip of all 31 days
+of a month.
+
+`CALENDAR_TIME_ZONE` is one constant. When clients in other markets need their
+own it becomes a column on `Client`; every function already takes the zone as
+an argument, so that change is a thread, not a rewrite.
+
+### Four views
+
+| View | Range | Card |
+|---|---|---|
+| Month | Six rows, always — a grid that changes height makes the page jump | Compact |
+| Week | Mon–Sun | Compact |
+| Day | One day | Full |
+| List | The month proper, days with nothing omitted | Full |
+
+The month and week views deliberately show a **compact** card — platform code,
+time, title. The full card with its creative thumbnail needs width a seventh of
+the grid does not have; the first browser pass had it in the week view and it
+wrapped into unreadable fragments.
+
+Month and list page by month but do not share a range: the month grid draws
+borrowed days from the neighbouring months, so its query has to cover all 42
+cells or a card is missing from a cell that is plainly visible. The list spans
+the month only. Both are asserted.
+
+All calendar state — view, period, every filter — lives in the query string, so
+a planner can send somebody a link to exactly what they are looking at. Every
+field falls back rather than failing: `?view=grid` shows the month.
+
+### Filters
+
+Platform, format, stage, status, campaign, project, owner. Platform and format
+are narrowed to what the client's connected accounts can actually carry, so the
+list holds no dead options. Client is not a filter — it is the route.
+
+### Consolidation done on the way
+
+`STAGE_LABEL` was a verbatim duplicate of `CONTENT_STAGE_LABEL`, and `STAGE_TONE`
+existed in two files that **disagreed**: internal review was navy on one screen
+and amber on the other, approved green in one place and navy in the next. Now
+one `CONTENT_STAGE_TONE` beside the label map it belongs with. `POST_TYPE_LABEL`,
+`POST_STATUS_LABEL`, `POST_STATUS_TONE` and `PROVIDER_SHORT` likewise moved into
+`lib/social/capabilities.ts`, removing a component that imported a tone map from
+a sibling page component.
+
+### Demo data, without a fake integration
+
+`seedSocialContent` adds five ideas and seven versions to Northwind Studio,
+anchored to the current month so the calendar is never empty. It creates **no**
+`SocialAccount` rows and nothing is `SCHEDULED`: an account exists only after a
+real OAuth handshake, and a seeded row with an invented token is precisely the
+fake integration the brief rules out. The accounts tab still says *not
+connected*, which is true.
+
+### Verified in a browser
+
+All four views at 1440px and the month view at 375px: no page errors, no
+horizontal page overflow. Two defects found this way and fixed:
+
+- **Two versions of one idea were indistinguishable.** The 18th carried an
+  Instagram and an X post, both at 11:00, and the compact card showed neither
+  platform — two identical rows. The compact card now leads with `IG` / `X`.
+- **The undated panel ignored the filters.** Filtering the calendar to LinkedIn
+  left an Instagram card sitting in *Written, not scheduled* below it, which
+  reads as the filter not having taken. `unscheduledPosts` now takes the same
+  filters as the grid — while keeping its own `scheduledFor: null` clause, which
+  a test pins, since letting an idea-level filter overwrite it would pull dated
+  work into the panel.
+
+The week view was also rebuilt from full to compact cards after the first pass
+showed them wrapping.
+
+Gate: lint, typecheck, **1535 tests across 94 files**, production build — clean.
+
+### Next
+
+Phase 5 is approval and the client portal: routing a version to the client for
+sign-off, and the portal side of it, scoped by session rather than by any
+`clientId` the browser sends.

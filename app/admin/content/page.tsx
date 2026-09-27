@@ -10,23 +10,13 @@ import {
   CONTENT_CHANNEL_LABEL,
   CONTENT_STAGES,
   CONTENT_STAGE_LABEL,
+  CONTENT_STAGE_TONE,
 } from "@/lib/projects/lifecycle";
 import { Badge, Card, CardBody } from "@/components/ui";
 import { ContentFilters, ContentItemForm } from "./content-panels";
-import type { ContentStage } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Content calendar" };
 export const dynamic = "force-dynamic";
-
-const STAGE_TONE: Record<ContentStage, "neutral" | "navy" | "warning" | "success"> = {
-  IDEA: "neutral",
-  DRAFT: "neutral",
-  INTERNAL_REVIEW: "warning",
-  CLIENT_REVIEW: "warning",
-  APPROVED: "navy",
-  SCHEDULED: "navy",
-  PUBLISHED: "success",
-};
 
 const TIME = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" });
 
@@ -244,7 +234,7 @@ export default async function ContentPage({
                     </Link>
                     <span className="flex items-center gap-2 text-2xs text-ink-subtle">
                       {CONTENT_CHANNEL_LABEL[item.channel]} · {item.client.name}
-                      <Badge tone={STAGE_TONE[item.stage]}>{CONTENT_STAGE_LABEL[item.stage]}</Badge>
+                      <Badge tone={CONTENT_STAGE_TONE[item.stage]}>{CONTENT_STAGE_LABEL[item.stage]}</Badge>
                     </span>
                   </li>
                 ))}

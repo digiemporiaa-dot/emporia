@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation";
  * tab when they add their own page.
  */
 const TABS = [
+  { segment: "calendar", label: "Calendar" },
   { segment: "content", label: "Content" },
   { segment: "accounts", label: "Accounts" },
 ] as const;

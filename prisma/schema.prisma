@@ -2803,6 +2803,10 @@ model SocialPost {
   @@index([accountId])
   @@index([status, scheduledFor])
   @@index([provider, publishedAt])
+  /// The calendar's query: one client, one date window. The scheduler's
+  /// [status, scheduledFor] index does not serve it, because the calendar
+  /// wants every status within a month rather than one status across all time.
+  @@index([clientId, scheduledFor])
 }
 
 /// Creatives attached to a post, in order — a carousel is this table with

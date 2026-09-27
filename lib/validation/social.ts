@@ -156,3 +156,58 @@ export const socialPostListSchema = z.object({
 });
 
 export type SocialPostListParams = z.infer<typeof socialPostListSchema>;
+
+/**
+ * The calendar's URL.
+ *
+ * Every piece of calendar state lives in the query string — the view, the
+ * month, and each filter — so a planner can send somebody a link to exactly
+ * what they are looking at, and so the back button steps through the months
+ * they paged past.
+ *
+ * Every field falls back rather than failing. A calendar that answers a
+ * mistyped `?view=grid` with an error page is worse than one that shows the
+ * month; the URL is a bookmark somebody may have edited by hand, not a form.
+ */
+
+/** An enum filter that is absent, blank, or nonsense — all of which mean "all". */
+const optionalEnum = <T extends string>(values: readonly [T, ...T[]]) =>
+  z.enum(values).nullable().catch(null);
+
+/** An id filter from the query string, blank meaning unset. */
+const optionalIdParam = z
+  .string()
+  .trim()
+  .max(40)
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .catch(null);
+
+export const socialCalendarParamsSchema = z.object({
+  view: z.enum(["month", "week", "day", "list"]).catch("month"),
+  /** `YYYY-MM` or `YYYY-MM-DD`; the grid reads it, and falls back to today. */
+  date: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}(-\d{2})?$/)
+    .nullable()
+    .catch(null)
+    .default(null),
+  provider: optionalEnum(PROVIDERS),
+  type: optionalEnum(POST_TYPES),
+  status: optionalEnum(["DRAFT", "SCHEDULED", "PUBLISHING", "PUBLISHED", "FAILED", "CANCELLED"]),
+  stage: optionalEnum([
+    "IDEA",
+    "DRAFT",
+    "INTERNAL_REVIEW",
+    "CLIENT_REVIEW",
+    "APPROVED",
+    "SCHEDULED",
+    "PUBLISHED",
+  ]),
+  campaignId: optionalIdParam,
+  projectId: optionalIdParam,
+  ownerId: optionalIdParam,
+});
+
+export type SocialCalendarParams = z.infer<typeof socialCalendarParamsSchema>;

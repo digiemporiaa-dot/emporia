@@ -19,9 +19,14 @@ import {
 } from "@/components/ui";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
 import { useHydrated } from "@/lib/utils/hydrated";
-import type { ContentStage, SocialPostStatus, SocialProvider } from "@/generated/prisma/enums";
+import type {
+  ContentStage,
+  SocialPostStatus,
+  SocialPostType,
+  SocialProvider,
+} from "@/generated/prisma/enums";
+import { POST_STATUS_LABEL, POST_STATUS_TONE, POST_TYPE_LABEL } from "@/lib/social/capabilities";
 import { deletePostAction, savePostAction, setPostStatusAction } from "../actions";
-import { STATUS_TONE } from "../content-list";
 
 /**
  * The platform version editor.
@@ -67,19 +72,6 @@ export type EditorProvider = {
   captionLimit: number | null;
   carouselLimit: number | null;
   accounts: { id: string; name: string; status: string }[];
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  SINGLE_IMAGE: "Single image",
-  CAROUSEL: "Carousel",
-  VIDEO: "Video",
-  REEL: "Reel",
-  STORY: "Story",
-  TEXT: "Text",
-  LINK: "Link",
-  YOUTUBE_VIDEO: "YouTube video",
-  YOUTUBE_SHORT: "YouTube short",
-  GBP_POST: "Business profile post",
 };
 
 /** Locked once it has gone out: the copy is the record of what was published. */
@@ -334,7 +326,7 @@ function VersionCard({
             {post.id ? "" : " — new"}
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={STATUS_TONE[post.status]}>{post.status.toLowerCase()}</Badge>
+            <Badge tone={POST_STATUS_TONE[post.status]}>{POST_STATUS_LABEL[post.status]}</Badge>
             {post.externalUrl ? (
               <a
                 href={post.externalUrl}
@@ -388,7 +380,7 @@ function VersionCard({
                 {/* Only the formats this platform's publishing API accepts. */}
                 {provider.postTypes.map((option) => (
                   <option key={option} value={option}>
-                    {TYPE_LABEL[option] ?? option}
+                    {POST_TYPE_LABEL[option as SocialPostType] ?? option}
                   </option>
                 ))}
               </Select>
