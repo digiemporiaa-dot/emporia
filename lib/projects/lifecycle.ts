@@ -200,6 +200,25 @@ export const CONTENT_STAGE_LABEL: Record<ContentStage, string> = {
 };
 
 /**
+ * The badge tone for each stage, so the same stage is the same colour on every
+ * screen. It lived in three files and disagreed with itself: internal review
+ * was navy on one calendar and amber on another, and approved was green in one
+ * place and navy in the next. A reader learns a colour once.
+ *
+ * The progression: grey while it is only an idea, amber while somebody is
+ * waiting on somebody else, navy once it is committed, green once it is out.
+ */
+export const CONTENT_STAGE_TONE: Record<ContentStage, "neutral" | "navy" | "warning" | "success"> = {
+  IDEA: "neutral",
+  DRAFT: "neutral",
+  INTERNAL_REVIEW: "warning",
+  CLIENT_REVIEW: "warning",
+  APPROVED: "navy",
+  SCHEDULED: "navy",
+  PUBLISHED: "success",
+};
+
+/**
  * The content workflow is a pipeline, not a free-for-all: a post cannot be
  * scheduled before it is approved, and cannot be marked published without
  * having been scheduled. Sending work back for changes is always allowed,

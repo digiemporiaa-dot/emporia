@@ -3,6 +3,12 @@ import argon2 from "argon2";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { ICON_NAMES } from "../lib/content/icons.js";
+import type {
+  ContentChannel,
+  ContentStage,
+  SocialPostType,
+  SocialProvider,
+} from "../generated/prisma/enums.js";
 
 /**
  * Demo content for the public website.
@@ -1833,6 +1839,191 @@ async function seedClientPortal(staffId: string): Promise<void> {
   console.log("  client portal: 1 client, 1 portal user, 1 project, 2 invoices, 1 approval");
 }
 
+/**
+ * A month of social content for the demo client.
+ *
+ * Deliberately **no** `SocialAccount` rows. An account only exists once
+ * somebody has completed a real OAuth handshake, and a seeded row with an
+ * invented token would be exactly the fake integration the brief rules out —
+ * the accounts screen is supposed to say "not connected" until it is. Posts
+ * carry no account until then, which is the honest state and the one the
+ * publishing phase has to handle anyway.
+ *
+ * Dates are anchored to the current month so the calendar has something in it
+ * whenever the seed is run, rather than being empty until you page back to
+ * whenever this was written.
+ */
+async function seedSocialContent(staffId: string): Promise<void> {
+  const client = await prisma.client.findUnique({
+    where: { slug: "northwind-studio" },
+    select: { id: true },
+  });
+  const project = await prisma.project.findUnique({
+    where: { code: "NWS-001" },
+    select: { id: true },
+  });
+  if (!client || !project) return;
+
+  // Campaign has no natural key, so it is matched by name within the client
+  // rather than upserted — re-running the seed must not add a second one.
+  const campaign =
+    (await prisma.campaign.findFirst({
+      where: { clientId: client.id, name: "Festive season" },
+      select: { id: true },
+    })) ??
+    (await prisma.campaign.create({
+      data: {
+        name: "Festive season",
+        clientId: client.id,
+        platform: "SOCIAL_ORGANIC",
+        ownerId: staffId,
+        startsAt: new Date(),
+        status: "ACTIVE",
+      },
+      select: { id: true },
+    }));
+
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+  /** Day of the current month, at a wall-clock time in IST (UTC+5:30). */
+  const at = (day: number, hour: number, minute = 0) =>
+    new Date(Date.UTC(year, month, day, hour - 5, minute - 30));
+
+  const plan: {
+    title: string;
+    brief: string;
+    stage: ContentStage;
+    channel: ContentChannel;
+    day: number;
+    hour: number;
+    versions: { provider: SocialProvider; type: SocialPostType; caption: string; hour?: number }[];
+  }[] = [
+    {
+      title: "Festive living room refresh",
+      channel: "INSTAGRAM",
+      brief: "Three-room styling reel for the festive push.",
+      stage: "CLIENT_REVIEW",
+      day: 5,
+      hour: 19,
+      versions: [
+        {
+          provider: "INSTAGRAM",
+          type: "REEL",
+          caption: "Three rooms, one afternoon. Festive styling that does not need a renovation.",
+        },
+        {
+          provider: "LINKEDIN",
+          type: "TEXT",
+          caption:
+            "What we learned styling three festive rooms on a single afternoon budget — and what customers actually asked us for.",
+          hour: 10,
+        },
+      ],
+    },
+    {
+      title: "Customer story — the Nairs",
+      channel: "INSTAGRAM",
+      brief: "Before and after from the Kochi delivery.",
+      stage: "APPROVED",
+      day: 12,
+      hour: 18,
+      versions: [
+        {
+          provider: "INSTAGRAM",
+          type: "CAROUSEL",
+          caption: "Six weeks, one living room, and a family who wanted to keep the old bookshelf.",
+        },
+      ],
+    },
+    {
+      title: "Workshop announcement",
+      channel: "INSTAGRAM",
+      brief: "In-store styling workshop, Saturday.",
+      stage: "INTERNAL_REVIEW",
+      day: 18,
+      hour: 11,
+      versions: [
+        { provider: "INSTAGRAM", type: "SINGLE_IMAGE", caption: "Saturday, 11am. Bring a photo of the room." },
+        { provider: "X", type: "TEXT", caption: "Styling workshop this Saturday, 11am. Free, but seats are limited." },
+      ],
+    },
+    {
+      title: "Material sourcing note",
+      channel: "LINKEDIN",
+      brief: "Where the teak comes from — long-form.",
+      stage: "DRAFT",
+      day: 22,
+      hour: 9,
+      versions: [
+        {
+          provider: "LINKEDIN",
+          type: "TEXT",
+          caption:
+            "Every table we ship starts at one of four mills. Here is how we pick them, and the two things we will not compromise on.",
+        },
+      ],
+    },
+    {
+      title: "Diwali offer teaser",
+      channel: "INSTAGRAM",
+      brief: "Not scheduled yet — waiting on the offer being signed off.",
+      stage: "IDEA",
+      day: 0,
+      hour: 0,
+      versions: [
+        { provider: "INSTAGRAM", type: "STORY", caption: "Something is coming on the 25th." },
+      ],
+    },
+  ];
+
+  for (const entry of plan) {
+    const existing = await prisma.contentCalendarItem.findFirst({
+      where: { clientId: client.id, title: entry.title },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    const scheduledFor = entry.day === 0 ? null : at(entry.day, entry.hour);
+    const item = await prisma.contentCalendarItem.create({
+      data: {
+        clientId: client.id,
+        projectId: project.id,
+        campaignId: campaign.id,
+        ownerId: staffId,
+        title: entry.title,
+        brief: entry.brief,
+        channel: entry.channel,
+        stage: entry.stage,
+        scheduledFor,
+      },
+      select: { id: true },
+    });
+
+    await prisma.socialPost.createMany({
+      data: entry.versions.map((version, index) => ({
+        contentItemId: item.id,
+        clientId: client.id,
+        provider: version.provider,
+        type: version.type,
+        // Nothing is SCHEDULED: scheduling is the publishing phase's to grant,
+        // and a demo row claiming to be queued for a platform we cannot reach
+        // would be a promise the product cannot keep.
+        status: "DRAFT" as const,
+        caption: version.caption,
+        hashtags: version.provider === "INSTAGRAM" ? ["festive", "homestyling"] : [],
+        // Only where it differs from the idea's time, so the calendar shows
+        // both a version with its own slot and one that inherits.
+        scheduledFor:
+          version.hour !== undefined && entry.day !== 0 ? at(entry.day + 1, version.hour) : null,
+        order: index,
+      })),
+    });
+  }
+
+  console.log("  social: 5 ideas, 7 platform versions, 1 campaign (no accounts — connect via OAuth)");
+}
+
 async function main(): Promise<void> {
   console.log("Seeding DEMO content (npm run db:seed:demo).");
   console.log("This is sample data for development. Do not run it against production.\n");
@@ -1864,6 +2055,7 @@ async function main(): Promise<void> {
   await seedPopups();
   await seedSiteSettings();
   await seedClientPortal(author.id);
+  await seedSocialContent(author.id);
 
   // Auditable marker, so demo data can be identified and removed later.
   await prisma.siteSetting.upsert({

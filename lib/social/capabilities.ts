@@ -1,4 +1,4 @@
-import type { SocialProvider } from "@/generated/prisma/enums";
+import type { SocialPostStatus, SocialPostType, SocialProvider } from "@/generated/prisma/enums";
 import type { SocialCapabilities } from "@/lib/social/types";
 
 /**
@@ -77,6 +77,54 @@ export const PROVIDER_LABEL: Record<SocialProvider, string> = {
   YOUTUBE: "YouTube",
   X: "X",
   GOOGLE_BUSINESS_PROFILE: "Google Business Profile",
+};
+
+/**
+ * Two-letter platform codes, for a month cell where a full name would push the
+ * time and the title out of view. These are the abbreviations social teams
+ * already use, so they need no legend.
+ */
+export const PROVIDER_SHORT: Record<SocialProvider, string> = {
+  INSTAGRAM: "IG",
+  FACEBOOK: "FB",
+  LINKEDIN: "LI",
+  YOUTUBE: "YT",
+  X: "X",
+  GOOGLE_BUSINESS_PROFILE: "GBP",
+};
+
+export const POST_TYPE_LABEL: Record<SocialPostType, string> = {
+  SINGLE_IMAGE: "Single image",
+  CAROUSEL: "Carousel",
+  VIDEO: "Video",
+  REEL: "Reel",
+  STORY: "Story",
+  TEXT: "Text",
+  LINK: "Link",
+  YOUTUBE_VIDEO: "YouTube video",
+  YOUTUBE_SHORT: "YouTube Short",
+  GBP_POST: "Business Profile post",
+};
+
+export const POST_STATUS_LABEL: Record<SocialPostStatus, string> = {
+  DRAFT: "Draft",
+  SCHEDULED: "Scheduled",
+  PUBLISHING: "Publishing",
+  PUBLISHED: "Published",
+  FAILED: "Failed",
+  CANCELLED: "Cancelled",
+};
+
+export const POST_STATUS_TONE: Record<
+  SocialPostStatus,
+  "neutral" | "navy" | "warning" | "success" | "red"
+> = {
+  DRAFT: "neutral",
+  SCHEDULED: "navy",
+  PUBLISHING: "warning",
+  PUBLISHED: "success",
+  FAILED: "red",
+  CANCELLED: "neutral",
 };
 
 export function supportsType(

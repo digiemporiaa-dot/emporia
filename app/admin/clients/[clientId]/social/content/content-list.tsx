@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { CONTENT_STAGE_LABEL, CONTENT_STAGE_TONE } from "@/lib/projects/lifecycle";
+import { POST_STATUS_TONE } from "@/lib/social/capabilities";
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
@@ -51,36 +53,6 @@ export type ContentItemRow = {
   approvalStatus: string | null;
   versions: VersionRow[];
 };
-
-const STAGE_LABEL: Record<ContentStage, string> = {
-  IDEA: "Idea",
-  DRAFT: "Draft",
-  INTERNAL_REVIEW: "Internal review",
-  CLIENT_REVIEW: "Client review",
-  APPROVED: "Approved",
-  SCHEDULED: "Scheduled",
-  PUBLISHED: "Published",
-};
-
-const STAGE_TONE: Record<ContentStage, "neutral" | "navy" | "warning" | "success"> = {
-  IDEA: "neutral",
-  DRAFT: "neutral",
-  INTERNAL_REVIEW: "navy",
-  CLIENT_REVIEW: "warning",
-  APPROVED: "success",
-  SCHEDULED: "navy",
-  PUBLISHED: "success",
-};
-
-export const STATUS_TONE: Record<SocialPostStatus, "neutral" | "navy" | "warning" | "success" | "red"> =
-  {
-    DRAFT: "neutral",
-    SCHEDULED: "navy",
-    PUBLISHING: "warning",
-    PUBLISHED: "success",
-    FAILED: "red",
-    CANCELLED: "neutral",
-  };
 
 const DATE = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
@@ -210,7 +182,7 @@ export function ContentList({
                           .join(" · ")}
                       </p>
                     </div>
-                    <Badge tone={STAGE_TONE[item.stage]}>{STAGE_LABEL[item.stage]}</Badge>
+                    <Badge tone={CONTENT_STAGE_TONE[item.stage]}>{CONTENT_STAGE_LABEL[item.stage]}</Badge>
                   </div>
                 </CardHeader>
                 <CardBody>
@@ -246,7 +218,7 @@ export function ContentList({
                               <span className="text-xs font-medium text-navy-800">
                                 {version.providerLabel}
                               </span>
-                              <Badge tone={STATUS_TONE[version.status]}>
+                              <Badge tone={POST_STATUS_TONE[version.status]}>
                                 {version.status.toLowerCase()}
                               </Badge>
                               {version.externalUrl ? (
