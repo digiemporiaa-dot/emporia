@@ -518,3 +518,128 @@ Gate: lint, typecheck, **1535 tests across 94 files**, production build — clea
 Phase 5 is approval and the client portal: routing a version to the client for
 sign-off, and the portal side of it, scoped by session rather than by any
 `clientId` the browser sends.
+
+---
+
+## 7. Phase 5 — client approval
+
+### There was already an approval system
+
+`Approval`, `ApprovalVersion`, `requestApproval`, the admin approval screens,
+the portal list and the portal decision form all existed — and `Approval`
+already had a `contentItemId`. So this phase writes **the same rows**, and the
+question was only what those rows could not yet carry.
+
+Two things, as it turned out, and both were integrity problems rather than
+missing screens.
+
+### What "approved" was actually worth
+
+`decideApproval` read `contentItemId` and never used it. A client could approve
+a post and the content item would sit at `CLIENT_REVIEW` forever — the calendar,
+the content list and the portal each telling a different story about whose desk
+the work was on, and approved work unable to be scheduled because its stage
+never moved. The decision now moves the stage in the same transaction:
+approved → `APPROVED`, changes requested → `DRAFT`. It consults
+`canTransitionContent` first, so a decision on a stale approval cannot drag an
+item that has since moved on backwards.
+
+Worse: nothing recorded **what** was approved. A creative approval was one file
+and a note, so pointing at the live row was fine. A social approval is several
+platform versions whose captions stay editable, and pointing at those degrades
+"the client approved this" into "the client approved something that used to be
+here" the first time a caption is tweaked after sign-off.
+
+Three defences now, and they are deliberately layered:
+
+1. **A snapshot.** `ApprovalVersion.snapshot` holds a frozen copy of the
+   versions as sent — validated by `socialSnapshotSchema` on write, parsed on
+   read, falling back to null for the ordinary creative approvals that have
+   none. The portal renders the snapshot, never the live posts.
+2. **A lock.** A version cannot be edited while its item is at `CLIENT_REVIEW`.
+   Editing underneath a reviewer means they approve something they never saw.
+3. **A reopen.** Editing a version *after* sign-off moves the item back to
+   `INTERNAL_REVIEW`. Otherwise "approved" survives the approval being made
+   untrue, and the item could be scheduled and published carrying words nobody
+   agreed to. The approval row keeps its history — it *was* approved, and that
+   happened; what moves is the item.
+
+### Withdrawing
+
+The lock needs an escape hatch, or spotting a typo after sending leaves a choice
+between editing underneath a reviewer and waiting for a decision on copy you
+already know is wrong. `WITHDRAWN` is a new `ApprovalStatus`: not `PENDING`,
+which would leave the portal asking for a decision on something no longer
+offered, and not `REJECTED`, which is the client's word and not the agency's to
+put in their mouth. The version stays on the record — withdrawing is an event,
+not an erasure.
+
+### Refusing to send rubbish
+
+`requestSocialApproval` checks readiness before it will send: at least one
+version, each with words or a creative, and a creative wherever the **format**
+demands one — a reel is a video wherever it is posted, so
+`TYPES_REQUIRING_MEDIA` keys off the post type rather than the platform. The
+client's attention is the scarcest thing in the loop and an empty carousel
+spends a round of it.
+
+A second round reuses the same approval rather than opening a new one, so the
+client sees one thread with its history instead of a fresh item in their list
+every time something is re-sent. Each round keeps its own snapshot.
+
+### What the client sees
+
+`components/portal/social-versions.tsx` renders the snapshot: platform, format,
+account name, scheduled time, creatives, caption, hashtags, mentions, link,
+call to action, first comment. No post ids, no account ids, no internal status —
+and a token could not reach it even if one were asked for, because the snapshot
+has no field to carry one. A test asserts the serialised snapshot contains none
+of `accessToken`, `refreshToken`, `token`, `accountId` or `clientId`.
+
+### Consolidation done on the way
+
+`Record<ApprovalStatus, …>` label and tone maps existed **ten times** across
+four approval screens and the content item page. Adding `WITHDRAWN` broke all
+ten at compile time, which is exactly what an exhaustive map is for; they are
+now one `APPROVAL_STATUS_LABEL` / `APPROVAL_STATUS_TONE` pair in
+`lib/projects/lifecycle.ts`.
+
+### Verified in a browser
+
+Signed in as staff, sent a LinkedIn version to the client with a note; signed in
+to the portal as the client, saw the platform version rendered with its caption,
+approved it; returned to admin and saw the stage read `APPROVED`. Confirmed in
+the database: item `APPROVED`, approval `APPROVED`. No page errors on either
+surface, no horizontal overflow at 1440px or 375px.
+
+Three things the browser found:
+
+- **The send button was clickable when the stage forbade it.** The panel already
+  printed "content at idea cannot be sent for review" underneath, then let the
+  click through to an error. Now disabled, with the reason and what to do about
+  it.
+- **The readiness check fired for real**, refusing an Instagram reel with no
+  creative — which is also why the demo seed's reels and carousels cannot be
+  sent: they genuinely have no creative attached.
+- **The editor stayed locked and unlocked correctly** around the round trip.
+
+> **Two environment traps worth recording**, both of which cost time here.
+>
+> `DATABASE_URL` and `TEST_DATABASE_URL` both pointed at `emporia_test`
+> locally — audit finding **F6** — so running the suite deleted the dev
+> homepage row and `/` began 404ing. `tests/global-setup.ts` promises a
+> *separate* database; locally it had none. Dev now has its own `emporia_dev`.
+> **F6 is closed.**
+>
+> And `next build` bakes `.env` into the standalone bundle, so changing
+> `DATABASE_URL` does nothing until you rebuild — the server went on serving the
+> old database while `.env` said otherwise. Related: the standalone runner's
+> cache lives at `.next/standalone/.next/cache`, not `.next/cache`, so the
+> advice in §5 to clear `.next/cache` clears a directory that does not exist.
+
+Gate: lint, typecheck, **1552 tests across 95 files**, production build — clean.
+
+### Next
+
+Phase 6 is the publishing engine: taking an approved, scheduled version and
+actually putting it on the platform, exactly once.

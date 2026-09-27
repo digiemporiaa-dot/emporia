@@ -1,4 +1,5 @@
 import type {
+  ApprovalStatus,
   ContentStage,
   MilestoneStatus,
   ProjectStatus,
@@ -217,6 +218,38 @@ export const CONTENT_STAGE_TONE: Record<ContentStage, "neutral" | "navy" | "warn
   SCHEDULED: "navy",
   PUBLISHED: "success",
 };
+
+/**
+ * Approval status, named and coloured once.
+ *
+ * These two maps existed ten times over — twice each on four approval screens
+ * and twice more on the content item page — and every new status meant finding
+ * them all. Amber while somebody is waiting, green when it is settled, red when
+ * it is not, grey when nobody is being asked for anything.
+ */
+export const APPROVAL_STATUS_LABEL: Record<ApprovalStatus, string> = {
+  PENDING: "Awaiting decision",
+  CHANGES_REQUESTED: "Changes requested",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  WITHDRAWN: "Withdrawn",
+};
+
+export const APPROVAL_STATUS_TONE: Record<
+  ApprovalStatus,
+  "neutral" | "navy" | "warning" | "success" | "red"
+> = {
+  PENDING: "warning",
+  CHANGES_REQUESTED: "warning",
+  APPROVED: "success",
+  REJECTED: "red",
+  WITHDRAWN: "neutral",
+};
+
+/** Statuses at which the client is genuinely being asked for something. */
+export function awaitsClient(status: ApprovalStatus): boolean {
+  return status === "PENDING";
+}
 
 /**
  * The content workflow is a pipeline, not a free-for-all: a post cannot be

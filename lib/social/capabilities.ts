@@ -80,6 +80,23 @@ export const PROVIDER_LABEL: Record<SocialProvider, string> = {
 };
 
 /**
+ * Formats that are nothing without a creative.
+ *
+ * A property of the format, not of the platform: a reel is a video wherever it
+ * is posted, and a text post needs no picture anywhere. Used to stop an empty
+ * carousel being sent to a client for sign-off.
+ */
+export const TYPES_REQUIRING_MEDIA: ReadonlySet<SocialPostType> = new Set<SocialPostType>([
+  "SINGLE_IMAGE",
+  "CAROUSEL",
+  "VIDEO",
+  "REEL",
+  "STORY",
+  "YOUTUBE_VIDEO",
+  "YOUTUBE_SHORT",
+]);
+
+/**
  * Two-letter platform codes, for a month cell where a full name would push the
  * time and the title out of view. These are the abbreviations social teams
  * already use, so they need no legend.

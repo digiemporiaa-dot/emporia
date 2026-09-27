@@ -171,11 +171,27 @@ and no file anywhere mentions Shiprocket — yet `.env.example` and the env sche
 both declare `SHIPROCKET_EMAIL` and `SHIPROCKET_PASSWORD`. The keys promise
 something that does not exist.
 
-### F6 — `DATABASE_URL` and `TEST_DATABASE_URL` point at the same database
-In this environment's `.env` both are `emporia_test`. `tests/global-setup.ts`
+### F6 — ~~`DATABASE_URL` and `TEST_DATABASE_URL` point at the same database~~ — **closed**
+In this environment's `.env` both were `emporia_test`. `tests/global-setup.ts`
 states in its own comment that a separate database means "a test run can never
-touch development data" — which is currently untrue. Local configuration, not
-shipped code, but it is how development data gets destroyed.
+touch development data" — which was untrue. Local configuration, not shipped
+code, but it is how development data gets destroyed.
+
+**And it did.** During social Phase 5 the homepage began returning 404: the test
+suite had deleted the `home` CMS page row out from under the dev server, which
+was reading the same database. Roughly an hour went into diagnosing it as a
+caching problem before the shared database turned out to be the cause — the
+second time that symptom has sent an investigation the wrong way (see F7).
+
+Dev now has its own `emporia_dev`, migrated and seeded, and `.env` points there.
+Two further things surfaced while closing it, both worth knowing:
+
+- **`next build` bakes `.env` into the standalone bundle.** Changing
+  `DATABASE_URL` does nothing until you rebuild; the server goes on serving the
+  old database while `.env` says otherwise.
+- **The standalone runner's cache is `.next/standalone/.next/cache`**, not
+  `.next/cache`. Advice to clear the latter — including in this repo's own
+  docs — clears a directory that does not exist under `npm start`.
 
 ### F7 — ~~Cached pages go stale after an out-of-band write~~ — **misdiagnosed**
 The evidence given for this was wrong. The homepage 404 that prompted it was
@@ -230,8 +246,9 @@ scheduled publishing never fires. See `docs/DEPLOYMENT.md` §4 step 8.
 
 ## 11. What the fixes changed, and what they uncovered
 
-F2, F3 and F4 are fixed; F1 is fixed as restated above. F5, F6 and F7 stand —
-F7 is now documented rather than left to be rediscovered.
+F2, F3 and F4 are fixed; F1 is fixed as restated above. F6 was closed during
+social Phase 5, after it destroyed development data exactly as predicted. F5
+stands. F7 is documented rather than left to be rediscovered.
 
 **F1 — loading states.** `TableSkeleton` moved to `components/admin/` and the
 `<Suspense>` pattern was applied to the three filtered list screens that lacked

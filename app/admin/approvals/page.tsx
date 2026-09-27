@@ -1,29 +1,15 @@
 import type { Metadata } from "next";
+import { APPROVAL_STATUS_LABEL, APPROVAL_STATUS_TONE } from "@/lib/projects/lifecycle";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { listApprovals } from "@/lib/services/delivery-content.service";
 import { CONTENT_CHANNEL_LABEL } from "@/lib/projects/lifecycle";
 import { Badge, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
-import type { ApprovalStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Approvals" };
 export const dynamic = "force-dynamic";
 
 const DATE = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
-
-const TONE: Record<ApprovalStatus, "neutral" | "warning" | "success" | "red"> = {
-  PENDING: "neutral",
-  CHANGES_REQUESTED: "warning",
-  APPROVED: "success",
-  REJECTED: "red",
-};
-
-const LABEL: Record<ApprovalStatus, string> = {
-  PENDING: "Pending",
-  CHANGES_REQUESTED: "Changes requested",
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-};
 
 export default async function ApprovalsPage() {
   const actor = await requireActorPage("/admin/approvals");
@@ -81,7 +67,7 @@ export default async function ApprovalsPage() {
                     v{approval.currentVersion}
                   </TD>
                   <TD>
-                    <Badge tone={TONE[approval.status]}>{LABEL[approval.status]}</Badge>
+                    <Badge tone={APPROVAL_STATUS_TONE[approval.status]}>{APPROVAL_STATUS_LABEL[approval.status]}</Badge>
                   </TD>
                   <TD className="text-xs text-ink-muted">{approval.requestedBy.name}</TD>
                   <TD className="text-xs text-ink-subtle">{DATE.format(approval.createdAt)}</TD>
