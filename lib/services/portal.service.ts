@@ -5,9 +5,11 @@ import { record } from "@/lib/services/audit.service";
 import { div, mul, toMoneyString } from "@/lib/money";
 import { rangeFilter, type DateRange } from "@/lib/analytics/range";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { canTransitionContent } from "@/lib/projects/lifecycle";
+import { readSnapshot } from "@/lib/social/approval-snapshot";
 import type { PortalActor } from "@/lib/actor/types";
 import type { PortalMessageInput, PortalProfileInput } from "@/lib/validation/portal";
-import type { ProposalStatus } from "@/generated/prisma/enums";
+import type { ContentStage, ProposalStatus } from "@/generated/prisma/enums";
 
 /**
  * The client portal's only data access.
@@ -212,6 +214,7 @@ export async function getApproval(actor: PortalActor, id: string) {
           notes: true,
           status: true,
           feedback: true,
+          snapshot: true,
           createdAt: true,
           // The creative itself. Only the file, never who uploaded it.
           media: { select: { id: true, url: true, filename: true, type: true, alt: true } },
@@ -221,7 +224,17 @@ export async function getApproval(actor: PortalActor, id: string) {
   });
 
   if (!approval) throw new NotFoundError("That approval does not exist.");
-  return approval;
+
+  // A social approval carries a frozen copy of the platform versions. Render
+  // that rather than the live posts: it is what this version was sent as, and
+  // it is the only thing a decision can honestly be said to be about.
+  return {
+    ...approval,
+    versions: approval.versions.map((version) => ({
+      ...version,
+      snapshot: readSnapshot(version.snapshot),
+    })),
+  };
 }
 
 /**
@@ -239,7 +252,13 @@ export async function decideApproval(
 ) {
   const approval = await db.approval.findFirst({
     where: { id: approvalId, clientId: actor.clientId },
-    select: { id: true, status: true, currentVersion: true, contentItemId: true },
+    select: {
+      id: true,
+      status: true,
+      currentVersion: true,
+      contentItemId: true,
+      contentItem: { select: { id: true, stage: true } },
+    },
   });
 
   if (!approval) throw new NotFoundError("That approval does not exist.");
@@ -250,11 +269,27 @@ export async function decideApproval(
     throw new ValidationError("Say what needs to change.");
   }
 
+  // Where the approval hangs off a content item, the decision is also a stage
+  // change. Leaving the item at CLIENT_REVIEW after the client has answered
+  // would leave the calendar, the content list and the portal each telling a
+  // different story about whose desk the work is on — and would let approved
+  // work sit unschedulable because its stage never moved.
+  const nextStage = approval.contentItem
+    ? stageAfterDecision(approval.contentItem.stage, decision)
+    : null;
+
   const result = await db.$transaction(async (tx) => {
     await tx.approvalVersion.update({
       where: { approvalId_version: { approvalId, version: approval.currentVersion } },
       data: { status: decision, feedback },
     });
+
+    if (nextStage && approval.contentItem) {
+      await tx.contentCalendarItem.update({
+        where: { id: approval.contentItem.id },
+        data: { stage: nextStage },
+      });
+    }
 
     return tx.approval.update({
       where: { id: approvalId },
@@ -268,11 +303,28 @@ export async function decideApproval(
     action: "STATUS_CHANGE",
     entityType: "Approval",
     entityId: approvalId,
-    before: { status: approval.status },
-    after: { status: decision, by: "client" },
+    before: { status: approval.status, stage: approval.contentItem?.stage ?? null },
+    after: { status: decision, stage: nextStage, by: "client" },
   });
 
   return result;
+}
+
+/**
+ * Where a content item lands once the client has spoken.
+ *
+ * Approved means approved; changes requested sends it back to the people who
+ * wrote it. Returns null when the move is not legal from where the item
+ * actually is — a decision on a stale approval must not drag an item that has
+ * since moved on backwards, and the transition table is the authority on that.
+ */
+function stageAfterDecision(
+  current: ContentStage,
+  decision: "APPROVED" | "CHANGES_REQUESTED",
+): ContentStage | null {
+  const target: ContentStage = decision === "APPROVED" ? "APPROVED" : "DRAFT";
+  if (current === target) return null;
+  return canTransitionContent(current, target) ? target : null;
 }
 
 // ---------------------------------------------------------------------------

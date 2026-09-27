@@ -6,10 +6,12 @@ import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { contentFormOptions, getContentItem } from "@/lib/services/social-content.service";
 import { listPostsForItem } from "@/lib/services/social-post.service";
+import { socialApprovalFor } from "@/lib/services/social-approval.service";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { isAppError } from "@/lib/errors";
 import { VersionEditor, type EditorPost, type EditorProvider } from "./version-editor";
+import { ApprovalPanel, type ApprovalSummary } from "./approval-panel";
 
 export const metadata: Metadata = { title: "Social content" };
 export const dynamic = "force-dynamic";
@@ -38,10 +40,34 @@ export default async function SocialContentItemPage({
     throw error;
   }
 
-  const [posts, options] = await Promise.all([
+  const [posts, options, approvalRow] = await Promise.all([
     listPostsForItem(actor, itemId),
     contentFormOptions(actor, clientId),
+    socialApprovalFor(actor, itemId),
   ]);
+
+  // Flattened for the client component: the snapshot itself stays on the
+  // server, since the agency side only needs to know how many versions went
+  // out, not to re-render them.
+  const approval: ApprovalSummary | null = approvalRow
+    ? {
+        id: approvalRow.id,
+        status: approvalRow.status,
+        currentVersion: approvalRow.currentVersion,
+        decidedAt: approvalRow.decidedAt?.toISOString() ?? null,
+        decidedBy: approvalRow.decidedBy?.name ?? null,
+        versions: approvalRow.versions.map((version) => ({
+          id: version.id,
+          version: version.version,
+          status: version.status,
+          notes: version.notes,
+          feedback: version.feedback,
+          createdAt: version.createdAt.toISOString(),
+          createdBy: version.createdBy?.name ?? null,
+          postCount: version.snapshot?.posts.length ?? 0,
+        })),
+      }
+    : null;
 
   const editorPosts: EditorPost[] = posts.map((post) => ({
     id: post.id,
@@ -102,15 +128,28 @@ export default async function SocialContentItemPage({
         ) : null}
       </div>
 
-      <VersionEditor
-        clientId={clientId}
-        itemId={item.id}
-        stage={item.stage}
-        posts={editorPosts}
-        providers={providers}
-        canEdit={can(actor, "social.edit")}
-        canDelete={can(actor, "social.delete")}
-      />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <VersionEditor
+          clientId={clientId}
+          itemId={item.id}
+          stage={item.stage}
+          posts={editorPosts}
+          providers={providers}
+          // The copy is frozen while the client is reading it, so the editor
+          // matches what the service would enforce rather than offering a
+          // save that is going to be refused.
+          canEdit={can(actor, "social.edit") && item.stage !== "CLIENT_REVIEW"}
+          canDelete={can(actor, "social.delete") && item.stage !== "CLIENT_REVIEW"}
+        />
+
+        <ApprovalPanel
+          clientId={clientId}
+          itemId={item.id}
+          stage={item.stage}
+          approval={approval}
+          canApprove={can(actor, "social.approve")}
+        />
+      </div>
     </div>
   );
 }

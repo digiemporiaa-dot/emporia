@@ -1,29 +1,15 @@
 import type { Metadata } from "next";
+import { APPROVAL_STATUS_LABEL, APPROVAL_STATUS_TONE } from "@/lib/projects/lifecycle";
 import Link from "next/link";
 import { requirePortalActorPage } from "@/lib/actor/portal";
 import { listApprovals } from "@/lib/services/portal.service";
 import { CONTENT_CHANNEL_LABEL } from "@/lib/projects/lifecycle";
 import { Badge, Card, CardBody } from "@/components/ui";
-import type { ApprovalStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Approvals" };
 export const dynamic = "force-dynamic";
 
 const DATE = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
-
-const TONE: Record<ApprovalStatus, "neutral" | "warning" | "success" | "red"> = {
-  PENDING: "warning",
-  CHANGES_REQUESTED: "neutral",
-  APPROVED: "success",
-  REJECTED: "red",
-};
-
-const LABEL: Record<ApprovalStatus, string> = {
-  PENDING: "Waiting on you",
-  CHANGES_REQUESTED: "Changes requested",
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-};
 
 export default async function PortalApprovalsPage() {
   const actor = await requirePortalActorPage();
@@ -70,7 +56,7 @@ export default async function PortalApprovalsPage() {
                           .join(" · ")}
                       </p>
                     </div>
-                    <Badge tone={TONE[approval.status]}>{LABEL[approval.status]}</Badge>
+                    <Badge tone={APPROVAL_STATUS_TONE[approval.status]}>{APPROVAL_STATUS_LABEL[approval.status]}</Badge>
                   </div>
                 </CardBody>
               </Card>

@@ -208,6 +208,10 @@ enum ApprovalStatus {
   CHANGES_REQUESTED
   APPROVED
   REJECTED
+  /// Pulled back by the agency before the client decided. Distinct from
+  /// rejected, which is the client's word, and from pending, which would leave
+  /// the portal asking for a decision on something no longer being offered.
+  WITHDRAWN
 }
 
 enum BillingType {
@@ -1954,6 +1958,14 @@ model ApprovalVersion {
   notes    String?
   status   ApprovalStatus @default(PENDING)
   feedback String?
+
+  /// What the client was actually shown, frozen at the moment the version was
+  /// sent. A creative approval used to be one file and a note; a social
+  /// approval is several platform versions, each with its own caption. Without
+  /// a copy here, "approved" only ever means "approved something", because the
+  /// live posts can be edited afterwards. Shape is validated by
+  /// `socialSnapshotSchema` on write and parsed on read.
+  snapshot Json?
 
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)

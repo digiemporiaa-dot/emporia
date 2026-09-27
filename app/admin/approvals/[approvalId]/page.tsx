@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { APPROVAL_STATUS_LABEL, APPROVAL_STATUS_TONE } from "@/lib/projects/lifecycle";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
@@ -8,7 +9,6 @@ import { isAppError } from "@/lib/errors";
 import { CONTENT_CHANNEL_LABEL } from "@/lib/projects/lifecycle";
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
 import { DecisionForm, NewVersionForm } from "../approval-panels";
-import type { ApprovalStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Approval" };
 export const dynamic = "force-dynamic";
@@ -20,20 +20,6 @@ const DATE = new Intl.DateTimeFormat("en-IN", {
   hour: "numeric",
   minute: "2-digit",
 });
-
-const TONE: Record<ApprovalStatus, "neutral" | "warning" | "success" | "red"> = {
-  PENDING: "neutral",
-  CHANGES_REQUESTED: "warning",
-  APPROVED: "success",
-  REJECTED: "red",
-};
-
-const LABEL: Record<ApprovalStatus, string> = {
-  PENDING: "Pending",
-  CHANGES_REQUESTED: "Changes requested",
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-};
 
 export default async function ApprovalPage({
   params,
@@ -66,7 +52,7 @@ export default async function ApprovalPage({
         </nav>
         <div className="mt-1.5 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl text-navy-800">{approval.title}</h1>
-          <Badge tone={TONE[approval.status]}>{LABEL[approval.status]}</Badge>
+          <Badge tone={APPROVAL_STATUS_TONE[approval.status]}>{APPROVAL_STATUS_LABEL[approval.status]}</Badge>
         </div>
         <p className="mt-1.5 text-xs text-ink-subtle">
           {approval.client.name}
@@ -118,8 +104,8 @@ export default async function ApprovalPage({
                     </span>
                   </div>
 
-                  <Badge tone={TONE[version.status]} className="mt-1.5">
-                    {LABEL[version.status]}
+                  <Badge tone={APPROVAL_STATUS_TONE[version.status]} className="mt-1.5">
+                    {APPROVAL_STATUS_LABEL[version.status]}
                   </Badge>
 
                   {version.notes ? (

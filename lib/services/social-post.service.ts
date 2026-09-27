@@ -150,10 +150,19 @@ export async function savePost(
 
   const item = await db.contentCalendarItem.findUnique({
     where: { id: input.contentItemId },
-    select: { id: true, clientId: true },
+    select: { id: true, clientId: true, stage: true },
   });
   if (!item) throw new NotFoundError("That content item does not exist.");
   const scope = await resolveClientScope(actor, item.clientId);
+
+  // The client is reading this right now. Editing underneath them would mean
+  // they approve something they never saw, and the snapshot on the approval
+  // would stop matching the live post. Pull it back first.
+  if (item.stage === "CLIENT_REVIEW") {
+    throw new ConflictError(
+      "This is with the client for review. Withdraw it before changing the copy.",
+    );
+  }
 
   let before: { status: SocialPostStatus; clientId: string } | null = null;
   if (id) {
@@ -227,6 +236,18 @@ export async function savePost(
       if (media.length > 0) {
         await tx.socialPostMedia.createMany({
           data: media.map((mediaId, order) => ({ postId: post.id, mediaId, order })),
+        });
+      }
+
+      // Changing the copy after the client signed off un-signs it. Otherwise
+      // "approved" would survive the approval being made untrue, and the item
+      // could be scheduled and published carrying words nobody agreed to. The
+      // approval row keeps its own history and its snapshot; what moves is the
+      // item, back to the desk it came from.
+      if (item.stage === "APPROVED") {
+        await tx.contentCalendarItem.update({
+          where: { id: item.id },
+          data: { stage: "INTERNAL_REVIEW" },
         });
       }
 

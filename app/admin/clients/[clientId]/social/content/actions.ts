@@ -5,6 +5,10 @@ import { z } from "zod";
 import { requireActor } from "@/lib/actor";
 import { createSocialContent } from "@/lib/services/social-content.service";
 import { deletePost, savePost, setPostStatus } from "@/lib/services/social-post.service";
+import {
+  requestSocialApproval,
+  withdrawSocialApproval,
+} from "@/lib/services/social-approval.service";
 import { socialPostSchema } from "@/lib/validation/social";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -140,6 +144,52 @@ export async function setPostStatusAction(input: unknown): Promise<ActionResult<
     return { ok: true, data: { id: post.id } };
   } catch (error) {
     actionLog.warn({ err: error }, "changing a social post status was refused");
+    return toActionFailure(error);
+  }
+}
+
+const approvalRef = z.object({
+  clientId: z.string().min(1).max(40),
+  itemId: z.string().min(1).max(40),
+});
+
+export async function requestApprovalAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = approvalRef
+      .extend({ note: z.string().trim().max(2000).nullable().default(null) })
+      .safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: "That content could not be identified." };
+    }
+
+    const result = await requestSocialApproval(actor, {
+      contentItemId: parsed.data.itemId,
+      note: parsed.data.note,
+    });
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/content/${parsed.data.itemId}`);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/calendar`);
+    return { ok: true, data: { id: result.approvalId } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "sending social content for client approval was refused");
+    return toActionFailure(error);
+  }
+}
+
+export async function withdrawApprovalAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = approvalRef.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: "That content could not be identified." };
+    }
+
+    const item = await withdrawSocialApproval(actor, parsed.data.itemId);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/content/${parsed.data.itemId}`);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/calendar`);
+    return { ok: true, data: { id: item.id } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "withdrawing social content from client review was refused");
     return toActionFailure(error);
   }
 }

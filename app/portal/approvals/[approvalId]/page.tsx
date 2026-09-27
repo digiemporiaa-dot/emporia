@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { APPROVAL_STATUS_LABEL, APPROVAL_STATUS_TONE } from "@/lib/projects/lifecycle";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePortalActorPage } from "@/lib/actor/portal";
@@ -6,8 +7,8 @@ import { getApproval } from "@/lib/services/portal.service";
 import { isAppError } from "@/lib/errors";
 import { CONTENT_CHANNEL_LABEL } from "@/lib/projects/lifecycle";
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
+import { SocialVersions } from "@/components/portal/social-versions";
 import { DecisionForm } from "./decision-form";
-import type { ApprovalStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Approval" };
 export const dynamic = "force-dynamic";
@@ -19,20 +20,6 @@ const DATE = new Intl.DateTimeFormat("en-IN", {
   hour: "numeric",
   minute: "2-digit",
 });
-
-const TONE: Record<ApprovalStatus, "neutral" | "warning" | "success" | "red"> = {
-  PENDING: "warning",
-  CHANGES_REQUESTED: "neutral",
-  APPROVED: "success",
-  REJECTED: "red",
-};
-
-const LABEL: Record<ApprovalStatus, string> = {
-  PENDING: "Waiting on you",
-  CHANGES_REQUESTED: "Changes requested",
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-};
 
 export default async function PortalApprovalPage({
   params,
@@ -62,7 +49,7 @@ export default async function PortalApprovalPage({
         </nav>
         <div className="mt-1.5 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl text-navy-800">{approval.title}</h1>
-          <Badge tone={TONE[approval.status]}>{LABEL[approval.status]}</Badge>
+          <Badge tone={APPROVAL_STATUS_TONE[approval.status]}>{APPROVAL_STATUS_LABEL[approval.status]}</Badge>
         </div>
         <p className="mt-1.5 text-xs text-ink-subtle">
           {[
@@ -99,12 +86,20 @@ export default async function PortalApprovalPage({
                     </span>
                   </div>
 
-                  <Badge tone={TONE[version.status]} className="mt-1.5">
-                    {LABEL[version.status]}
+                  <Badge tone={APPROVAL_STATUS_TONE[version.status]} className="mt-1.5">
+                    {APPROVAL_STATUS_LABEL[version.status]}
                   </Badge>
 
                   {version.notes ? (
                     <p className="mt-1.5 whitespace-pre-wrap text-xs text-ink">{version.notes}</p>
+                  ) : null}
+
+                  {/* Social approvals carry the platform versions themselves.
+                      Everything else is a single creative, handled below. */}
+                  {version.snapshot ? (
+                    <div className="mt-2.5">
+                      <SocialVersions snapshot={version.snapshot} />
+                    </div>
                   ) : null}
 
                   {version.media ? (
