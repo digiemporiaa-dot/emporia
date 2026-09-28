@@ -8,6 +8,14 @@ import { socialProvider } from "@/lib/social";
 import { CAPABILITIES } from "@/lib/social/capabilities";
 import { CALENDAR_TIME_ZONE, zonedDay, ymdKey } from "@/lib/social/calendar";
 import { METRIC_KEYS, type MetricKey, type MetricTotal } from "@/lib/social/metrics";
+import {
+  engagementOf,
+  isMeasured,
+  SNAPSHOT_SELECT,
+  totalsOf,
+  toReportRow,
+  type ReportRow,
+} from "@/lib/social/report";
 import { log } from "@/lib/logger";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -198,25 +206,6 @@ export type SocialReport = {
   }[];
 };
 
-type SnapshotRow = {
-  postId: string;
-  provider: SocialProvider;
-} & Record<MetricKey, number | null>;
-
-/**
- * Engagement, for ranking only.
- *
- * Deliberately not presented as a metric of its own: it is a sum of whatever
- * happened to be reported, so it is comparable between two LinkedIn posts and
- * not between a LinkedIn post and an Instagram one. It orders the "best posts"
- * list and appears nowhere else.
- */
-function engagementOf(row: Record<MetricKey, number | null>): number {
-  return (
-    (row.likes ?? 0) + (row.comments ?? 0) + (row.shares ?? 0) + (row.saves ?? 0)
-  );
-}
-
 export async function socialReport(
   actor: Actor,
   filters: { clientId: string | null; from: Date | null; to: Date },
@@ -247,35 +236,19 @@ export async function socialReport(
       metrics: {
         orderBy: { capturedOn: "desc" },
         take: 1,
-        select: {
-          impressions: true,
-          reach: true,
-          likes: true,
-          comments: true,
-          shares: true,
-          saves: true,
-          clicks: true,
-          videoViews: true,
-          profileVisits: true,
-          followersGained: true,
-        },
+        select: SNAPSHOT_SELECT,
       },
     },
   });
 
-  const rows: SnapshotRow[] = posts.map((post) => {
-    const snapshot = post.metrics[0];
-    const values = {} as Record<MetricKey, number | null>;
-    for (const key of METRIC_KEYS) values[key] = snapshot?.[key] ?? null;
-    return { postId: post.id, provider: post.provider, ...values };
-  });
+  const rows: ReportRow[] = posts.map(toReportRow);
 
   const byProvider = [...new Set(posts.map((post) => post.provider))].sort().map((provider) => {
     const scoped = rows.filter((row) => row.provider === provider);
     return {
       provider,
       posts: scoped.length,
-      measured: scoped.filter((row) => METRIC_KEYS.some((key) => row[key] !== null)).length,
+      measured: scoped.filter(isMeasured).length,
       reportsMetrics: CAPABILITIES[provider].metrics,
       totals: totalsOf(scoped),
     };
@@ -300,41 +273,13 @@ export async function socialReport(
 
   return {
     posts: rows.length,
-    measured: rows.filter((row) => METRIC_KEYS.some((key) => row[key] !== null)).length,
+    measured: rows.filter(isMeasured).length,
     totals: totalsOf(rows),
     byProvider,
     top,
   };
 }
 
-/**
- * Sum each metric across the rows that reported it.
- *
- * A metric nobody reported totals to `null`, not `0`. The reporting count comes
- * back with it so a screen can say "from 4 of 9 posts" rather than presenting a
- * partial sum as the whole picture.
- */
-function totalsOf(rows: readonly SnapshotRow[]): Record<MetricKey, MetricTotal> {
-  const totals = {} as Record<MetricKey, MetricTotal>;
-
-  for (const key of METRIC_KEYS) {
-    let sum = 0;
-    let reporting = 0;
-    for (const row of rows) {
-      const value = row[key];
-      if (value === null) continue;
-      sum += value;
-      reporting += 1;
-    }
-    totals[key] = {
-      value: reporting === 0 ? null : sum,
-      reporting,
-      total: rows.length,
-    };
-  }
-
-  return totals;
-}
 
 /** The history for one post, for its own screen. */
 export async function metricsForPost(actor: Actor, postId: string) {

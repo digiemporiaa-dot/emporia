@@ -8,9 +8,18 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { canTransitionContent } from "@/lib/projects/lifecycle";
 import { readSnapshot } from "@/lib/social/approval-snapshot";
 import { announceClientDecision } from "@/lib/services/social-notify.service";
+import { CAPABILITIES } from "@/lib/social/capabilities";
+import { type MetricKey, type MetricTotal } from "@/lib/social/metrics";
+import {
+  engagementOf,
+  isMeasured,
+  SNAPSHOT_SELECT,
+  totalsOf,
+  toReportRow,
+} from "@/lib/social/report";
 import type { PortalActor } from "@/lib/actor/types";
 import type { PortalMessageInput, PortalProfileInput } from "@/lib/validation/portal";
-import type { ContentStage, ProposalStatus } from "@/generated/prisma/enums";
+import type { ContentStage, ProposalStatus, SocialProvider } from "@/generated/prisma/enums";
 
 /**
  * The client portal's only data access.
@@ -767,4 +776,92 @@ export async function changePassword(
   await record({ actor, action: "UPDATE", entityType: "User", entityId: user.id });
 
   return { id: user.id };
+}
+
+// ---------------------------------------------------------------------------
+// Social reporting
+// ---------------------------------------------------------------------------
+
+export type PortalSocialReport = {
+  posts: number;
+  measured: number;
+  totals: Record<MetricKey, MetricTotal>;
+  byProvider: { provider: SocialProvider; posts: number; reportsMetrics: boolean }[];
+  recent: {
+    id: string;
+    title: string;
+    provider: SocialProvider;
+    publishedAt: string;
+    externalUrl: string | null;
+    engagement: number | null;
+  }[];
+};
+
+/**
+ * What the client's own social posts did.
+ *
+ * Scoped by `actor.clientId` like every other portal read — the browser never
+ * names a client here, so there is nothing to widen.
+ *
+ * The arithmetic comes from `lib/social/report`, the same module the admin
+ * report uses, because an agency looking at one number while its client looks
+ * at a different one for the same week is worse than neither screen existing.
+ * Absent stays absent on this side too: a client is told "not reported" rather
+ * than shown a zero nobody measured.
+ *
+ * Only published posts. A client has no business seeing drafts, and a post that
+ * failed to publish is the agency's problem to fix, not the client's to
+ * discover in a report.
+ */
+export async function socialReport(
+  actor: PortalActor,
+  range: DateRange,
+): Promise<PortalSocialReport> {
+  const posts = await db.socialPost.findMany({
+    where: {
+      clientId: actor.clientId,
+      status: "PUBLISHED",
+      publishedAt: {
+        ...(range.from ? { gte: range.from } : {}),
+        lt: range.to,
+      },
+    },
+    orderBy: { publishedAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      provider: true,
+      publishedAt: true,
+      externalUrl: true,
+      contentItem: { select: { title: true } },
+      metrics: { orderBy: { capturedOn: "desc" }, take: 1, select: SNAPSHOT_SELECT },
+    },
+  });
+
+  const rows = posts.map(toReportRow);
+  const byRow = new Map(rows.map((row) => [row.postId, row]));
+
+  return {
+    posts: rows.length,
+    measured: rows.filter(isMeasured).length,
+    totals: totalsOf(rows),
+    byProvider: [...new Set(posts.map((post) => post.provider))].sort().map((provider) => ({
+      provider,
+      posts: posts.filter((post) => post.provider === provider).length,
+      reportsMetrics: CAPABILITIES[provider].metrics,
+    })),
+    recent: posts.slice(0, 20).map((post) => {
+      const row = byRow.get(post.id)!;
+      return {
+        id: post.id,
+        title: post.contentItem.title,
+        provider: post.provider,
+        publishedAt: (post.publishedAt ?? new Date()).toISOString(),
+        externalUrl: post.externalUrl,
+        // Null rather than 0 when nothing was measured, so the row says "not
+        // reported" instead of implying the post sank without trace.
+        engagement: isMeasured(row) ? engagementOf(row) : null,
+      };
+    }),
+  };
 }

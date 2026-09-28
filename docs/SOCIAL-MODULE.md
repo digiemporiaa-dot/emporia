@@ -1102,3 +1102,62 @@ Gate: lint, typecheck, **1663 tests across 102 files**, production build — cle
 
 Phase 11 is reports: the client-facing view of everything phases 8 and 9
 measured.
+
+---
+
+## 13. Phase 11 — the client's report
+
+`/portal/social`. The client's own view of what went out and what it did.
+
+### One set of numbers, not two
+
+The agency's report and the client's report share `lib/social/report.ts` — the
+totals, the "measured" test and the engagement sum all live there, and both
+services call them. That is not tidiness. An agency looking at one number while
+its client looks at a different one for the same week is worse than neither
+screen existing, and the way that happens is two aggregations drifting apart
+over a year of small edits. A test asserts the two surfaces return identical
+totals for the same data.
+
+They differ only in authorization, and that difference is the point: staff pass
+a permission check and may name a client; a portal user is scoped by their
+session and the browser never names a client at all.
+
+### What a client is not shown
+
+Only **published** posts. Drafts are not theirs to see, and a post that failed
+to publish is the agency's problem to fix rather than the client's to discover
+in a report. Both are tested.
+
+"Absent is not zero" holds on this side too, and matters more here: a client
+shown a zero they did not earn is being misled just as surely as one shown an
+invented figure. A metric no platform reported reads *"Not reported — the
+platform does not share this figure with us"*, an unmeasured post reads *"Not
+reported"* rather than scoring zero, and a standing note explains that a missing
+figure means unreported, not nil.
+
+A genuinely measured zero survives as a zero — there is a test for that too,
+because collapsing the two would be the same mistake in the other direction.
+
+### Verified in a browser
+
+Signed in as the demo client: the nav carries Social, the headline tiles show
+real totals with *across 3 of 4 posts* and "Not reported" where nothing came
+back, the explanation is present, and the published list shows per-post
+interactions or "Not reported". No page errors, no overflow at 1280px or 375px.
+
+> **A testing trap worth recording.** Six database tests in this phase reported
+> as *skipped*, which reads like "no database configured" — the same shape as a
+> deliberately skipped suite. They were not skipped: a `beforeAll` was throwing,
+> and Vitest reports a failed suite hook that way. The cause was mine —
+> `Project.code` is capped at 20 characters and the test suffix was 19, so
+> `${SUFFIX}-A` and `${SUFFIX}-B` truncated to the same code and the second
+> client's project collided. Worth knowing twice over: skipped can mean broken,
+> and a truncated unique key fails as a collision rather than as a truncation.
+
+Gate: lint, typecheck, **1673 tests across 103 files**, production build — clean.
+
+### Next
+
+Phase 12 is hardening: a pass over the whole module for the things twelve
+phases of building tend to leave behind.
