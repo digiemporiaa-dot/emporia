@@ -9,6 +9,7 @@ import {
   requestSocialApproval,
   withdrawSocialApproval,
 } from "@/lib/services/social-approval.service";
+import { publishNow } from "@/lib/services/social-publish.service";
 import { socialPostSchema } from "@/lib/validation/social";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -190,6 +191,26 @@ export async function withdrawApprovalAction(input: unknown): Promise<ActionResu
     return { ok: true, data: { id: item.id } };
   } catch (error) {
     actionLog.warn({ err: error }, "withdrawing social content from client review was refused");
+    return toActionFailure(error);
+  }
+}
+
+export async function publishNowAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = postRef.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: "That post could not be identified." };
+    }
+
+    const outcome = await publishNow(actor, parsed.data.postId);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/content`);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/calendar`);
+    return { ok: true, data: { id: outcome.postId } };
+  } catch (error) {
+    // Warn, not error: a platform refusing a post is an ordinary outcome that
+    // the screen shows the operator, not a fault in this application.
+    actionLog.warn({ err: error }, "publishing a social post failed");
     return toActionFailure(error);
   }
 }

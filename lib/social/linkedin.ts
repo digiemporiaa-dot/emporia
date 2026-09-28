@@ -1,10 +1,12 @@
 import "server-only";
 import { ValidationError } from "@/lib/errors";
+import { AmbiguousPublishError } from "@/lib/social/errors";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { log } from "@/lib/logger";
 import type { SocialProvider } from "@/generated/prisma/enums";
 import type {
   ProviderAccount,
+  PublishInput,
   ProviderCredentials,
   ProviderMetrics,
   PublishResult,
@@ -36,12 +38,22 @@ const linkedinLog = log("social");
 /** The scopes account connection needs. Publishing adds `w_member_social`. */
 export const LINKEDIN_SCOPES = ["openid", "profile", "email", "w_member_social"] as const;
 
+/**
+ * LinkedIn dates its API and requires the header on every versioned call.
+ * Pinned rather than tracking latest: LinkedIn ships breaking changes between
+ * versions, and an integration that silently follows them breaks on their
+ * schedule instead of ours.
+ */
+export const LINKEDIN_API_VERSION = "202405";
+
 export type LinkedInOptions = {
   clientId: string;
   clientSecret: string;
   /** Override for tests. Defaults to LinkedIn's own hosts. */
   authBase?: string;
   apiBase?: string;
+  /** The versioned REST host. Overridable for the same reason as the others. */
+  restBase?: string;
   timeoutMs?: number;
 };
 
@@ -67,11 +79,13 @@ export class LinkedInProvider implements SocialProviderAdapter {
 
   private readonly authBase: string;
   private readonly apiBase: string;
+  private readonly restBase: string;
   private readonly timeoutMs: number;
 
   constructor(private readonly options: LinkedInOptions) {
     this.authBase = options.authBase ?? "https://www.linkedin.com/oauth/v2";
     this.apiBase = options.apiBase ?? "https://api.linkedin.com/v2";
+    this.restBase = options.restBase ?? "https://api.linkedin.com/rest";
     this.timeoutMs = options.timeoutMs ?? 15_000;
   }
 
@@ -157,12 +171,165 @@ export class LinkedInProvider implements SocialProviderAdapter {
     };
   }
 
-  async publish(): Promise<PublishResult> {
-    // Phase 6. Named rather than stubbed: a method that returns a fabricated
-    // post id is worse than one that refuses.
-    throw new ValidationError(
-      "Publishing to LinkedIn is not enabled in this deployment yet.",
-    );
+  /**
+   * Post to the member's feed.
+   *
+   * Uses the Posts API (`/rest/posts`), which is the one LinkedIn still
+   * develops; the older `ugcPosts` endpoint takes a different body shape and is
+   * on its way out. Both need the `LinkedIn-Version` header — without it the
+   * API answers 426, which reads as a protocol error rather than the "you
+   * forgot a header" it actually is.
+   *
+   * Images are a three-step dance: register an upload, PUT the bytes to the
+   * URL LinkedIn hands back, then reference the returned image URN in the post.
+   * That is why this does more work than "POST some JSON".
+   */
+  async publish(
+    credentials: ProviderCredentials,
+    account: { externalId: string },
+    input: PublishInput,
+  ): Promise<PublishResult> {
+    const author = `urn:li:person:${account.externalId}`;
+    const commentary = this.commentary(input);
+
+    if (!commentary && input.media.length === 0) {
+      throw new ValidationError("There is nothing to post — no text and no creative.");
+    }
+
+    // Upload first. A failure here must happen *before* anything is posted,
+    // so a broken creative cannot produce a text-only post nobody asked for.
+    const images: string[] = [];
+    for (const asset of input.media) {
+      images.push(await this.uploadImage(credentials, author, asset.url));
+    }
+
+    const body: Record<string, unknown> = {
+      author,
+      commentary,
+      visibility: "PUBLIC",
+      distribution: {
+        feedDistribution: "MAIN_FEED",
+        targetEntities: [],
+        thirdPartyDistributionChannels: [],
+      },
+      lifecycleState: "PUBLISHED",
+      isReshareDisabledByAuthor: false,
+    };
+
+    if (images.length === 1) {
+      body["content"] = { media: { id: images[0] } };
+    } else if (images.length > 1) {
+      body["content"] = {
+        multiImage: { images: images.map((id) => ({ id })) },
+      };
+    } else if (input.linkUrl) {
+      // An article share. LinkedIn renders its own preview card from the URL.
+      body["content"] = { article: { source: input.linkUrl } };
+    }
+
+    const response = await this.fetch(`${this.restBase}/posts`, {
+      method: "POST",
+      headers: this.restHeaders(credentials),
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) throw await this.error(response, "publish a post");
+
+    // The id comes back in a header, not the body — the body is empty on 201.
+    const externalPostId =
+      response.headers.get("x-restli-id") ?? response.headers.get("x-linkedin-id");
+    if (!externalPostId) {
+      // Refusing here would be wrong: the post *was* created, and saying
+      // otherwise invites a second attempt that would duplicate it.
+      linkedinLog.error(
+        { status: response.status },
+        "linkedin accepted a post but returned no id",
+      );
+      throw new AmbiguousPublishError(
+        "LinkedIn accepted the post but did not say which one it is. Check the page before retrying.",
+      );
+    }
+
+    return {
+      externalPostId,
+      externalUrl: `https://www.linkedin.com/feed/update/${externalPostId}`,
+    };
+  }
+
+  /**
+   * The post's text.
+   *
+   * Hashtags are appended rather than expected inline: the editor stores them
+   * separately so each platform can place them the way that platform expects,
+   * and on LinkedIn that is the end of the copy.
+   */
+  private commentary(input: PublishInput): string {
+    const parts: string[] = [];
+    if (input.headline?.trim()) parts.push(input.headline.trim());
+    if (input.caption?.trim()) parts.push(input.caption.trim());
+
+    const tags = input.hashtags.filter((tag) => tag.trim()).map((tag) => `#${tag.trim()}`);
+    if (tags.length > 0) parts.push(tags.join(" "));
+
+    // A link with no image and no article card still belongs in the text.
+    if (input.linkUrl && input.media.length > 0) parts.push(input.linkUrl);
+
+    return parts.join("\n\n");
+  }
+
+  /** Register, upload, and return the image URN to reference in the post. */
+  private async uploadImage(
+    credentials: ProviderCredentials,
+    author: string,
+    url: string,
+  ): Promise<string> {
+    const registered = await this.fetch(`${this.restBase}/images?action=initializeUpload`, {
+      method: "POST",
+      headers: this.restHeaders(credentials),
+      body: JSON.stringify({ initializeUploadRequest: { owner: author } }),
+    });
+
+    if (!registered.ok) throw await this.error(registered, "register an image upload");
+
+    const json = (await registered.json()) as {
+      value?: { uploadUrl?: unknown; image?: unknown };
+    };
+    const uploadUrl = typeof json.value?.uploadUrl === "string" ? json.value.uploadUrl : null;
+    const imageUrn = typeof json.value?.image === "string" ? json.value.image : null;
+    if (!uploadUrl || !imageUrn) {
+      throw new ValidationError("LinkedIn did not return somewhere to upload the creative to.");
+    }
+
+    // Fetch our own copy and stream it up. The creative lives on R2 behind a
+    // public URL; LinkedIn will not pull from it itself.
+    const source = await this.fetch(url);
+    if (!source.ok) {
+      throw new ValidationError("The creative could not be read from storage.");
+    }
+    const bytes = new Uint8Array(await source.arrayBuffer());
+
+    const uploaded = await this.fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${credentials.accessToken}`,
+        "content-type": source.headers.get("content-type") ?? "application/octet-stream",
+      },
+      body: bytes,
+    });
+
+    if (!uploaded.ok) throw await this.error(uploaded, "upload a creative");
+    return imageUrn;
+  }
+
+  private restHeaders(credentials: ProviderCredentials): Record<string, string> {
+    return {
+      authorization: `Bearer ${credentials.accessToken}`,
+      "content-type": "application/json",
+      // Without this LinkedIn answers 426 Upgrade Required, which does not
+      // read like the missing header it is.
+      "LinkedIn-Version": LINKEDIN_API_VERSION,
+      "X-Restli-Protocol-Version": "2.0.0",
+    };
   }
 
   async getMetrics(): Promise<ProviderMetrics> {

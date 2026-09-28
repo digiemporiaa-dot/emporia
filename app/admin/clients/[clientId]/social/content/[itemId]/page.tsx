@@ -7,6 +7,7 @@ import { can } from "@/lib/auth/rbac";
 import { contentFormOptions, getContentItem } from "@/lib/services/social-content.service";
 import { listPostsForItem } from "@/lib/services/social-post.service";
 import { socialApprovalFor } from "@/lib/services/social-approval.service";
+import { publicationsFor } from "@/lib/services/social-publish.service";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { isAppError } from "@/lib/errors";
@@ -45,6 +46,17 @@ export default async function SocialContentItemPage({
     contentFormOptions(actor, clientId),
     socialApprovalFor(actor, itemId),
   ]);
+
+  // Only for versions that have actually been tried. Most have not, and asking
+  // for an empty history per version would be a query per card for nothing.
+  const tried = posts.filter((post) => post.attemptCount > 0);
+  const attempts = new Map(
+    await Promise.all(
+      tried.map(
+        async (post) => [post.id, await publicationsFor(actor, post.id)] as const,
+      ),
+    ),
+  );
 
   // Flattened for the client component: the snapshot itself stays on the
   // server, since the agency side only needs to know how many versions went
@@ -86,6 +98,14 @@ export default async function SocialContentItemPage({
     publishedAt: post.publishedAt?.toISOString() ?? null,
     externalUrl: post.externalUrl,
     lastError: post.lastError,
+    attempts: (attempts.get(post.id) ?? []).map((attempt) => ({
+      id: attempt.id,
+      attempt: attempt.attempt,
+      status: attempt.status,
+      error: attempt.error,
+      at: (attempt.completedAt ?? attempt.attemptedAt).toISOString(),
+      by: attempt.triggeredBy?.name ?? null,
+    })),
     media: post.media.map((row) => ({
       id: row.media.id,
       url: row.media.url,
@@ -140,6 +160,7 @@ export default async function SocialContentItemPage({
           // save that is going to be refused.
           canEdit={can(actor, "social.edit") && item.stage !== "CLIENT_REVIEW"}
           canDelete={can(actor, "social.delete") && item.stage !== "CLIENT_REVIEW"}
+          canPublish={can(actor, "social.publish")}
         />
 
         <ApprovalPanel

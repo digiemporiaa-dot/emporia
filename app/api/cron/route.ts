@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/config/env";
 import { runScheduledPublishing } from "@/lib/services/schedule.service";
+import { publishDuePosts } from "@/lib/services/social-publish.service";
 import { log } from "@/lib/logger";
 
 /**
@@ -75,12 +76,49 @@ async function handle(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const run = await runScheduledPublishing();
+    // Pages and social posts are unrelated batches, so one failing wholesale
+    // must not cost the other its run. Settled rather than awaited together.
+    const [pages, social] = await Promise.allSettled([
+      runScheduledPublishing(),
+      publishDuePosts(),
+    ]);
+
+    if (pages.status === "rejected") {
+      cronLog.error({ err: pages.reason }, "scheduled page run failed");
+    }
+    if (social.status === "rejected") {
+      cronLog.error({ err: social.reason }, "scheduled social run failed");
+    }
+    if (pages.status === "rejected" && social.status === "rejected") {
+      return NextResponse.json(
+        { ok: false, message: "The scheduled run failed." },
+        { status: 500 },
+      );
+    }
+
+    const run = pages.status === "fulfilled" ? pages.value : null;
+
     return NextResponse.json({
       ok: true,
-      published: run.published.map((page) => page.slug),
-      unpublished: run.unpublished.map((page) => page.slug),
-      failed: run.failed.map((page) => ({ slug: page.slug, reason: page.reason })),
+      published: run ? run.published.map((page) => page.slug) : [],
+      unpublished: run ? run.unpublished.map((page) => page.slug) : [],
+      failed: run ? run.failed.map((page) => ({ slug: page.slug, reason: page.reason })) : [],
+      social:
+        social.status === "fulfilled"
+          ? {
+              attempted: social.value.attempted,
+              published: social.value.published,
+              // Post ids and reasons only. A caller holding the cron secret is
+              // an operator, not a client, but there is still no reason to
+              // echo captions into a scheduler's response.
+              failed: social.value.failed.map((entry) => ({
+                postId: entry.postId,
+                reason: entry.reason,
+              })),
+            }
+          : { attempted: 0, published: 0, failed: [] },
+      pagesFailed: pages.status === "rejected",
+      socialFailed: social.status === "rejected",
     });
   } catch (error) {
     cronLog.error({ err: error }, "scheduled run failed");
