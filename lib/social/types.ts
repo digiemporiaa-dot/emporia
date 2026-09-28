@@ -39,6 +39,12 @@ export type SocialCapabilities = {
   readonly metrics: boolean;
   /** Whether the provider can schedule server-side, or we must hold and post. */
   readonly nativeScheduling: boolean;
+  /**
+   * File types the platform will actually publish. Absent means any image or
+   * video. Checked when a creative is attached, so an unusable one is refused
+   * in the editor rather than at publication time.
+   */
+  readonly acceptedMediaTypes?: readonly string[];
 };
 
 /** What a connected account looks like to us, whatever the provider calls it. */
@@ -112,6 +118,14 @@ export interface SocialProviderAdapter {
   exchangeCode(code: string, redirectUri: string): Promise<ProviderCredentials>;
   /** Refresh before expiry, where the provider supports it. */
   refresh(credentials: ProviderCredentials): Promise<ProviderCredentials>;
+  /**
+   * True when the platform extends a token by presenting the token itself
+   * rather than a separate refresh token. Instagram works this way: a
+   * long-lived token is exchanged for a fresh one before it expires, and no
+   * refresh token is ever issued. Without this flag the refresh path would see
+   * "no refresh token" and let the account quietly expire at sixty days.
+   */
+  readonly refreshesWithAccessToken?: boolean;
   /** Read the connected account, and prove the credentials still work. */
   getAccount(credentials: ProviderCredentials): Promise<ProviderAccount>;
   /** Publish. Returns the provider's own id so we never publish it twice. */

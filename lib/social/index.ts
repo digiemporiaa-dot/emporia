@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { decryptSecret } from "@/lib/security/secret";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { InstagramProvider } from "@/lib/social/instagram";
 import { LinkedInProvider } from "@/lib/social/linkedin";
 import { UnconfiguredSocialProvider } from "@/lib/social/unconfigured";
 import type { SocialProvider } from "@/generated/prisma/enums";
@@ -15,8 +16,9 @@ import type { SocialProviderAdapter } from "@/lib/social/types";
  * the same row shape the AI provider and the Meta Conversions API already use.
  * The secret half is encrypted at rest with `lib/security/secret`.
  *
- Adapters arrive one platform at a time, because each platform's API is a
- * piece of work in its own right. LinkedIn is implemented; the rest resolve to
+ * Adapters arrive one platform at a time, because each platform's API is a
+ * piece of work in its own right. LinkedIn and Instagram are implemented; the
+ * rest resolve to
  * `UnconfiguredSocialProvider`, which reports its capabilities and refuses
  * every call with a typed error. That is deliberate — a half-written adapter
  * that silently no-ops is worse than an honest "Not configured" on the screen.
@@ -69,7 +71,7 @@ export async function appConfig(provider: SocialProvider): Promise<SocialAppConf
 }
 
 /** Which providers have a real adapter written, configured or not. */
-const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>(["LINKEDIN"]);
+const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>(["LINKEDIN", "INSTAGRAM"]);
 
 /**
  * The adapter for a provider.
@@ -89,6 +91,8 @@ export async function socialProvider(
   switch (provider) {
     case "LINKEDIN":
       return new LinkedInProvider(config);
+    case "INSTAGRAM":
+      return new InstagramProvider(config);
     default:
       return new UnconfiguredSocialProvider(provider);
   }

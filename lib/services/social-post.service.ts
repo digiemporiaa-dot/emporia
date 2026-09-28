@@ -3,10 +3,10 @@ import { db } from "@/lib/db";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
-import { PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
 import type { Prisma } from "@/generated/prisma/client";
-import type { SocialPostStatus } from "@/generated/prisma/enums";
+import type { SocialPostStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
 import type { SocialPostInput, SocialPostListParams } from "@/lib/validation/social";
 
@@ -196,7 +196,7 @@ export async function savePost(
     }
   }
 
-  const media = await resolveMedia(input.mediaIds);
+  const media = await resolveMedia(input.mediaIds, input.provider);
 
   const data = {
     contentItemId: item.id,
@@ -278,12 +278,12 @@ async function nextOrder(tx: Prisma.TransactionClient, contentItemId: string): P
 }
 
 /** Media must exist and be usable; a dangling id would fail at publication. */
-async function resolveMedia(ids: readonly string[]): Promise<string[]> {
+async function resolveMedia(ids: readonly string[], provider: SocialProvider): Promise<string[]> {
   if (ids.length === 0) return [];
 
   const rows = await db.media.findMany({
     where: { id: { in: [...ids] }, deletedAt: null },
-    select: { id: true, type: true },
+    select: { id: true, type: true, mimeType: true, filename: true },
   });
   const found = new Set(rows.map((row) => row.id));
 
@@ -295,6 +295,20 @@ async function resolveMedia(ids: readonly string[]): Promise<string[]> {
   const unusable = rows.filter((row) => row.type === "DOCUMENT");
   if (unusable.length > 0) {
     throw new ValidationError("A social post can carry images and video, not documents.");
+  }
+
+  // Refused here, where the editor shows it, rather than at publication — a
+  // PNG on an Instagram post used to save, pass approval, and fail at 7:30pm.
+  const accepted = CAPABILITIES[provider].acceptedMediaTypes;
+  if (accepted) {
+    const wrong = rows.find((row) => !accepted.includes(row.mimeType));
+    if (wrong) {
+      throw new ValidationError(
+        `${PROVIDER_LABEL[provider]} cannot publish ${wrong.filename} (${wrong.mimeType}). ${
+          wrong.mimeType.startsWith("image/") ? "Export it as a JPEG and attach that instead." : ""
+        }`.trim(),
+      );
+    }
   }
 
   // The caller's order is the carousel's order, so it is preserved exactly

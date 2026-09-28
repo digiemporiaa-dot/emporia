@@ -26,6 +26,8 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     carouselLimit: 10,
     metrics: true,
     nativeScheduling: false,
+    // JPEG is the only image format Instagram's publishing API accepts.
+    acceptedMediaTypes: ["image/jpeg", "video/mp4", "video/quicktime"],
   },
   FACEBOOK: {
     postTypes: ["SINGLE_IMAGE", "CAROUSEL", "VIDEO", "REEL", "TEXT", "LINK"],
