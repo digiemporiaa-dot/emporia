@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Send,
   BarChart3,
   Building2,
   CalendarRange,
@@ -77,6 +78,7 @@ const ICONS = {
   media: ImageIcon,
   analytics: BarChart3,
   automation: Workflow,
+  social: Send,
   ai: Sparkles,
   settings: Settings,
 } as const;

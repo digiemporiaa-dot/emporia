@@ -129,6 +129,16 @@ export const NAV: readonly NavSpec[] = [
     ],
   },
   {
+    // Agency-wide rather than per-client: "is anything broken right now" is not
+    // a question answered one client at a time. The per-client social section
+    // stays where it is, under the client.
+    item: { kind: "link", href: "/admin/social", label: "Social", icon: "social" },
+    permission: "social.view",
+    children: [
+      { href: "/admin/social/queue", label: "Publishing queue", permission: "social.view" },
+    ],
+  },
+  {
     item: { kind: "link", href: "/admin/automation", label: "Automation", icon: "automation" },
     permission: "automation.view",
   },

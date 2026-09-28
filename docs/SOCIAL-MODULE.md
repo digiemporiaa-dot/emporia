@@ -777,3 +777,120 @@ Gate: lint, typecheck, **1597 tests across 98 files**, production build — clea
 Phase 7 is the scheduler's own screen — a queue view of what is due, what
 failed, and what is waiting — and the retry and bulk actions that belong with
 it.
+
+---
+
+## 9. Phase 7 — the publishing queue
+
+`/admin/social/queue`. Phase 6 made publishing correct; this makes it
+**operable**.
+
+### The gap this phase found
+
+Building the screen surfaced a real bug in Phase 6. The claim flips a post to
+`PUBLISHING` before calling the platform. If the process dies in between — a
+deploy, a container restart, an OOM, all of which happened during this build —
+the post stays `PUBLISHING` forever: `publishDuePosts` selects only `SCHEDULED`
+and `FAILED` so nothing picks it up, and `publishNow` refuses it because it
+looks like it is in flight. Invisible and stuck.
+
+The tempting fix is to time it out and retry. **That is wrong.** We genuinely do
+not know whether the platform received the post, and retrying could put a second
+copy on a client's feed — the same ambiguity `AmbiguousPublishError` exists for.
+So a stranded post is *surfaced, never auto-resolved*: it goes to the top of the
+queue, and a person opens the account, looks, and says which it was. Guessing on
+their behalf is the one thing that cannot be undone.
+
+That also required a fix in the engine: the claim now stamps `lastAttemptAt` at
+the **start** of an attempt, not only on completion. Left as it was, a retry
+carried the previous attempt's timestamp and would be called stranded the moment
+it began.
+
+### The bands
+
+Ordered by how much a person is needed, which is not the same as ordered by
+time:
+
+| Band | Meaning |
+|---|---|
+| Interrupted | In `PUBLISHING` past the timeout. Blocked on a human. |
+| Failed, out of retries | The scheduler has given up. |
+| Failed, will retry | Progressing on its own; shown, not actionable. |
+| Publishing now | Genuinely in flight. |
+| Due | Waiting only for the next scheduler run. |
+| Scheduled | Later. |
+| Published this week | Confirmation that the thing works. |
+
+Splitting the two failure bands matters: a screen that lumps them together makes
+an operator check rows that are already handling themselves.
+
+`STUCK_AFTER_MS` is fifteen minutes, deliberately generous. An image upload to a
+slow platform can legitimately take a while, and calling a live publication
+stranded while it is still running would invite exactly the duplicate this is
+trying to prevent. `resolveStrandedPost` refuses outright if the attempt is
+still inside that window.
+
+### Agency-wide, and the scoping that required
+
+This is the one screen in the module where the client is a **filter** rather
+than the route. "Is anything broken right now" is not a question you answer one
+client at a time.
+
+That needed a second scoping helper. `resolveClientScope` demands a named client;
+`resolveScopeFilter` returns a `where` fragment and lets staff leave it unnamed
+to span everything. A portal user never can — they get their own client whatever
+they ask for. It is written as two explicit branches rather than an optional
+filter somebody could forget to apply, and there are tests for both directions,
+including that a portal user naming no client still sees only their own.
+
+### Resolving by hand, without fabricating anything
+
+The stranded dialog offers both answers plainly, with no default and no
+recommended one: the system genuinely does not know, and nudging towards either
+would be inventing an opinion it has not earned. "It went out" records the post
+as published with an optional link; "it did not" puts it back in the queue as a
+failure. Either way the open `SocialPublication` row is closed so the history
+does not show an attempt that never ended, and the audit payload carries
+`resolvedByHand: true` — this state came from a person looking at a platform,
+not from the platform, and the record says so.
+
+This is not fake data. Somebody looked.
+
+### Bulk retry
+
+Sequential, not parallel. These all hit third-party APIs, and firing fifty at
+once is how an agency gets itself rate limited across every client at the same
+moment. Each failure is reported separately rather than the batch collapsing on
+the first one.
+
+### Verified in a browser
+
+Seeded one post into each interesting state and worked the screen:
+
+- The header reads `1 interrupted · 2 failed · 1 due · 3 scheduled`, and every
+  band renders with its reason and the right action — **Say what happened** on
+  the interrupted one, **Retry** on the exhausted one, nothing on the one
+  retrying itself, **Publish now** and unschedule on the due one.
+- The stranded dialog offers both answers plainly, with no default and nothing
+  nudging towards either. Answering "it did not go out" moved the post back to
+  failed and the band disappeared.
+- "Published this week" hides itself when empty rather than showing an empty
+  card.
+- The client filter drives the URL (`?clientId=…`), so a view is shareable.
+- No page errors; no horizontal overflow at 1440px or 375px.
+
+> **On the gate for this phase.** The Bash tool was unavailable for several
+> turns mid-build (a safety-classifier outage affecting every command, including
+> `git status`), so four small edits — three type tightenings in
+> `queue-board.tsx` and removing a `.catch(() => [])` in `page.tsx` that would
+> have swallowed a real query error — were written and reviewed by reading
+> before they could be compiled. They were all verified clean once the tool
+> returned, before anything was committed.
+
+Gate: lint, typecheck, **1617 tests across 99 files**, production build — clean.
+
+### Next
+
+Phase 8 is analytics: reading metrics back from the platforms that support it,
+and the reporting that hangs off them. `SocialMetricSnapshot` has been waiting
+since Phase 1, with every metric nullable because absent is not zero.
