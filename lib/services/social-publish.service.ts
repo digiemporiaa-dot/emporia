@@ -209,7 +209,12 @@ async function runPublication(
   // ---- The claim. Everything above is a read; this is the mutex. ----------
   const claimed = await db.socialPost.updateMany({
     where: { id: post.id, status: { in: ["SCHEDULED", "FAILED"] } },
-    data: { status: "PUBLISHING" },
+    // `lastAttemptAt` is stamped here, at the *start*, not only on completion.
+    // It is what tells the queue whether a post sitting in PUBLISHING is
+    // genuinely in flight or was stranded by a process that died mid-publish.
+    // Left to the completion write, a retry would carry the previous attempt's
+    // timestamp and be called stranded the moment it began.
+    data: { status: "PUBLISHING", lastAttemptAt: new Date() },
   });
   if (claimed.count === 0) {
     // Somebody else has it, or it already went out. Either way, not ours.

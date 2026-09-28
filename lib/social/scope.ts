@@ -52,3 +52,30 @@ export async function resolveClientScope(
 export function clientFilter(clientId: string): { clientId: string } {
   return { clientId };
 }
+
+/**
+ * Scope for a screen that may legitimately span clients.
+ *
+ * The queue is the first of these: "what is going out across the agency today,
+ * and what broke" is an operational question, and answering it one client at a
+ * time is not answering it. So staff may leave the client unnamed and see
+ * everything.
+ *
+ * A portal user never can. They get their own client whatever they ask for,
+ * exactly as above — the widening that makes this function useful for staff is
+ * the precise thing that must not happen for them, so it is written as two
+ * branches rather than an optional filter somebody could forget to apply.
+ *
+ * Returns a `where` fragment rather than an id, because "every client" has no
+ * id to return.
+ */
+export async function resolveScopeFilter(
+  actor: Actor,
+  requested: string | null,
+): Promise<{ clientId: string } | Record<string, never>> {
+  if (actor.type === "CLIENT") {
+    return clientFilter(await resolveClientScope(actor, requested));
+  }
+  if (!requested) return {};
+  return clientFilter(await resolveClientScope(actor, requested));
+}
