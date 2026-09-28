@@ -279,8 +279,53 @@ describe("publishing", () => {
   });
 });
 
-describe("what this phase does not do", () => {
-  it("refuses to read metrics rather than returning fabricated numbers", async () => {
-    await expect(provider.getMetrics()).rejects.toBeInstanceOf(ValidationError);
+describe("metrics", () => {
+  const credentials = { accessToken: "li-access-token", refreshToken: null, expiresAt: null };
+  const account = { externalId: "li-member-1" };
+  const share = "urn:li:share:7000000000000000001";
+
+  it("reads likes and comments back for a published post", async () => {
+    const metrics = await provider.getMetrics(credentials, account, share);
+    expect(metrics.likes).toBe(12);
+    expect(metrics.comments).toBe(3);
+  });
+
+  it("reports what LinkedIn does not give as absent, never as zero", async () => {
+    const metrics = await provider.getMetrics(credentials, account, share);
+    // Impressions and reach need an organisation page and a scope this
+    // integration does not have. Zero would be a measurement; this is not one.
+    expect(metrics.impressions).toBeNull();
+    expect(metrics.reach).toBeNull();
+    expect(metrics.clicks).toBeNull();
+    expect(metrics.shares).toBeNull();
+  });
+
+  it("asks about the post it was given", async () => {
+    const before = double.requests.length;
+    await provider.getMetrics(credentials, account, share);
+    const asked = double.requests.slice(before).find((r) => r.path.includes("/socialActions/"))!;
+    expect(decodeURIComponent(asked.path)).toContain(share);
+  });
+
+  it("falls back to first-level comments when the aggregate is missing", async () => {
+    double.engagement({ likesSummary: { totalLikes: 4 }, commentsSummary: { totalFirstLevelComments: 2 } });
+    const metrics = await provider.getMetrics(credentials, account, share);
+    expect(metrics.comments).toBe(2);
+    double.engagement({ likesSummary: { totalLikes: 12 }, commentsSummary: { aggregatedTotalComments: 3 } });
+  });
+
+  it("treats a nonsense figure as absent rather than believing it", async () => {
+    double.engagement({ likesSummary: { totalLikes: "lots" }, commentsSummary: {} });
+    const metrics = await provider.getMetrics(credentials, account, share);
+    expect(metrics.likes).toBeNull();
+    expect(metrics.comments).toBeNull();
+    double.engagement({ likesSummary: { totalLikes: 12 }, commentsSummary: { aggregatedTotalComments: 3 } });
+  });
+
+  it("surfaces a rejected token rather than reporting nothing happened", async () => {
+    double.failWith("socialActions", 401);
+    await expect(provider.getMetrics(credentials, account, share)).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 });

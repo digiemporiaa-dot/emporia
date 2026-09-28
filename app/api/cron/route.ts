@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import { env } from "@/lib/config/env";
 import { runScheduledPublishing } from "@/lib/services/schedule.service";
 import { publishDuePosts } from "@/lib/services/social-publish.service";
+import { collectMetrics } from "@/lib/services/social-metrics.service";
 import { log } from "@/lib/logger";
 
 /**
@@ -78,16 +79,25 @@ async function handle(request: Request): Promise<NextResponse> {
   try {
     // Pages and social posts are unrelated batches, so one failing wholesale
     // must not cost the other its run. Settled rather than awaited together.
+    // Publishing first, then metrics: a post that goes out in this run is
+    // worth asking about on the next one, not this one, and reading metrics is
+    // never a reason to delay something going live.
     const [pages, social] = await Promise.allSettled([
       runScheduledPublishing(),
       publishDuePosts(),
     ]);
+    const metrics = await Promise.allSettled([collectMetrics()]).then(([result]) => result);
 
     if (pages.status === "rejected") {
       cronLog.error({ err: pages.reason }, "scheduled page run failed");
     }
     if (social.status === "rejected") {
       cronLog.error({ err: social.reason }, "scheduled social run failed");
+    }
+    if (metrics.status === "rejected") {
+      // Not fatal to the run: metrics are a read, and failing to read them
+      // must never make the endpoint look like publishing broke.
+      cronLog.error({ err: metrics.reason }, "metric collection failed");
     }
     if (pages.status === "rejected" && social.status === "rejected") {
       return NextResponse.json(
@@ -117,8 +127,18 @@ async function handle(request: Request): Promise<NextResponse> {
               })),
             }
           : { attempted: 0, published: 0, failed: [] },
+      metrics:
+        metrics.status === "fulfilled"
+          ? {
+              attempted: metrics.value.attempted,
+              captured: metrics.value.captured,
+              skipped: metrics.value.skipped.length,
+              failed: metrics.value.failed.length,
+            }
+          : { attempted: 0, captured: 0, skipped: 0, failed: 0 },
       pagesFailed: pages.status === "rejected",
       socialFailed: social.status === "rejected",
+      metricsFailed: metrics.status === "rejected",
     });
   } catch (error) {
     cronLog.error({ err: error }, "scheduled run failed");
