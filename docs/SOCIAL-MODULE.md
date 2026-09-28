@@ -1244,8 +1244,9 @@ say "not reported" rather than zero, AI drafting that cannot invent a number or
 publish anything, notifications and automation triggers, and a client-facing
 report that shares its arithmetic with the agency's.
 
-What deliberately does not exist: adapters for Instagram, Facebook, YouTube, X
-and Google Business Profile. LinkedIn is implemented end to end; the rest report
+What deliberately does not exist: adapters for Facebook, YouTube, X and Google
+Business Profile. LinkedIn is implemented end to end, and Instagram since
+section 16; the rest report
 their capabilities honestly and refuse every call, because a half-written
 adapter that silently no-ops is worse than a screen that says *not configured*.
 Each is a phase of its own when someone wants it.
@@ -1366,3 +1367,120 @@ band title was shortened after the first screenshot showed it wrapping and
 pushing its count onto a line of its own.
 
 Gate: lint, typecheck, **1706 tests across 104 files**, production build — clean.
+
+---
+
+## 16. The Instagram adapter
+
+`lib/social/instagram.ts`, registered alongside LinkedIn in
+`lib/social/index.ts`. Everything around it (accounts, the editor, approval,
+the engine, the queue, metrics, reports) already existed and needed no
+change for Instagram, which is what the adapter interface was for.
+
+### Which login
+
+It uses **Instagram API with Instagram Login**, not Facebook Login. Facebook
+Login reaches an Instagram account through the Facebook Page linked to it. That
+is the "page-token dance" that kept Instagram out of Phase 2. Instagram Login
+connects the professional account directly, with tokens against
+`graph.instagram.com` and no Page involved. The publishing API is the same.
+
+- **Scopes:** `instagram_business_basic`, `instagram_business_content_publish`,
+  `instagram_business_manage_comments`, `instagram_business_manage_insights`.
+- **Tokens:** the code is exchanged for a short-lived token, then immediately for
+  a sixty-day long-lived one. Only the long-lived token is stored, encrypted,
+  like LinkedIn's.
+- **No refresh token.** Instagram extends a token by presenting the token itself.
+  The adapter declares `refreshesWithAccessToken`, and `usableCredentials` refreshes
+  on that instead of looking for a refresh token. It still stores `null`
+  rather than inventing one.
+- **Personal accounts are refused at connection.** The API cannot publish to
+  them, so connecting one would only produce a failure later.
+
+### Publishing, and the one dangerous call
+
+Instagram does not accept uploads. It fetches each creative from a URL. So:
+
+1. Create a container per creative, plus a parent container for a carousel.
+2. For video, poll until Instagram reports `FINISHED` (it gives up after 60s
+   with a retryable failure).
+3. Publish the container.
+
+Steps 1 and 2 are safe to repeat, because an unpublished container is invisible
+and expires. Step 3 is the only call that puts anything on the feed, so it is
+the only one where a timeout or 504 raises `AmbiguousPublishError`. The same
+goes for a success reply with no media id. The post then lands in **Needs
+checking**, exactly like LinkedIn's create call (section 15). A failure in
+steps 1–2 is an ordinary retryable failure.
+
+After publishing, the permalink is fetched and the first comment is posted.
+Both are best-effort: a failure there becomes a warning on the publication,
+not a failed post. The post is already live, and marking it failed would
+invite a retry, which would publish it twice.
+
+- **Formats:** single image, carousel (2–10 items, images and video mixed), Reel.
+  A `VIDEO` post is published as a Reel with `share_to_feed`, because Meta
+  retired plain feed video in favour of Reels.
+- **Metrics:** likes and comments on the media (required), plus reach, saves and
+  shares from insights. If insights are refused for any reason other than
+  auth, those three stay `null`. Impressions are always `null`: Meta
+  deprecated the metric for this API, and a missing figure is not zero.
+- **Errors:** 401 or Graph error code 190 means `CredentialsRejectedError`, and
+  the account goes to `NEEDS_RECONNECT`. 429 or codes 4/17/32/613 mean a rate
+  limit, reported as such.
+- **Logging:** Meta puts the app secret and the token in query strings, so every
+  URL is logged with its query stripped.
+
+### Refused before anything is sent
+
+The adapter refuses these before creating any container, each with a reason:
+a non-JPEG image, video other than MP4/MOV, a carousel outside 2–10 items,
+more than 30 hashtags, a non-carousel post without exactly one creative.
+
+The format rule is also enforced **when the creative is attached**. Left only
+in the adapter, a PNG on an Instagram version would save, pass the client's
+approval and then fail at publication time, which is exactly what this module
+exists to prevent. So `acceptedMediaTypes` is now part of the capability
+table, and `savePost` checks every attached file against it. The editor then
+shows *"Instagram cannot publish banner.png (image/png). Export it as a JPEG
+and attach that instead."* Providers without the field accept any image or
+video, as before. The adapter keeps its own check as the last gate.
+
+### Setting it up (operator)
+
+1. Create a Meta app and add the **Instagram** product with *API setup with
+   Instagram login*.
+2. Add the redirect URI shown for Instagram on **Settings → Social platforms** (`/admin/settings/social`):
+   `<NEXTAUTH_URL>/api/social/oauth/instagram/callback`.
+3. Paste the Instagram app ID and secret into that settings page and tick
+   *Offer Instagram connections to clients*. Until then the module shows
+   Instagram as **not configured**.
+4. Until the app passes **App Review** for the publish, comments and insights
+   scopes, only accounts added as testers on the Meta app can connect.
+5. Each client's account must be a **Business or Creator** account.
+6. Creatives must be at a URL Instagram can fetch from the public internet,
+   i.e. `R2_PUBLIC_URL` must be publicly reachable. A private bucket
+   fails at step 1 with Instagram's own error.
+
+### What was and was not verified
+
+- **Wire double:** `tests/support/instagram-double.ts` speaks Instagram's
+  protocol, so the real adapter runs end to end: token exchange, container
+  flow, video polling, publish, permalink, comment, insights and error mapping.
+  30 adapter tests use it, plus 5 through the database: the engine publishes,
+  a lost publish reply becomes *possibly live*, the refresh uses the token
+  itself, code 190 marks the account for reconnection, and metrics arrive with
+  impressions `null`.
+- **Save time:** one test covers the format refusal. The same PNG is refused
+  for Instagram, accepted for LinkedIn, and nothing is half-saved.
+- **Browser:** configured Instagram in settings; **Connect** hands off to
+  `www.instagram.com/oauth/authorize` with the app id, all four scopes, a
+  state, and the callback URL. No secret is in the URL, the state cookie is
+  set and there were no page errors. The test credentials were removed from
+  the dev database afterwards.
+- **Not verified:** it has **not been run against a real Instagram account**.
+  Meta's developer documentation is not reachable from the build environment,
+  so the protocol was taken from a working implementation of the same login
+  that targets Graph API **v24.0**. `INSTAGRAM_API_VERSION` is a single
+  constant; confirm it against Meta's changelog before going live. The first
+  real connection and post should be watched, not assumed.

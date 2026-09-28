@@ -421,7 +421,7 @@ const REFRESH_BEFORE_MS = 24 * 60 * 60 * 1000;
  */
 export async function usableCredentials(
   id: string,
-  adapter: Pick<SocialProviderAdapter, "refresh">,
+  adapter: Pick<SocialProviderAdapter, "refresh" | "refreshesWithAccessToken">,
   now = new Date(),
 ): Promise<ProviderCredentials | null> {
   const credentials = await credentialsFor(id);
@@ -432,7 +432,8 @@ export async function usableCredentials(
     credentials.expiresAt.getTime() - now.getTime() < REFRESH_BEFORE_MS;
   if (!expiring) return credentials;
 
-  if (!credentials.refreshToken) {
+  const canRefresh = Boolean(credentials.refreshToken) || adapter.refreshesWithAccessToken === true;
+  if (!canRefresh) {
     // Nothing to refresh with. If it has already expired, say so now rather
     // than letting the platform say it three times.
     if (credentials.expiresAt!.getTime() <= now.getTime()) {
@@ -452,8 +453,12 @@ export async function usableCredentials(
       where: { id },
       data: {
         accessToken: encryptSecret(fresh.accessToken),
-        // Some platforms rotate the refresh token, some keep the old one.
-        refreshToken: encryptSecret(fresh.refreshToken ?? credentials.refreshToken),
+        // Some platforms rotate the refresh token, some keep the old one, and
+        // some (Instagram) never issue one at all.
+        refreshToken:
+          (fresh.refreshToken ?? credentials.refreshToken)
+            ? encryptSecret((fresh.refreshToken ?? credentials.refreshToken)!)
+            : null,
         tokenExpiresAt: fresh.expiresAt,
       },
     });

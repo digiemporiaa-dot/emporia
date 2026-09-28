@@ -296,6 +296,45 @@ describeDb("social content and platform versions", () => {
     ).toBe(false);
   });
 
+  it("refuses a creative Instagram cannot publish when it is attached, not at 7:30pm", async () => {
+    const png = await db.media.create({
+      data: {
+        key: `${SUFFIX}/banner.png`,
+        url: "https://cdn.example.com/banner.png",
+        filename: "banner.png",
+        mimeType: "image/png",
+        size: 90_000,
+        type: "IMAGE",
+        uploadedById: staff.userId,
+      },
+      select: { id: true },
+    });
+    const version = (provider: "INSTAGRAM" | "LINKEDIN") =>
+      socialPostSchema.parse({
+        contentItemId: itemId,
+        provider,
+        type: "SINGLE_IMAGE",
+        caption: "Festive banner",
+        mediaIds: [png.id],
+      });
+
+    try {
+      const before = await listPostsForItem(staff, itemId);
+      const refusal = savePost(staff, null, version("INSTAGRAM"));
+      await expect(refusal).rejects.toBeInstanceOf(ValidationError);
+      await expect(refusal).rejects.toThrow(/banner\.png \(image\/png\).*JPEG/);
+      // Nothing half-saved.
+      expect(await listPostsForItem(staff, itemId)).toHaveLength(before.length);
+
+      // The same PNG is fine where the platform takes it.
+      const linkedin = await savePost(staff, null, version("LINKEDIN"));
+      await db.socialPostMedia.deleteMany({ where: { postId: linkedin.id } });
+      await db.socialPost.delete({ where: { id: linkedin.id } });
+    } finally {
+      await db.media.delete({ where: { id: png.id } });
+    }
+  });
+
   // -------------------------------------------------------------------------
   // Nothing goes out unapproved, and what went out is not editable
   // -------------------------------------------------------------------------
