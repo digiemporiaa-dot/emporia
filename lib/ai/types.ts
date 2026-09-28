@@ -26,7 +26,10 @@ export type AITask =
   // never written anywhere until a person saves it.
   | "rewriteField"
   | "generateBlocks"
-  | "generateMeta";
+  | "generateMeta"
+  // Social. One caption per platform, drafted against that platform's own
+  // limits and fields, and never written to a post until a person saves it.
+  | "draftSocialPost";
 
 export type CompletionRequest = {
   /** Which product feature is asking. Recorded, and used for logging. */

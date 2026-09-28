@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Plus, Send, Trash2, X } from "lucide-react";
+import { AlertCircle, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import {
   Badge,
   Button,
@@ -18,6 +18,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
+import { AIDraft } from "@/components/admin/ai-draft";
 import { useHydrated } from "@/lib/utils/hydrated";
 import type {
   ContentStage,
@@ -29,6 +30,7 @@ import { POST_STATUS_LABEL, POST_STATUS_TONE, POST_TYPE_LABEL } from "@/lib/soci
 import {
   deletePostAction,
   publishNowAction,
+  draftCaptionAction,
   savePostAction,
   setPostStatusAction,
 } from "../actions";
@@ -110,6 +112,7 @@ export function VersionEditor({
   canEdit,
   canDelete,
   canPublish,
+  aiReady,
 }: {
   clientId: string;
   itemId: string;
@@ -119,6 +122,7 @@ export function VersionEditor({
   canEdit: boolean;
   canDelete: boolean;
   canPublish: boolean;
+  aiReady: boolean;
 }) {
   const ready = useHydrated();
   const [adding, setAdding] = React.useState(false);
@@ -169,6 +173,7 @@ export function VersionEditor({
                 canEdit={canEdit}
                 canDelete={canDelete}
                 canPublish={canPublish}
+                aiReady={aiReady}
               />
             );
           })}
@@ -186,6 +191,7 @@ export function VersionEditor({
           canEdit
           canDelete={false}
           canPublish={false}
+          aiReady={aiReady}
           onDiscard={() => setDraft(null)}
         />
       ) : null}
@@ -245,6 +251,7 @@ function VersionCard({
   canEdit,
   canDelete,
   canPublish,
+  aiReady,
   onDiscard,
 }: {
   clientId: string;
@@ -255,6 +262,7 @@ function VersionCard({
   canEdit: boolean;
   canDelete: boolean;
   canPublish: boolean;
+  aiReady: boolean;
   onDiscard?: () => void;
 }) {
   const router = useRouter();
@@ -263,6 +271,10 @@ function VersionCard({
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmPublish, setConfirmPublish] = React.useState(false);
+  const [draft, setDraft] = React.useState<
+    { caption: string; headline: string | null; hashtags: string[]; model: string } | null
+  >(null);
+  const [instruction, setInstruction] = React.useState("");
 
   const [type, setType] = React.useState(post.type);
   const [accountId, setAccountId] = React.useState(post.accountId ?? "");
@@ -340,6 +352,30 @@ function VersionCard({
     });
   };
 
+  const askForDraft = () => {
+    setError(null);
+    start(async () => {
+      const result = await draftCaptionAction({
+        itemId,
+        provider: provider.provider,
+        type,
+        instruction: instruction.trim() || null,
+      });
+      if (result.ok) setDraft(result.data);
+      else setError(result.message);
+    });
+  };
+
+  /** Put the draft in the form. Still unsaved — the person presses save. */
+  const applyDraft = () => {
+    if (!draft) return;
+    setCaption(draft.caption);
+    if (draft.headline !== null) setHeadline(draft.headline);
+    if (draft.hashtags.length > 0) setHashtags(draft.hashtags.join(" "));
+    setDraft(null);
+    setInstruction("");
+  };
+
   const publish = () => {
     setError(null);
     start(async () => {
@@ -395,6 +431,53 @@ function VersionCard({
             This version has gone out. Its copy is the record of what was published, so it can no
             longer be edited.
           </p>
+        ) : null}
+
+        {editable && aiReady ? (
+          <div className="rounded-md border border-line bg-surface-muted px-3 py-2.5">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-0 flex-1">
+                <span className="mb-1 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+                  Draft with AI
+                </span>
+                <Input
+                  value={instruction}
+                  placeholder="Optional steer — shorter, warmer, lead with the workshop…"
+                  onChange={(event) => setInstruction(event.target.value)}
+                />
+              </label>
+              <Button variant="secondary" disabled={pending} onClick={askForDraft}>
+                <Sparkles size={14} aria-hidden="true" />
+                {pending ? "Drafting…" : "Draft"}
+              </Button>
+            </div>
+            <p className="mt-1.5 text-2xs text-ink-subtle">
+              Written from this idea&rsquo;s brief. It will not invent figures, offers or results —
+              if the brief has no numbers, the caption has none.
+            </p>
+          </div>
+        ) : null}
+
+        {draft ? (
+          <AIDraft model={draft.model} onDismiss={() => setDraft(null)}>
+            <div className="space-y-2">
+              {draft.headline ? (
+                <p className="text-sm font-medium text-navy-800">{draft.headline}</p>
+              ) : null}
+              <p className="whitespace-pre-wrap text-sm text-ink">{draft.caption}</p>
+              {draft.hashtags.length > 0 ? (
+                <p className="text-xs text-navy-700">
+                  {draft.hashtags.map((tag) => `#${tag}`).join(" ")}
+                </p>
+              ) : null}
+              <p className="text-2xs text-ink-subtle">
+                {draft.caption.length} of {provider.captionLimit ?? "—"} characters
+              </p>
+              <Button size="sm" onClick={applyDraft}>
+                Put it in the form
+              </Button>
+            </div>
+          </AIDraft>
         ) : null}
 
         {post.attempts.length > 0 ? (

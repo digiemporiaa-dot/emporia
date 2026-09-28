@@ -13,10 +13,13 @@ import type {
   RewriteAction,
   RewriteInput,
 } from "@/lib/validation/ai-cms";
+import type { SocialProvider } from "@/generated/prisma/enums";
 import { overview, breakdowns } from "@/lib/services/analytics.service";
 import { resolveRange, RANGE_LABEL } from "@/lib/analytics/range";
 import { toMoneyString } from "@/lib/money";
 import { ai } from "@/lib/ai";
+import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { resolveClientScope } from "@/lib/social/scope";
 import { SYSTEM_PROMPTS, factBlock } from "@/lib/ai/prompts";
 import {
   LEAD_ASSESSMENT_SCHEMA,
@@ -83,6 +86,9 @@ const BUDGET: Record<AITask, { limit: number; windowMs: number }> = {
   rewriteField: { limit: 60, windowMs: 60_000 },
   generateBlocks: { limit: 10, windowMs: 60_000 },
   generateMeta: { limit: 30, windowMs: 60_000 },
+  // Drafting one idea across several platforms is several calls in a row, and
+  // trying two or three tones for each is ordinary work, not a stuck loop.
+  draftSocialPost: { limit: 40, windowMs: 60_000 },
 };
 
 async function guardBudget(actor: Actor, task: AITask): Promise<void> {
@@ -764,6 +770,135 @@ export async function generateBlocks(
     model: result.model,
     task: "generateBlocks",
   };
+}
+
+export type SocialCaptionDraft = {
+  caption: string;
+  headline: string | null;
+  hashtags: string[];
+};
+
+/**
+ * Draft one platform's version of an idea.
+ *
+ * Built from the idea's own brief and the client's own name — facts already in
+ * the database — and bounded by the platform's declared capabilities, so the
+ * model is told the real character limit and only asked for the fields that
+ * platform actually accepts. A LinkedIn draft and an Instagram draft of the
+ * same idea are two calls with two different briefs, which is the whole reason
+ * versions exist.
+ *
+ * The result is a `Draft`, like every other assist: labelled, editable, and
+ * written nowhere until a person saves it. Nothing here can publish
+ * (CLAUDE.md 16).
+ */
+export async function draftSocialPost(
+  actor: Actor,
+  input: { contentItemId: string; provider: SocialProvider; type: string; instruction: string | null },
+): Promise<Draft<SocialCaptionDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "social.edit");
+  await guardBudget(actor, "draftSocialPost");
+
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: input.contentItemId },
+    select: {
+      title: true,
+      brief: true,
+      clientId: true,
+      client: { select: { name: true, industry: true } },
+      campaign: { select: { name: true } },
+    },
+  });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  // Same isolation as every other social read: an actor who may not see the
+  // client may not have its content drafted either.
+  await resolveClientScope(actor, item.clientId);
+
+  const capability = CAPABILITIES[input.provider];
+  const wantsHeadline = capability.fields.includes("headline");
+  const wantsHashtags = capability.fields.includes("hashtags");
+
+  // A caption drafted from nothing is a guess dressed as a draft.
+  if (!item.brief?.trim() && !item.title.trim()) {
+    throw new ValidationError(
+      "Write the brief first. A caption drafted from an empty idea is invention, not assistance.",
+    );
+  }
+
+  const limit = capability.captionLimit ?? 2_000;
+
+  const result = await (await ai()).completeStructured<SocialCaptionDraft>({
+    task: "draftSocialPost",
+    system: SYSTEM_PROMPTS.draftSocialPost,
+    prompt: [
+      factBlock({
+        client: item.client.name,
+        industry: item.client.industry,
+        campaign: item.campaign?.name,
+        platform: PROVIDER_LABEL[input.provider],
+        format: input.type.toLowerCase().replace(/_/g, " "),
+        "caption limit": limit,
+      }),
+      "",
+      `The idea: ${item.title}`,
+      item.brief?.trim() ? `The brief: ${item.brief.trim()}` : "",
+      input.instruction?.trim() ? `Also: ${input.instruction.trim()}` : "",
+      "",
+      `Write the ${PROVIDER_LABEL[input.provider]} version. Stay under ${limit} characters.`,
+      wantsHashtags ? "" : "This platform does not use hashtags — return an empty array.",
+      wantsHeadline ? "" : "This platform has no headline — return null for it.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    maxTokens: 900,
+    schema: {
+      type: "object",
+      properties: {
+        caption: { type: "string" },
+        headline: { type: ["string", "null"] },
+        hashtags: { type: "array", items: { type: "string" } },
+      },
+      required: ["caption", "headline", "hashtags"],
+    },
+    parse: (value) => {
+      const shape = value as { caption?: unknown; headline?: unknown; hashtags?: unknown };
+      if (typeof shape.caption !== "string" || !shape.caption.trim()) {
+        throw new Error("The draft had no caption.");
+      }
+      const hashtags = Array.isArray(shape.hashtags)
+        ? shape.hashtags
+            .filter((tag): tag is string => typeof tag === "string")
+            // Normalised the same way the editor normalises typed ones, so an
+            // AI draft and a hand-typed tag cannot become two different tags.
+            .map((tag) => tag.trim().replace(/^#+/, ""))
+            .filter((tag) => tag.length > 0 && /^[\p{L}\p{N}_]+$/u.test(tag))
+            .slice(0, 30)
+        : [];
+
+      return {
+        // Truncation is the platform's rule, not a preference. A caption over
+        // the limit is unusable, and silently keeping it would push the failure
+        // to 7:30pm.
+        caption: shape.caption.trim().slice(0, limit),
+        headline:
+          wantsHeadline && typeof shape.headline === "string" && shape.headline.trim()
+            ? shape.headline.trim()
+            : null,
+        hashtags: wantsHashtags ? hashtags : [],
+      };
+    },
+  });
+
+  await auditCall(
+    actor,
+    "draftSocialPost",
+    { type: "ContentCalendarItem", id: input.contentItemId },
+    result.usage,
+    result.model,
+  );
+
+  return { data: result.data, generated: true, model: result.model, task: "draftSocialPost" };
 }
 
 export type MetaDraft = { metaTitle: string; metaDescription: string };

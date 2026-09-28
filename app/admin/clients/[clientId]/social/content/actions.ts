@@ -10,6 +10,7 @@ import {
   withdrawSocialApproval,
 } from "@/lib/services/social-approval.service";
 import { publishNow } from "@/lib/services/social-publish.service";
+import { draftSocialPost } from "@/lib/services/ai.service";
 import { socialPostSchema } from "@/lib/validation/social";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -211,6 +212,60 @@ export async function publishNowAction(input: unknown): Promise<ActionResult<{ i
     // Warn, not error: a platform refusing a post is an ordinary outcome that
     // the screen shows the operator, not a fault in this application.
     actionLog.warn({ err: error }, "publishing a social post failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function draftCaptionAction(input: unknown): Promise<
+  ActionResult<{ caption: string; headline: string | null; hashtags: string[]; model: string }>
+> {
+  try {
+    const actor = await requireActor();
+    const parsed = z
+      .object({
+        itemId: z.string().min(1).max(40),
+        provider: z.enum([
+          "INSTAGRAM",
+          "FACEBOOK",
+          "LINKEDIN",
+          "YOUTUBE",
+          "X",
+          "GOOGLE_BUSINESS_PROFILE",
+        ]),
+        type: z.string().min(1).max(40),
+        instruction: z
+          .string()
+          .trim()
+          .max(500)
+          .transform((value) => (value === "" ? null : value))
+          .nullable()
+          .default(null),
+      })
+      .safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: "That draft request could not be read." };
+    }
+
+    const draft = await draftSocialPost(actor, {
+      contentItemId: parsed.data.itemId,
+      provider: parsed.data.provider,
+      type: parsed.data.type,
+      instruction: parsed.data.instruction,
+    });
+
+    // Returned to the browser, never written. The editor puts it in the form
+    // and a person still has to save.
+    return {
+      ok: true,
+      data: {
+        caption: draft.data.caption,
+        headline: draft.data.headline,
+        hashtags: draft.data.hashtags,
+        model: draft.model,
+      },
+    };
+  } catch (error) {
+    actionLog.warn({ err: error }, "drafting a social caption failed");
     return toActionFailure(error);
   }
 }
