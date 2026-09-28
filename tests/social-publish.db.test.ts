@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { ConflictError } from "@/lib/errors";
+import { ConflictError, RateLimitedError } from "@/lib/errors";
 import {
   publicationsFor,
   publishDuePosts,
@@ -524,6 +524,29 @@ describeDb("social publishing engine", () => {
     expect(source).toContain("utm_source=linkedin");
     expect(source).toContain("utm_medium=social");
     expect(source).toContain("utm_campaign=festive-season");
+  });
+
+  it("rate limits a person publishing over and over", async () => {
+    // The scheduler has MAX_ATTEMPTS to stop it hammering a broken platform;
+    // a held-down Publish now button had nothing. Being rate limited by a
+    // platform costs every client, not just this one.
+    await db.rateLimitWindow.deleteMany({ where: { key: `social:publish:${userId}` } });
+
+    let limited = false;
+    for (let i = 0; i < 35; i++) {
+      const post = await scheduledPost();
+      try {
+        await publishNow(staff, post.id, resolve);
+      } catch (error) {
+        if (error instanceof RateLimitedError) {
+          limited = true;
+          break;
+        }
+      }
+    }
+
+    expect(limited).toBe(true);
+    await db.rateLimitWindow.deleteMany({ where: { key: `social:publish:${userId}` } });
   });
 
   it("refuses a post belonging to another client", async () => {

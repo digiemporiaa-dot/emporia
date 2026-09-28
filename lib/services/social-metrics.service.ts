@@ -75,6 +75,11 @@ export type CollectionRun = {
  * for the same reason: these are third-party calls and firing them all at once
  * is how the whole agency gets rate limited at the same moment.
  */
+/**
+ * No permission check, deliberately: there is no actor. Reachable only from
+ * `/api/cron` behind its shared secret, and it only ever reads from platforms
+ * and writes snapshots — it cannot publish, change copy, or expose a token.
+ */
 export async function collectMetrics(
   now = new Date(),
   resolve: (provider: SocialProvider) => Promise<SocialProviderAdapter> = socialProvider,

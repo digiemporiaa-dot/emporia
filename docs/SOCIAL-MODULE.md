@@ -1161,3 +1161,91 @@ Gate: lint, typecheck, **1673 tests across 103 files**, production build — cle
 
 Phase 12 is hardening: a pass over the whole module for the things twelve
 phases of building tend to leave behind.
+
+---
+
+## 14. Phase 12 — hardening
+
+A pass over the finished module rather than a feature.
+
+### The sweep
+
+Four things were checked across every social service, mechanically rather than
+by memory:
+
+- **Tokens.** No `accessToken` or `refreshToken` is selected anywhere outside
+  `credentialsFor`, which remains the only decryption path. Clean.
+- **Scoping.** No `clientId` from input reaches a query without going through
+  `resolveClientScope` or `resolveScopeFilter`. The one apparent hit was
+  `social-settings`, where `clientId` is an OAuth *app* id, not a `Client` id —
+  a naming collision, not a leak.
+- **Validation.** Every server action Zod-parses before it does anything.
+- **Guards.** Six exported functions have no permission check. All six are
+  correct — the two scheduler entries have no actor and are reachable only
+  through the cron secret, and the four internal helpers are consequences of
+  already-authorised work — but "correct because of where it is called from" is
+  exactly the property that rots. Each now says so in its own doc comment, so
+  the next person to import one reads why before they do.
+
+### A wide isolation test to go with the deep one
+
+Phase 1 left `social-isolation.db.test.ts`, which proves isolation and
+credential safety deeply for accounts. `social-isolation-sweep.db.test.ts` goes
+wide instead: it walks **every** social read that takes a client — content,
+calendar, queue, approvals, analytics, publications, the portal report — and
+asserts that a portal user of client B is refused or returned nothing, both when
+naming client A explicitly and, the quieter failure, when naming nobody at all.
+
+The portal user in that test holds **every** social permission a staff member
+could. Permissions must not be what keeps them out; the scope must be.
+
+There is a deliberate control test: staff *can* still see the client they asked
+for. Without it the whole file would pass on a module that shows nobody
+anything.
+
+### Rate limiting the human
+
+The scheduler had `MAX_ATTEMPTS` to stop it hammering a broken platform. A
+person pressing **Publish now** had nothing, and a bulk retry across a bad
+account is the same load from the platform's side. Being rate limited by
+LinkedIn costs every client, not just the one being retried. Manual publishing
+is now capped at 30 a minute per user, through the same Postgres-backed limiter
+the login endpoint uses.
+
+### Audit finding F5, closed
+
+`SHIPROCKET_EMAIL` and `SHIPROCKET_PASSWORD` were declared in `.env.example` and
+the env schema with nothing reading them. Closed by documenting rather than
+building: the keys stay, because CLAUDE.md §3 says shipping is architected for
+and §14 says the example file carries every key, but both places now say plainly
+that nothing reads them and that setting them does not enable shipping. The
+finding was never that the keys existed — it was that they looked like a working
+integration.
+
+> **A mistake worth recording.** Writing the sweep, I created it as
+> `social-isolation.db.test.ts` — a filename Phase 1 had already used — and
+> overwrote 18 existing tests covering account isolation and credential safety.
+> Nothing failed: the suite went green at 1661, and green is what a
+> careless reader would have accepted. It was caught only by noticing the total
+> had *fallen* from 1673 while six tests had just been added. The file was
+> restored from git and the sweep renamed. Two lessons: check whether a file
+> exists before writing it, and treat a falling test count as a failure even
+> when every remaining test passes.
+
+Gate: lint, typecheck, **1679 tests across 104 files**, production build — clean.
+
+### The module, finished
+
+Twelve phases. What exists now: per-client social accounts connected by real
+OAuth, content with a version per platform written against that platform's own
+rules, a calendar, client approval with a frozen snapshot of what was approved,
+a publishing engine that cannot publish twice, an operable queue, analytics that
+say "not reported" rather than zero, AI drafting that cannot invent a number or
+publish anything, notifications and automation triggers, and a client-facing
+report that shares its arithmetic with the agency's.
+
+What deliberately does not exist: adapters for Instagram, Facebook, YouTube, X
+and Google Business Profile. LinkedIn is implemented end to end; the rest report
+their capabilities honestly and refuse every call, because a half-written
+adapter that silently no-ops is worse than a screen that says *not configured*.
+Each is a phase of its own when someone wants it.
