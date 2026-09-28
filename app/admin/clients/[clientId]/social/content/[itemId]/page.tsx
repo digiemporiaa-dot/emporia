@@ -4,6 +4,7 @@ import type { Route } from "next";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
+import { isAIConfigured } from "@/lib/ai";
 import { contentFormOptions, getContentItem } from "@/lib/services/social-content.service";
 import { listPostsForItem } from "@/lib/services/social-post.service";
 import { socialApprovalFor } from "@/lib/services/social-approval.service";
@@ -161,6 +162,7 @@ export default async function SocialContentItemPage({
           canEdit={can(actor, "social.edit") && item.stage !== "CLIENT_REVIEW"}
           canDelete={can(actor, "social.delete") && item.stage !== "CLIENT_REVIEW"}
           canPublish={can(actor, "social.publish")}
+          aiReady={can(actor, "ai.use") && can(actor, "social.edit") && (await isAIConfigured())}
         />
 
         <ApprovalPanel

@@ -986,3 +986,57 @@ Gate: lint, typecheck, **1639 tests across 100 files**, production build — cle
 Phase 9 is AI content assistance — drafting captions per platform, through the
 existing `AIService`, as drafts that are always editable and never auto-posted,
 and never permitted to invent a metric.
+
+---
+
+## 11. Phase 9 — AI caption drafting
+
+One new task on the existing `AIService`: `draftSocialPost`. No second AI path,
+no direct provider call, no new abstraction — it joins the same budget table,
+the same audit trail, the same `Draft<T>` wrapper and the same `AIDraft` frame
+every other assist uses.
+
+### It cannot publish, and it cannot invent
+
+Two hard rules from the brief, and both are structural rather than hoped for.
+
+**Always a draft.** The action returns the caption to the browser and writes
+nothing. The editor puts it in the form and a person still presses save. A test
+asserts that drafting creates zero `SocialPost` rows.
+
+**No invented numbers.** The system prompt opens with it, before anything about
+tone, so a model truncating its context keeps the rule that matters: no metrics,
+percentages, rankings, awards, prices, timescales or claims of results — and no
+invented offers, discounts, deadlines or guarantees, which is the same failure
+wearing a different hat. If the brief has no number, the caption has none. A
+test pins that ordering, and the screen says the same thing to the operator in
+plain words.
+
+Drafting from an *empty* idea is refused outright. A caption written from
+nothing is not assistance, it is invention with a progress spinner.
+
+### The capability table, again
+
+The prompt is built from `CAPABILITIES`, so the model is told the platform's
+real character limit and asked only for the fields that platform accepts. The
+parse then enforces it rather than trusting it: a caption over the limit is
+truncated (over-length is unusable, and keeping it pushes the failure to
+7:30pm), hashtags are dropped for a platform that has none, and a headline is
+dropped where there is no headline field.
+
+Hashtags are normalised exactly as the editor normalises typed ones, so `#Festive`
+from the model and `Festive` from a person cannot become two different tags.
+
+### Verified in a browser
+
+The control appears on each version with its own steer field, states the
+no-invention rule to the operator, and is hidden entirely when AI is not
+configured rather than offering a button that fails. No page errors, no
+overflow.
+
+Gate: lint, typecheck, **1652 tests across 101 files**, production build — clean.
+
+### Next
+
+Phase 10 is automation and notifications: telling people when something needs
+them, using the automation engine that already exists.
