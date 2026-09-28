@@ -58,6 +58,9 @@ const envSchema = z.object({
   /** Overrides the API base. Used to point at a local double during testing. */
   RAZORPAY_API_URL: z.string().url().optional(),
 
+  // Declared, unread. Shipping is architected for and not implemented; these
+  // stay optional so a deployment that sets them is not rejected, and nothing
+  // in the codebase pretends they do anything (audit finding F5).
   SHIPROCKET_EMAIL: z.string().optional(),
   SHIPROCKET_PASSWORD: z.string().optional(),
 

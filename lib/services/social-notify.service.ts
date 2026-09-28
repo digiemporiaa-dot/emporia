@@ -21,6 +21,12 @@ import type { SocialProvider } from "@/generated/prisma/enums";
  * account manager, tag the client, create a task. Those belong in the rules
  * engine that already exists, and now has social triggers in its vocabulary.
  *
+ * None of these takes an actor or checks a permission, deliberately. They are
+ * consequences of work that was already authorised — a publication that
+ * happened, a decision a client already made — and are called from inside those
+ * services, never from a route handler. They only ever write notifications to
+ * the people already attached to the work.
+ *
  * Everything here is best-effort and swallows its own errors. A notification
  * that fails must never roll back a publication that succeeded — the post is
  * already on the platform, and failing the transaction would make the database

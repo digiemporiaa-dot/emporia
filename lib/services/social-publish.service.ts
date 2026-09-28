@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, NotFoundError, RateLimitedError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
@@ -10,6 +10,7 @@ import { AmbiguousPublishError } from "@/lib/social/errors";
 import { MAX_ATTEMPTS, publicationKey } from "@/lib/social/idempotency";
 import { tagLink } from "@/lib/social/utm";
 import { announceFailure, announcePublished } from "@/lib/services/social-notify.service";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { log } from "@/lib/logger";
 import { systemActor, type Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -419,6 +420,13 @@ async function finishFailure(
  * posts still under the attempt ceiling, and works them one at a time — one
  * client's broken account must not stop another client's launch.
  */
+/**
+ * No permission check, deliberately: there is no actor to check. This is the
+ * scheduler's entry point and is reachable only from `/api/cron`, which is
+ * guarded by a shared secret compared in constant time. It builds its own
+ * SYSTEM actor below with exactly the two permissions the job needs, so the
+ * work still goes through the same engine a person's publish does.
+ */
 export async function publishDuePosts(
   now = new Date(),
   resolve: ResolveAdapter = socialProvider,
@@ -479,6 +487,21 @@ export async function publishNow(
   resolve: ResolveAdapter = socialProvider,
 ): Promise<PublishOutcome> {
   requirePermission(actor, "social.publish");
+
+  // The scheduler has `MAX_ATTEMPTS` to stop it hammering a broken platform;
+  // a person pressing Publish now had nothing. A held-down key, or a bulk
+  // retry across a bad account, is the same load from the platform's side —
+  // and being rate limited by LinkedIn costs every client, not just this one.
+  const budget = await checkRateLimit(`social:publish:${actor.userId}`, {
+    limit: 30,
+    windowMs: 60_000,
+  });
+  if (!budget.allowed) {
+    throw new RateLimitedError(
+      budget.retryAfterSeconds,
+      "That is a lot of publishing at once. Give the platforms a moment.",
+    );
+  }
 
   const post = await db.socialPost.findUnique({ where: { id: postId }, select: publishSelect });
   if (!post) throw new NotFoundError("That post does not exist.");

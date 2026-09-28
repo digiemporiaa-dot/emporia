@@ -165,11 +165,19 @@ fixture — which is what this audit had to do. The portal is covered at the
 service layer by `tests/portal-isolation.test.ts`, but nothing makes it easy to
 look at.
 
-### F5 — Shiprocket is absent entirely
+### F5 — ~~Shiprocket is absent entirely~~ — **closed as documented**
 §3 calls for a "Shiprocket-ready interface only". There is no `lib/shipping`,
 and no file anywhere mentions Shiprocket — yet `.env.example` and the env schema
 both declare `SHIPROCKET_EMAIL` and `SHIPROCKET_PASSWORD`. The keys promise
 something that does not exist.
+
+
+**Resolved during social Phase 12, by documenting rather than building.** The
+keys stay — CLAUDE.md 3 says shipping is architected for, and 14 says
+`.env.example` carries every key — but both the example file and the env schema
+now say plainly that nothing reads them and that setting them does not enable
+shipping. The finding was never that the keys existed; it was that they looked
+like a working integration. They no longer do.
 
 ### F6 — ~~`DATABASE_URL` and `TEST_DATABASE_URL` point at the same database~~ — **closed**
 In this environment's `.env` both were `emporia_test`. `tests/global-setup.ts`
@@ -247,8 +255,7 @@ scheduled publishing never fires. See `docs/DEPLOYMENT.md` §4 step 8.
 ## 11. What the fixes changed, and what they uncovered
 
 F2, F3 and F4 are fixed; F1 is fixed as restated above. F6 was closed during
-social Phase 5, after it destroyed development data exactly as predicted. F5
-stands. F7 is documented rather than left to be rediscovered.
+social Phase 5, after it destroyed development data exactly as predicted. Both F5 and F6 are now closed. F7 is documented rather than left to be rediscovered.
 
 **F1 — loading states.** `TableSkeleton` moved to `components/admin/` and the
 `<Suspense>` pattern was applied to the three filtered list screens that lacked
