@@ -29,6 +29,7 @@ export type Totals = Record<MetricKey, { value: number | null; reporting: number
 export type ReportData = {
   posts: number;
   measured: number;
+  truncated: boolean;
   totals: Totals;
   byProvider: {
     provider: SocialProvider;
@@ -114,6 +115,15 @@ export function ReportView({
               <StatTile key={key} label={METRIC_LABEL[key]} total={data.totals[key]} />
             ))}
           </div>
+
+          {data.truncated ? (
+            <p className="flex items-start gap-1.5 rounded-md border border-brand-red/30 bg-brand-red/5 px-3 py-2 text-2xs text-brand-red-text">
+              <Info size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              This period has more posts than one report adds up, so these totals cover the most
+              recent {data.posts.toLocaleString("en-IN")} only. Choose a shorter period for complete
+              figures.
+            </p>
+          ) : null}
 
           {data.measured < data.posts ? (
             <p className="flex items-start gap-1.5 rounded-md border border-line bg-surface-muted px-3 py-2 text-2xs text-ink-muted">

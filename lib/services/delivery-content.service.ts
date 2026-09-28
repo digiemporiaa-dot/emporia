@@ -4,7 +4,12 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { visibilityFilter } from "@/lib/services/project.service";
-import { contentTransitionError, requiresSchedule } from "@/lib/projects/lifecycle";
+import {
+  contentTransitionError,
+  requiresSchedule,
+  stageAfterDecision,
+  type ApprovalDecision,
+} from "@/lib/projects/lifecycle";
 import type { Actor } from "@/lib/actor/types";
 import type { ApprovalStatus, ContentChannel, ContentStage } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
@@ -138,6 +143,17 @@ export async function saveContentItem(actor: Actor, id: string | null, input: Co
   });
   if (!project) throw new ValidationError("That project does not exist.");
 
+  // A campaign must be this client's. The social side checked this; this path
+  // did not, so a crafted request could file one client's content under
+  // another client's campaign and into that client's reporting.
+  if (input.campaignId) {
+    const campaign = await db.campaign.findFirst({
+      where: { id: input.campaignId, clientId: project.clientId },
+      select: { id: true },
+    });
+    if (!campaign) throw new ValidationError("That campaign does not belong to this client.");
+  }
+
   return withAudit(
     {
       actor,
@@ -153,7 +169,11 @@ export async function saveContentItem(actor: Actor, id: string | null, input: Co
         ownerId: input.ownerId || null,
         scheduledFor: input.scheduledFor ?? null,
         mediaId: input.mediaId || null,
-        campaignId: input.campaignId || null,
+        // Only when the caller actually said something about it. The delivery
+        // calendar's form has no campaign field, so it sends nothing — and
+        // `undefined || null` used to turn "not mentioned" into "cleared",
+        // silently dropping the item out of its campaign on every edit there.
+        ...(input.campaignId === undefined ? {} : { campaignId: input.campaignId || null }),
       };
 
       return id
@@ -385,12 +405,26 @@ export async function addApprovalVersion(
         },
       ],
     },
-    select: { id: true, status: true, currentVersion: true },
+    select: {
+      id: true,
+      status: true,
+      currentVersion: true,
+      contentItem: { select: { _count: { select: { socialPosts: true } } } },
+    },
   });
 
   if (!approval) throw new NotFoundError("That approval does not exist.");
   if (approval.status === "APPROVED") {
     throw new ConflictError("That approval is already approved. Open a new one instead.");
+  }
+  // Social content is sent from its own page, which snapshots every platform
+  // version and moves the item into client review. A notes-only version from
+  // here did neither — the client would be asked to approve something with no
+  // copy attached while the copy stayed editable underneath them.
+  if ((approval.contentItem?._count.socialPosts ?? 0) > 0) {
+    throw new ConflictError(
+      "This is social content. Send the next version from its social page, so the client sees each platform's copy.",
+    );
   }
 
   return withAudit(
@@ -433,7 +467,7 @@ export async function addApprovalVersion(
 export async function decideApproval(
   actor: Actor,
   approvalId: string,
-  decision: Exclude<ApprovalStatus, "PENDING">,
+  decision: ApprovalDecision,
   feedback: string | null,
 ) {
   requirePermission(actor, "approvals.decide");
@@ -450,7 +484,12 @@ export async function decideApproval(
         },
       ],
     },
-    select: { id: true, status: true, currentVersion: true },
+    select: {
+      id: true,
+      status: true,
+      currentVersion: true,
+      contentItem: { select: { id: true, stage: true } },
+    },
   });
 
   if (!approval) throw new NotFoundError("That approval does not exist.");
@@ -460,6 +499,10 @@ export async function decideApproval(
   if (decision === "CHANGES_REQUESTED" && !feedback) {
     throw new ValidationError("Say what needs to change.");
   }
+
+  const nextStage = approval.contentItem
+    ? stageAfterDecision(approval.contentItem.stage, decision)
+    : null;
 
   return withAudit(
     {
@@ -476,6 +519,13 @@ export async function decideApproval(
         },
         data: { status: decision, feedback },
       });
+
+      if (nextStage && approval.contentItem) {
+        await tx.contentCalendarItem.update({
+          where: { id: approval.contentItem.id },
+          data: { stage: nextStage },
+        });
+      }
 
       return tx.approval.update({
         where: { id: approvalId },

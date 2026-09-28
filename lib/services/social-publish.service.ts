@@ -4,9 +4,9 @@ import { ConflictError, NotFoundError, RateLimitedError, ValidationError } from 
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
-import { credentialsFor } from "@/lib/services/social-account.service";
+import { recordSyncResult, usableCredentials } from "@/lib/services/social-account.service";
 import { socialProvider } from "@/lib/social";
-import { AmbiguousPublishError } from "@/lib/social/errors";
+import { AmbiguousPublishError, CredentialsRejectedError } from "@/lib/social/errors";
 import { MAX_ATTEMPTS, publicationKey } from "@/lib/social/idempotency";
 import { tagLink } from "@/lib/social/utm";
 import { announceFailure, announcePublished } from "@/lib/services/social-notify.service";
@@ -94,6 +94,7 @@ const publishSelect = {
   utmContent: true,
   scheduledFor: true,
   attemptCount: true,
+  ambiguous: true,
   accountId: true,
   account: {
     select: { id: true, externalId: true, name: true, status: true, provider: true },
@@ -115,7 +116,14 @@ const publishSelect = {
 type PublishablePost = Prisma.SocialPostGetPayload<{ select: typeof publishSelect }>;
 
 /** Stages from which a version may legitimately go out. */
-const PUBLISHABLE_STAGES = ["APPROVED", "SCHEDULED", "PUBLISHED"] as const;
+/**
+ * Stages from which a version may legitimately go out.
+ *
+ * Not PUBLISHED. An idea only reaches PUBLISHED once every version is out, so
+ * the only thing that stage could license is a version added *afterwards* —
+ * which the client has never seen. That needs approving like anything else.
+ */
+const PUBLISHABLE_STAGES = ["APPROVED", "SCHEDULED"] as const;
 
 /**
  * Everything that must be true before we call a platform.
@@ -125,6 +133,9 @@ const PUBLISHABLE_STAGES = ["APPROVED", "SCHEDULED", "PUBLISHED"] as const;
  * claim and the call the post is ours alone.
  */
 function blockingReason(post: PublishablePost): string | null {
+  if (post.ambiguous) {
+    return "The last attempt may already be live. Check the platform and say what happened in the publishing queue before it is sent again.";
+  }
   if (!post.account) return "No account is connected for this version.";
   if (post.account.status !== "CONNECTED") {
     return `The ${post.account.name} account needs reconnecting before anything can be posted to it.`;
@@ -210,13 +221,19 @@ async function runPublication(
 
   // ---- The claim. Everything above is a read; this is the mutex. ----------
   const claimed = await db.socialPost.updateMany({
-    where: { id: post.id, status: { in: ["SCHEDULED", "FAILED"] } },
+    // `ambiguous: false` is part of the mutex, not just a check above it: a
+    // flag set by a concurrent failure between our read and this write must
+    // still stop us.
+    where: { id: post.id, status: { in: ["SCHEDULED", "FAILED"] }, ambiguous: false },
     // `lastAttemptAt` is stamped here, at the *start*, not only on completion.
     // It is what tells the queue whether a post sitting in PUBLISHING is
     // genuinely in flight or was stranded by a process that died mid-publish.
-    // Left to the completion write, a retry would carry the previous attempt's
-    // timestamp and be called stranded the moment it began.
-    data: { status: "PUBLISHING", lastAttemptAt: new Date() },
+    //
+    // The attempt number is incremented here too, atomically with the claim,
+    // rather than computed from the row read earlier. That read can be stale —
+    // a person's retry may have failed and bumped the count in between — and a
+    // stale count collides on the idempotency key and strands the post.
+    data: { status: "PUBLISHING", lastAttemptAt: new Date(), attemptCount: { increment: 1 } },
   });
   if (claimed.count === 0) {
     // Somebody else has it, or it already went out. Either way, not ours.
@@ -228,7 +245,10 @@ async function runPublication(
     };
   }
 
-  const attempt = post.attemptCount + 1;
+  const { attemptCount: attempt } = await db.socialPost.findUniqueOrThrow({
+    where: { id: post.id },
+    select: { attemptCount: true },
+  });
   const account = post.account!;
 
   // The publication row is written before the call, so an attempt that dies
@@ -249,28 +269,32 @@ async function runPublication(
       select: { id: true },
     });
     publicationId = publication.id;
-  } catch {
-    // The unique index refused it: this exact attempt is already recorded, so
-    // another worker is mid-flight. Release nothing and do not publish.
-    publishLog.warn({ postId: post.id, attempt }, "duplicate publication attempt refused");
+  } catch (error) {
+    // Nothing has been sent to the platform yet, so handing the claim back is
+    // safe — and necessary. Returning without releasing it left the post in
+    // PUBLISHING with no attempt in flight, invisible until someone resolved it
+    // by hand from the stranded band.
+    publishLog.error({ err: error, postId: post.id, attempt }, "could not record the attempt");
+    await db.socialPost.update({
+      where: { id: post.id },
+      data: { status: post.status, attemptCount: { decrement: 1 } },
+    });
     return {
       postId: post.id,
       ok: false,
-      reason: "That attempt is already in flight.",
-      willRetry: false,
+      reason: "The attempt could not be recorded, so nothing was sent. It will be tried again.",
+      willRetry: true,
     };
   }
 
-  const credentials = await credentialsFor(account.id);
+  const credentials = await usableCredentials(account.id, adapter);
   if (!credentials) {
-    return finishFailure(
-      post,
-      publicationId,
-      attempt,
-      "The stored credentials could not be read. Reconnect the account.",
-      false,
+    return finishFailure(post, publicationId, attempt, {
+      reason: "The account's credentials are no longer usable. Reconnect the account.",
+      willRetry: false,
+      ambiguous: false,
       actor,
-    );
+    });
   }
 
   try {
@@ -289,7 +313,10 @@ async function runPublication(
           publishedAt,
           externalPostId: result.externalPostId,
           externalUrl: result.externalUrl,
-          lastError: null,
+          // A warning is not a failure — the post is live — but somebody needs
+          // to see it, and this is the field every screen already shows.
+          lastError: result.warnings?.length ? `Published, but: ${result.warnings.join(" ")}` : null,
+          ambiguous: false,
           lastAttemptAt: publishedAt,
           attemptCount: attempt,
         },
@@ -337,28 +364,39 @@ async function runPublication(
 
     // After the transaction, never inside it: the post is already on the
     // platform, and a failing notification must not roll that back.
-    await announcePublished(post.id, result.externalUrl);
+    await announcePublished(post.id);
 
     return { postId: post.id, ok: true, externalUrl: result.externalUrl };
   } catch (error) {
-    // Ambiguous means the post may be live. Never retry it automatically.
+    // Ambiguous means the post may be live. Persisted, not just returned —
+    // the next scheduler run reads the row, not this function's return value.
     const ambiguous = error instanceof AmbiguousPublishError;
+    const rejected = error instanceof CredentialsRejectedError;
     const message =
       error instanceof Error ? error.message : "The platform rejected the post.";
 
     publishLog.error(
-      { err: error, postId: post.id, provider: post.provider, attempt, ambiguous },
+      { err: error, postId: post.id, provider: post.provider, attempt, ambiguous, rejected },
       "publishing failed",
     );
 
-    return finishFailure(
-      post,
-      publicationId,
-      attempt,
-      message,
-      !ambiguous && attempt < MAX_ATTEMPTS,
+    if (rejected) {
+      // The accounts screen said healthy while every post failed with
+      // "reconnect". Now the engine tells the account what it learned, and
+      // `blockingReason` stops further attempts until someone reconnects.
+      await recordSyncResult(account.id, {
+        ok: false,
+        error: message,
+        credentialsRejected: true,
+      });
+    }
+
+    return finishFailure(post, publicationId, attempt, {
+      reason: message,
+      willRetry: !ambiguous && !rejected && attempt < MAX_ATTEMPTS,
+      ambiguous,
       actor,
-    );
+    });
   }
 }
 
@@ -374,10 +412,9 @@ async function finishFailure(
   post: PublishablePost,
   publicationId: string,
   attempt: number,
-  reason: string,
-  willRetry: boolean,
-  actor: Actor,
+  outcome: { reason: string; willRetry: boolean; ambiguous: boolean; actor: Actor },
 ): Promise<PublishFailure> {
+  const { reason, willRetry, ambiguous, actor } = outcome;
   const now = new Date();
   await db.$transaction(async (tx) => {
     await tx.socialPost.update({
@@ -387,6 +424,7 @@ async function finishFailure(
         lastError: reason,
         lastAttemptAt: now,
         attemptCount: attempt,
+        ambiguous,
       },
     });
     await tx.socialPublication.update({
@@ -404,11 +442,17 @@ async function finishFailure(
       status: "FAILED",
       attempt,
       willRetry,
+      ambiguous,
       by: actor.type === "SYSTEM" ? "scheduler" : "staff",
     },
   });
 
-  await announceFailure(post.id, reason, willRetry);
+  // Once when it first fails, and again when it stops failing on its own.
+  // Every retry in between would be the same message three times over, and a
+  // notification people learn to ignore is worse than none.
+  if (attempt === 1 || !willRetry) {
+    await announceFailure(post.id, reason, willRetry);
+  }
 
   return { postId: post.id, ok: false, reason, willRetry };
 }
@@ -419,8 +463,7 @@ async function finishFailure(
  * Called by the cron endpoint. Picks up posts whose time has come, plus failed
  * posts still under the attempt ceiling, and works them one at a time — one
  * client's broken account must not stop another client's launch.
- */
-/**
+ *
  * No permission check, deliberately: there is no actor to check. This is the
  * scheduler's entry point and is reachable only from `/api/cron`, which is
  * guarded by a shared secret compared in constant time. It builds its own
@@ -442,7 +485,7 @@ export async function publishDuePosts(
         { status: "SCHEDULED" },
         // A retry, but only while there are attempts left. Without the ceiling
         // a permanently broken post is retried every five minutes forever.
-        { status: "FAILED", attemptCount: { lt: MAX_ATTEMPTS } },
+        { status: "FAILED", attemptCount: { lt: MAX_ATTEMPTS }, ambiguous: false },
       ],
     },
     orderBy: { scheduledFor: "asc" },
@@ -512,6 +555,14 @@ export async function publishNow(
   }
   if (post.status === "PUBLISHING") {
     throw new ConflictError("That post is being published right now.");
+  }
+  if (post.ambiguous) {
+    // Not even a person with the permission, from the editor. The only way
+    // forward is to look at the platform and record what happened, which the
+    // queue's "needs checking" band exists for.
+    throw new ConflictError(
+      "The last attempt may already be live. Check the platform, then say what happened in the publishing queue.",
+    );
   }
   if (post.status === "CANCELLED") {
     throw new ValidationError("That post was cancelled. Put it back in draft first.");

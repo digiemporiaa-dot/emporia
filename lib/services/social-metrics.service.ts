@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { resolveClientScope, resolveScopeFilter } from "@/lib/social/scope";
-import { credentialsFor } from "@/lib/services/social-account.service";
+import { recordSyncResult, usableCredentials } from "@/lib/services/social-account.service";
+import { CredentialsRejectedError } from "@/lib/social/errors";
 import { socialProvider } from "@/lib/social";
 import { CAPABILITIES } from "@/lib/social/capabilities";
 import { CALENDAR_TIME_ZONE, zonedDay, ymdKey } from "@/lib/social/calendar";
@@ -11,6 +12,7 @@ import { METRIC_KEYS, type MetricKey, type MetricTotal } from "@/lib/social/metr
 import {
   engagementOf,
   isMeasured,
+  REPORT_POST_CAP,
   SNAPSHOT_SELECT,
   totalsOf,
   toReportRow,
@@ -127,7 +129,7 @@ export async function collectMetrics(
     run.attempted += 1;
 
     try {
-      const credentials = await credentialsFor(post.account.id);
+      const credentials = await usableCredentials(post.account.id, adapter);
       if (!credentials) {
         run.skipped.push({ postId: post.id, reason: "The stored credentials could not be read." });
         continue;
@@ -154,6 +156,15 @@ export async function collectMetrics(
       run.captured += 1;
     } catch (error) {
       metricsLog.error({ err: error, postId: post.id }, "reading metrics failed");
+      // The collector is often the first thing to find out a token was revoked
+      // — it runs every night whether or not anything is being published.
+      if (error instanceof CredentialsRejectedError) {
+        await recordSyncResult(post.account.id, {
+          ok: false,
+          error: error.message,
+          credentialsRejected: true,
+        });
+      }
       run.failed.push({
         postId: post.id,
         reason: error instanceof Error ? error.message : "The platform did not answer.",
@@ -209,6 +220,8 @@ export type SocialReport = {
     externalUrl: string | null;
     engagement: number;
   }[];
+  /** True when the period held more posts than a report aggregates. */
+  truncated: boolean;
 };
 
 export async function socialReport(
@@ -227,10 +240,11 @@ export async function socialReport(
     },
   };
 
-  const posts = await db.socialPost.findMany({
+  const fetched = await db.socialPost.findMany({
     where,
     orderBy: { publishedAt: "desc" },
-    take: 500,
+    // One over the cap, so hitting it is detectable rather than silent.
+    take: REPORT_POST_CAP + 1,
     select: {
       id: true,
       provider: true,
@@ -246,6 +260,8 @@ export async function socialReport(
     },
   });
 
+  const truncated = fetched.length > REPORT_POST_CAP;
+  const posts = truncated ? fetched.slice(0, REPORT_POST_CAP) : fetched;
   const rows: ReportRow[] = posts.map(toReportRow);
 
   const byProvider = [...new Set(posts.map((post) => post.provider))].sort().map((provider) => {
@@ -282,6 +298,7 @@ export async function socialReport(
     totals: totalsOf(rows),
     byProvider,
     top,
+    truncated,
   };
 }
 

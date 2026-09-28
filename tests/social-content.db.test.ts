@@ -9,6 +9,8 @@ import {
 } from "@/lib/services/social-content.service";
 import { listPostsForItem, savePost, setPostStatus } from "@/lib/services/social-post.service";
 import { socialPostSchema } from "@/lib/validation/social";
+import { saveContentItem } from "@/lib/services/delivery-content.service";
+import { contentItemSchema } from "@/lib/validation/project";
 import type { Actor } from "@/lib/actor/types";
 
 /**
@@ -41,6 +43,9 @@ function staffWith(userId: string, permissions: string[]): Actor {
 }
 
 const FULL = [
+  "content.edit",
+  "content.create",
+  "projects.view",
   "social.view",
   "social.create",
   "social.edit",
@@ -338,5 +343,54 @@ describeDb("social content and platform versions", () => {
         scheduledFor: null,
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  // -------------------------------------------------------------------------
+  // Editing from the delivery calendar
+  // -------------------------------------------------------------------------
+
+  it("keeps an item's campaign when it is edited from a form without that field", async () => {
+    const created = await createSocialContent(staff, {
+      clientId: clientA,
+      projectId: projectA,
+      title: "Kept in its campaign",
+      brief: null,
+      campaignId: campaignA,
+      ownerId: null,
+      scheduledFor: null,
+    });
+
+    // The delivery calendar's form never sends campaignId at all.
+    await saveContentItem(
+      staff,
+      created.id,
+      contentItemSchema.parse({
+        projectId: projectA,
+        channel: "LINKEDIN",
+        title: "Retitled from the delivery calendar",
+      }),
+    );
+
+    const item = await db.contentCalendarItem.findUniqueOrThrow({
+      where: { id: created.id },
+      select: { campaignId: true, title: true },
+    });
+    expect(item.title).toBe("Retitled from the delivery calendar");
+    expect(item.campaignId).toBe(campaignA);
+  });
+
+  it("refuses another client's campaign through the delivery path too", async () => {
+    await expect(
+      saveContentItem(
+        staff,
+        null,
+        contentItemSchema.parse({
+          projectId: projectA,
+          channel: "LINKEDIN",
+          title: "Filed under a stranger's campaign",
+          campaignId: campaignB,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 });

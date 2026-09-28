@@ -85,6 +85,14 @@ export default async function PortalSocialPage() {
             })}
           </div>
 
+          {report.truncated ? (
+            <p className="flex items-start gap-1.5 rounded-md border border-line bg-surface-muted px-3 py-2 text-2xs text-ink-muted">
+              <Info size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              These totals cover your most recent {report.posts.toLocaleString("en-IN")} posts.
+              Ask us for a full-history report.
+            </p>
+          ) : null}
+
           <p className="flex items-start gap-1.5 rounded-md border border-line bg-surface-muted px-3 py-2 text-2xs text-ink-muted">
             <Info size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
             Platforms differ in what they share. Where a figure is missing it means the platform

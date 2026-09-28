@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import {
@@ -68,6 +69,8 @@ export type EditorPost = {
   publishedAt: string | null;
   externalUrl: string | null;
   lastError: string | null;
+  /** The last attempt may already be live; only the queue can resolve it. */
+  ambiguous: boolean;
   media: EditorMedia[];
   /** Publication attempts, newest first. Empty until something is tried. */
   attempts: EditorAttempt[];
@@ -229,6 +232,7 @@ function emptyPost(provider: EditorProvider, type: string): EditorPost {
     publishedAt: null,
     externalUrl: null,
     lastError: null,
+    ambiguous: false,
     media: [],
     attempts: [],
   };
@@ -502,6 +506,17 @@ function VersionCard({
           </details>
         ) : null}
 
+        {post.ambiguous ? (
+          <p className="rounded-md border border-brand-red/30 bg-brand-red/5 px-3.5 py-3 text-xs text-brand-red-text">
+            The last attempt may already be live on {provider.label}. Nothing will send it again
+            until someone checks the account and records what happened in the{" "}
+            <Link href="/admin/social/queue" className="underline underline-offset-2">
+              publishing queue
+            </Link>
+            .
+          </p>
+        ) : null}
+
         {post.lastError ? (
           <p
             role="alert"
@@ -759,7 +774,7 @@ function VersionCard({
 
             {/* Publishing early and retrying a failure are the same act, so
                 they are the same button with the honest label for each. */}
-            {post.id && canPublish && (post.status === "SCHEDULED" || post.status === "FAILED") ? (
+            {post.id && canPublish && !post.ambiguous && (post.status === "SCHEDULED" || post.status === "FAILED") ? (
               <Button
                 variant="secondary"
                 disabled={pending || !approved || !accountId}

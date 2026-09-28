@@ -30,6 +30,11 @@ export type LinkedInDouble = {
   publishWithoutId: () => void;
   /** Replace the engagement response. */
   engagement: (value: object) => void;
+  /**
+   * Accept the next publish, record it, and never answer — LinkedIn received
+   * the post and the reply was lost. The case a timeout on a create looks like.
+   */
+  swallowNextPublish: () => void;
   close: () => Promise<void>;
 };
 
@@ -59,6 +64,7 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
   };
   const failures = new Map<string, { status: number; body: string }>();
   let suppressId = false;
+  let swallow = false;
   let port = 0;
   let engagementResponse: object = {
     likesSummary: { totalLikes: 12 },
@@ -103,6 +109,13 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
         res.writeHead(200, { "content-type": "application/json" }).end(
           JSON.stringify(engagementResponse),
         );
+        return;
+      }
+
+      if (kind === "posts" && swallow) {
+        swallow = false;
+        // Hold the socket open well past any client timeout, then give up.
+        setTimeout(() => res.destroy(), 5_000);
         return;
       }
 
@@ -162,6 +175,9 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
     },
     engagement: (value) => {
       engagementResponse = value;
+    },
+    swallowNextPublish: () => {
+      swallow = true;
     },
     close: () =>
       new Promise<void>((resolve, reject) =>

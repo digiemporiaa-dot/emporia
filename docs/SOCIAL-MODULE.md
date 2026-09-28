@@ -1249,3 +1249,120 @@ and Google Business Profile. LinkedIn is implemented end to end; the rest report
 their capabilities honestly and refuse every call, because a half-written
 adapter that silently no-ops is worse than a screen that says *not configured*.
 Each is a phase of its own when someone wants it.
+
+---
+
+## 15. After the module: a review, and what it found
+
+With all twelve phases merged and 1679 tests green, the whole module's diff
+(77 files, ~11,000 lines) was put through an independent code review. It found
+ten real defects the tests had not. Each was confirmed against the code — two
+by writing a failing test first — before being fixed.
+
+The uncomfortable lesson is in the first one: the module's most important rule
+was broken, and a test claiming to guard it was passing.
+
+### The two ways a post could still go out twice
+
+**An ambiguous failure was retried by the next cron run.** `AmbiguousPublishError`
+existed precisely for "the platform may have this post", and the engine did
+return `willRetry: false` for it — but nothing *stored* that. The row said
+`FAILED` with one attempt, and the next run selected it, claimed it and posted
+again. The Phase 6 test only checked the return value, so it passed while the
+behaviour was wrong. A new test asserts the thing that matters: the second run
+makes zero `POST /posts` calls. It failed before the fix.
+
+**A timeout on the create call counted as an ordinary failure.** If LinkedIn
+accepted a post and the reply was lost — the textbook ambiguous case on a
+non-idempotent request — the engine retried it. Now a network failure or a
+**504** on that one call is ambiguous; a 500, which means nothing was created,
+still retries. A test double that accepts the post and never answers proves it.
+
+The fix is one new column, `SocialPost.ambiguous`, and one consistent rule: an
+ambiguous post is treated exactly like a stranded one. It is excluded from the
+scheduler, from bulk retry, and from **Publish now** — even for a person, even
+from the editor. It sits in the queue's **Needs checking** band until someone
+looks at the platform and records what happened. The flag is part of the claim's
+`WHERE`, not just a check above it, so a flag set concurrently still stops the
+claim.
+
+### Copy the client never approved
+
+- Editing copy un-approved an idea only at `APPROVED`. At `SCHEDULED` — also
+  approved, and legally reachable — the copy stayed freely editable right up to
+  publication. Both stages now un-approve, and the idea's scheduled versions
+  drop back to draft so the calendar stops promising they are about to go out.
+- `PUBLISHED` was in the stages the engine would publish from. The only thing
+  that could license was a version added *after* publication, which the client
+  had never seen. Removed.
+- The staff approval screens bypassed every Phase 5 invariant. A staff **New
+  version** on social content created a notes-only version with no snapshot and
+  left the item outside client review, so its copy stayed editable while the
+  client "reviewed" it — now refused, pointing at the social page. A staff
+  **Approved** decision left the item stuck at `CLIENT_REVIEW`, where nothing
+  could edit, re-send or withdraw it — it now moves the stage through the same
+  `stageAfterDecision` rule the portal uses, moved into `lib/projects/lifecycle`
+  so both paths share it. The service's decision type no longer admits
+  `WITHDRAWN`, which it had silently started accepting when that status was
+  added.
+
+### The engine
+
+- **Stranded by a stale attempt number.** The attempt was computed from a row
+  read before the claim. A person's retry failing in between bumped the count,
+  the scheduler's attempt then collided on the idempotency key, and the code
+  returned without releasing its claim — leaving the post stuck in
+  `PUBLISHING`. The claim now increments the count atomically, and a failed
+  insert hands the claim back, since nothing has been sent yet.
+- **Tokens were never refreshed.** Nothing called `refresh()`. A LinkedIn token
+  reached its sixty-day end and every post failed "reconnect the account" while
+  the accounts screen said healthy. `usableCredentials` now refreshes within a
+  day of expiry, and a revoked token — typed as `CredentialsRejectedError`
+  rather than matched by message — marks the account `NEEDS_RECONNECT` through
+  the existing `recordSyncResult`, from both the publisher and the nightly
+  metrics collector. Such a post is not retried: three attempts with a revoked
+  token buy three failures.
+
+### Data and honesty
+
+- **Editing from the delivery calendar wiped an item's campaign.** That form has
+  no campaign field; `undefined || null` turned "not mentioned" into "cleared".
+  It also never checked a campaign belonged to the client, so a crafted request
+  could file one client's content into another's campaign reporting.
+- **LinkedIn declared fields it silently dropped.** `callToAction` and
+  `mentions` are gone from its capabilities — member posts have no button, and a
+  typed name is not a mention LinkedIn will link. `firstComment` was real enough
+  to build: it is now posted under the share once it is live, and a failed
+  comment is a *warning* on a published post, never a failure — failing a live
+  post would invite the retry that duplicates it.
+- **Reports silently truncated.** The portal summed the newest 200 posts, the
+  admin report the newest 500, and both presented the result as the period's
+  total. Both now aggregate everything up to a 10,000-post cap, and say so on
+  screen if the cap is ever hit. A test with 205 posts proves the old portal cap
+  is gone.
+
+### Smaller things found along the way
+
+- The queue's counts and **Retry all** ignored the platform filter. Bulk retry
+  now carries it, never touches an ambiguous post, stops cleanly at the
+  publishing rate limit and reports what it left for later, and its toast says
+  what actually happened instead of "Retried every failure".
+- A broken post notified its owner on every retry. Now once when it first
+  fails, and again when it stops retrying on its own.
+- The client-decision notification linked to the delivery calendar's page, which
+  shows neither the versions nor the approval panel.
+- Resolving an uncertain post as "it went out" never marked its idea published
+  when it was the last version.
+- The editor offered **Try again** on an ambiguous post; it now explains the
+  state and points at the queue.
+
+### Verified
+
+Test count rose from 1679 to **1706** — exactly the 27 added, none lost. In a
+browser: the ambiguous post sits under **Needs checking** with its reason,
+**Retry all** counts only the safe failure, the editor explains the state and
+offers no retry on it, and resolving it moves it back into the retry band. The
+band title was shortened after the first screenshot showed it wrapping and
+pushing its count onto a line of its own.
+
+Gate: lint, typecheck, **1706 tests across 104 files**, production build — clean.

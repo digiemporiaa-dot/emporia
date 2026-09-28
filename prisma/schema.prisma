@@ -2800,6 +2800,11 @@ model SocialPost {
 
   /// The last failure, in words a person can act on.
   lastError     String?
+  /// The last attempt may have reached the platform even though it did not
+  /// confirm. Nothing — not the scheduler, not a bulk retry, not Publish now —
+  /// may send this post again until a person has looked at the platform and
+  /// said whether it went out. Cleared by that resolution or by a success.
+  ambiguous     Boolean   @default(false)
   lastAttemptAt DateTime?
   attemptCount  Int       @default(0)
 

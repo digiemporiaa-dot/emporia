@@ -39,21 +39,39 @@ export async function retryPostAction(input: unknown): Promise<ActionResult<{ id
 
 export async function retryAllFailedAction(
   input: unknown,
-): Promise<ActionResult<{ attempted: number; published: number; failed: number }>> {
+): Promise<
+  ActionResult<{ attempted: number; published: number; failed: number; notAttempted: number }>
+> {
   try {
     const actor = await requireActor();
     const parsed = z
-      .object({ clientId: z.string().trim().max(40).nullable().default(null) })
+      .object({
+        clientId: z.string().trim().max(40).nullable().default(null),
+        // The platform filter on screen. Without it, "retry all" on a queue
+        // filtered to LinkedIn retried every platform's failures.
+        provider: z
+          .enum(["INSTAGRAM", "FACEBOOK", "LINKEDIN", "YOUTUBE", "X", "GOOGLE_BUSINESS_PROFILE"])
+          .nullable()
+          .default(null),
+      })
       .safeParse(input);
     if (!parsed.success) {
       return { ok: false, code: "VALIDATION", message: "That is not a filter we recognise." };
     }
 
-    const run = await retryAllFailed(actor, { clientId: parsed.data.clientId });
+    const run = await retryAllFailed(actor, {
+      clientId: parsed.data.clientId,
+      provider: parsed.data.provider,
+    });
     revalidatePath("/admin/social/queue");
     return {
       ok: true,
-      data: { attempted: run.attempted, published: run.published, failed: run.failed.length },
+      data: {
+        attempted: run.attempted,
+        published: run.published,
+        failed: run.failed.length,
+        notAttempted: run.notAttempted,
+      },
     };
   } catch (error) {
     actionLog.warn({ err: error }, "bulk retry failed");

@@ -59,6 +59,7 @@ describeDb("social publishing queue", () => {
     attemptCount?: number;
     publishedAt?: Date;
     provider?: "LINKEDIN" | "INSTAGRAM";
+    ambiguous?: boolean;
   } = {}) {
     counter += 1;
     const clientId = over.client ?? clientA;
@@ -84,6 +85,7 @@ describeDb("social publishing queue", () => {
         lastAttemptAt: over.lastAttemptAt === undefined ? null : over.lastAttemptAt,
         attemptCount: over.attemptCount ?? 0,
         publishedAt: over.publishedAt ?? null,
+        ambiguous: over.ambiguous ?? false,
       },
       select: { id: true },
     });
@@ -267,7 +269,7 @@ describeDb("social publishing queue", () => {
       select: { status: true, lastError: true },
     });
     expect(row.status).toBe("FAILED");
-    expect(row.lastError).toContain("interrupted");
+    expect(row.lastError).toContain("not found on the platform");
   });
 
   it("refuses to resolve a publication that could still be running", async () => {
@@ -306,6 +308,78 @@ describeDb("social publishing queue", () => {
     await expect(
       resolveStrandedPost(viewer, stuck.id, { outcome: "not-published" }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  // -------------------------------------------------------------------------
+  // Failures that may already be live
+  // -------------------------------------------------------------------------
+
+  it("files a possibly-live failure under needs checking, not under retries", async () => {
+    const maybeLive = await post({ status: "FAILED", attemptCount: 1, ambiguous: true });
+
+    const queue = await socialQueue(staff, { clientId: clientA });
+    expect(queue.stranded.map((p) => p.id)).toEqual([maybeLive.id]);
+    expect(queue.retrying.map((p) => p.id)).not.toContain(maybeLive.id);
+    expect(queue.needsRetry.map((p) => p.id)).not.toContain(maybeLive.id);
+  });
+
+  it("counts a possibly-live failure as needing checking, not as failed", async () => {
+    await post({ status: "FAILED", attemptCount: 1, ambiguous: true });
+    await post({ status: "FAILED", attemptCount: 1 });
+
+    const counts = await queueCounts(staff, { clientId: clientA });
+    expect(counts.stranded).toBe(1);
+    expect(counts.failed).toBe(1);
+  });
+
+  it("lets a person resolve a possibly-live failure straight away", async () => {
+    // Unlike an interrupted publish, its attempt is finished — there is no
+    // fifteen-minute wait to sit through.
+    const maybeLive = await post({
+      status: "FAILED",
+      attemptCount: 1,
+      ambiguous: true,
+      lastAttemptAt: ago(1_000),
+    });
+
+    await resolveStrandedPost(staff, maybeLive.id, { outcome: "not-published" });
+
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: maybeLive.id },
+      select: { status: true, ambiguous: true },
+    });
+    expect(row).toEqual({ status: "FAILED", ambiguous: false });
+  });
+
+  it("marks the idea published when the resolved post was its last one out", async () => {
+    const maybeLive = await post({ status: "FAILED", attemptCount: 1, ambiguous: true });
+    await resolveStrandedPost(staff, maybeLive.id, {
+      outcome: "published",
+      externalUrl: "https://www.linkedin.com/feed/update/urn:li:share:9",
+    });
+
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: maybeLive.id },
+      select: { contentItem: { select: { stage: true } } },
+    });
+    expect(row.contentItem.stage).toBe("PUBLISHED");
+  });
+
+  it("never includes a possibly-live post in a bulk retry", async () => {
+    await post({ status: "FAILED", attemptCount: 1, ambiguous: true });
+    const result = await retryAllFailed(staff, { clientId: clientA });
+    expect(result.attempted).toBe(0);
+  });
+
+  it("applies the platform filter to the counts and to bulk retry", async () => {
+    await post({ status: "FAILED", attemptCount: 1, provider: "LINKEDIN" });
+    await post({ status: "FAILED", attemptCount: 1, provider: "INSTAGRAM" });
+
+    const counts = await queueCounts(staff, { clientId: clientA, provider: "INSTAGRAM" });
+    expect(counts.failed).toBe(1);
+
+    const result = await retryAllFailed(staff, { clientId: clientA, provider: "INSTAGRAM" });
+    expect(result.attempted).toBe(1);
   });
 
   // -------------------------------------------------------------------------

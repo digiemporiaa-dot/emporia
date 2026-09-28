@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, NotFoundError, RateLimitedError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope, resolveScopeFilter } from "@/lib/social/scope";
@@ -44,6 +44,27 @@ import type { SocialProvider } from "@/generated/prisma/enums";
  */
 export const STUCK_AFTER_MS = 15 * 60 * 1000;
 
+/**
+ * Posts whose fate is unknown.
+ *
+ * Two routes to the same situation: a process died mid-publish and left the
+ * post in PUBLISHING, or the platform failed in a way that means it may have
+ * the post anyway (a timeout on the create call, a 201 with no id). The second
+ * used to be filed as an ordinary failure and retried — which is precisely how
+ * a duplicate reaches a client's feed.
+ */
+function uncertainWhere(strandedBefore: Date): Prisma.SocialPostWhereInput {
+  return {
+    OR: [
+      {
+        status: "PUBLISHING",
+        OR: [{ lastAttemptAt: { lt: strandedBefore } }, { lastAttemptAt: null }],
+      },
+      { status: "FAILED", ambiguous: true },
+    ],
+  };
+}
+
 const queueSelect = {
   id: true,
   clientId: true,
@@ -57,6 +78,7 @@ const queueSelect = {
   lastError: true,
   lastAttemptAt: true,
   attemptCount: true,
+  ambiguous: true,
   client: { select: { id: true, name: true } },
   account: { select: { id: true, name: true, status: true } },
   contentItem: {
@@ -75,7 +97,10 @@ export type QueueFilters = {
 const BAND_LIMIT = 50;
 
 export type SocialQueue = {
-  /** In `PUBLISHING` beyond the timeout. A person must say what happened. */
+  /**
+   * Nobody knows whether these went out: interrupted mid-publish, or failed in
+   * a way that means the platform may have them anyway. A person must look.
+   */
   stranded: QueueRow[];
   /** Failed, and out of automatic attempts. */
   needsRetry: QueueRow[];
@@ -115,18 +140,12 @@ export async function socialQueue(
     });
 
   const [stranded, inFlight, failed, due, upcoming, recent] = await Promise.all([
-    band(
-      {
-        status: "PUBLISHING",
-        OR: [{ lastAttemptAt: { lt: strandedBefore } }, { lastAttemptAt: null }],
-      },
-      { scheduledFor: "asc" },
-    ),
+    band(uncertainWhere(strandedBefore), { scheduledFor: "asc" }),
     band(
       { status: "PUBLISHING", lastAttemptAt: { gte: strandedBefore } },
       { lastAttemptAt: "desc" },
     ),
-    band({ status: "FAILED" }, { lastAttemptAt: "desc" }),
+    band({ status: "FAILED", ambiguous: false }, { lastAttemptAt: "desc" }),
     band({ status: "SCHEDULED", scheduledFor: { lte: now } }, { scheduledFor: "asc" }),
     band({ status: "SCHEDULED", scheduledFor: { gt: now } }, { scheduledFor: "asc" }),
     band({ status: "PUBLISHED", publishedAt: { gte: weekAgo } }, { publishedAt: "desc" }),
@@ -156,7 +175,13 @@ export async function socialQueue(
 export async function retryAllFailed(
   actor: Actor,
   filters: QueueFilters,
-): Promise<{ attempted: number; published: number; failed: PublishFailure[] }> {
+): Promise<{
+  attempted: number;
+  published: number;
+  failed: PublishFailure[];
+  /** Left for later because the publishing rate limit was reached. */
+  notAttempted: number;
+}> {
   requirePermission(actor, "social.publish");
   const scope = await resolveScopeFilter(actor, filters.clientId);
 
@@ -165,6 +190,9 @@ export async function retryAllFailed(
       ...scope,
       ...(filters.provider ? { provider: filters.provider } : {}),
       status: "FAILED",
+      // Never in bulk. An ambiguous post may already be live; retrying fifty at
+      // a click is exactly the moment nobody is looking at each one.
+      ambiguous: false,
     },
     orderBy: { scheduledFor: "asc" },
     take: BAND_LIMIT,
@@ -173,12 +201,21 @@ export async function retryAllFailed(
 
   const failed: PublishFailure[] = [];
   let published = 0;
+  let attempted = 0;
 
   for (const post of posts) {
+    attempted += 1;
     try {
       await publishNow(actor, post.id);
       published += 1;
     } catch (error) {
+      // The manual-publish budget is shared with this loop. Hitting it is not a
+      // failure of the post — stop, and say how many are left for later,
+      // rather than recording thirty "rate limited" failures in a row.
+      if (error instanceof RateLimitedError) {
+        attempted -= 1;
+        break;
+      }
       failed.push({
         postId: post.id,
         ok: false,
@@ -188,7 +225,12 @@ export async function retryAllFailed(
     }
   }
 
-  return { attempted: posts.length, published, failed };
+  return {
+    attempted,
+    published,
+    failed,
+    notAttempted: posts.length - attempted,
+  };
 }
 
 export type StrandedResolution =
@@ -216,19 +258,28 @@ export async function resolveStrandedPost(
 
   const post = await db.socialPost.findUnique({
     where: { id: postId },
-    select: { id: true, clientId: true, status: true, lastAttemptAt: true, attemptCount: true },
+    select: {
+      id: true,
+      clientId: true,
+      status: true,
+      lastAttemptAt: true,
+      attemptCount: true,
+      ambiguous: true,
+    },
   });
   if (!post) throw new NotFoundError("That post does not exist.");
   await resolveClientScope(actor, post.clientId);
 
-  if (post.status !== "PUBLISHING") {
+  const ambiguousFailure = post.status === "FAILED" && post.ambiguous;
+  if (post.status !== "PUBLISHING" && !ambiguousFailure) {
     throw new ConflictError("That post is not stuck. Nothing needs deciding.");
   }
 
   // Refuse while it could still legitimately be in flight. Resolving a live
   // publication is how the duplicate this whole design avoids gets created.
+  // An ambiguous failure has finished its attempt, so the wait does not apply.
   const attemptedAt = post.lastAttemptAt?.getTime() ?? 0;
-  if (attemptedAt > now.getTime() - STUCK_AFTER_MS) {
+  if (post.status === "PUBLISHING" && attemptedAt > now.getTime() - STUCK_AFTER_MS) {
     throw new ConflictError(
       "That post is still publishing. Give it a few minutes before deciding it is stuck.",
     );
@@ -268,17 +319,22 @@ export async function resolveStrandedPost(
               publishedAt: now,
               externalUrl: resolution.externalUrl,
               lastError: null,
+              ambiguous: false,
             }
           : {
               status: "FAILED",
+              ambiguous: false,
               lastError:
-                "A publication attempt was interrupted and the post was not found on the platform.",
+                "A publication attempt did not confirm and the post was not found on the platform.",
             },
         select: { id: true, status: true },
       });
 
       // Close the open publication row so the history does not show an attempt
       // that never ended.
+      // For an ambiguous failure the attempt row is already FAILED; it stays
+      // that way as the record of what the platform told us, and the resolution
+      // lives on the post and in the audit trail.
       await tx.socialPublication.updateMany({
         where: { postId: post.id, status: "PUBLISHING" },
         data: {
@@ -289,6 +345,27 @@ export async function resolveStrandedPost(
         },
       });
 
+      // Same rule the engine applies on a normal success: the idea is
+      // published once none of its versions is still waiting.
+      if (published) {
+        const row = await tx.socialPost.findUniqueOrThrow({
+          where: { id: post.id },
+          select: { contentItemId: true },
+        });
+        const outstanding = await tx.socialPost.count({
+          where: {
+            contentItemId: row.contentItemId,
+            status: { notIn: ["PUBLISHED", "CANCELLED"] },
+          },
+        });
+        if (outstanding === 0) {
+          await tx.contentCalendarItem.update({
+            where: { id: row.contentItemId },
+            data: { stage: "PUBLISHED", publishedAt: now },
+          });
+        }
+      }
+
       return updated;
     },
   );
@@ -298,22 +375,19 @@ export async function resolveStrandedPost(
 export async function queueCounts(actor: Actor, filters: QueueFilters, now = new Date()) {
   requirePermission(actor, "social.view");
   const scope = await resolveScopeFilter(actor, filters.clientId);
+  // The same filters as the bands. The header said "9 failed" above a band of
+  // 2 whenever a platform filter was set, because this ignored it.
+  const where = { ...scope, ...(filters.provider ? { provider: filters.provider } : {}) };
   const strandedBefore = new Date(now.getTime() - STUCK_AFTER_MS);
 
   const [stranded, failed, due, upcoming] = await Promise.all([
+    db.socialPost.count({ where: { ...where, ...uncertainWhere(strandedBefore) } }),
+    db.socialPost.count({ where: { ...where, status: "FAILED", ambiguous: false } }),
     db.socialPost.count({
-      where: {
-        ...scope,
-        status: "PUBLISHING",
-        OR: [{ lastAttemptAt: { lt: strandedBefore } }, { lastAttemptAt: null }],
-      },
-    }),
-    db.socialPost.count({ where: { ...scope, status: "FAILED" } }),
-    db.socialPost.count({
-      where: { ...scope, status: "SCHEDULED", scheduledFor: { lte: now } },
+      where: { ...where, status: "SCHEDULED", scheduledFor: { lte: now } },
     }),
     db.socialPost.count({
-      where: { ...scope, status: "SCHEDULED", scheduledFor: { gt: now } },
+      where: { ...where, status: "SCHEDULED", scheduledFor: { gt: now } },
     }),
   ]);
 

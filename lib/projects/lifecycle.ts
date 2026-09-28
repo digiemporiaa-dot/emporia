@@ -267,6 +267,29 @@ const CONTENT_ALLOWED: Record<ContentStage, readonly ContentStage[]> = {
   PUBLISHED: [],
 };
 
+/** The decisions a reviewer can make on an approval. */
+export type ApprovalDecision = "APPROVED" | "CHANGES_REQUESTED" | "REJECTED";
+
+/**
+ * Where a content item lands once its approval is decided.
+ *
+ * One rule for both the client's decision in the portal and a staff member's
+ * decision recorded on the client's behalf. Before, only the portal path moved
+ * the stage, so a staff "approved" left the item stuck at CLIENT_REVIEW where
+ * nothing could edit, re-send or withdraw it.
+ *
+ * Returns null when the move is not legal from where the item actually is — a
+ * decision on a stale approval must not drag an item that has since moved on.
+ */
+export function stageAfterDecision(
+  current: ContentStage,
+  decision: ApprovalDecision,
+): ContentStage | null {
+  const target: ContentStage = decision === "APPROVED" ? "APPROVED" : "DRAFT";
+  if (current === target) return null;
+  return canTransitionContent(current, target) ? target : null;
+}
+
 export function canTransitionContent(from: ContentStage, to: ContentStage): boolean {
   return CONTENT_ALLOWED[from].includes(to);
 }

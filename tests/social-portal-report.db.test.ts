@@ -221,6 +221,43 @@ describeDb("the client's social report", () => {
     expect(report.recent[0]!.engagement).toBe(7);
   });
 
+  it("counts every post in the period, not just the newest two hundred", async () => {
+    // The portal used to load 200 and present their sum as the all-time total.
+    const item = await db.contentCalendarItem.create({
+      data: {
+        clientId: clientA,
+        projectId: projectA,
+        title: `${SUFFIX} a busy idea`,
+        channel: "LINKEDIN",
+        stage: "PUBLISHED",
+      },
+      select: { id: true },
+    });
+    await db.socialPost.createMany({
+      data: Array.from({ length: 205 }, (_, i) => ({
+        contentItemId: item.id,
+        clientId: clientA,
+        provider: "LINKEDIN" as const,
+        type: "TEXT" as const,
+        status: "PUBLISHED" as const,
+        caption: `Post ${i}.`,
+        publishedAt: new Date(Date.now() - i * 60_000),
+        order: i,
+      })),
+    });
+
+    const range = resolveRange("all");
+    const mine = await portalReport(portal, range);
+    const theirs = await adminReport(staff, { clientId: clientA, from: range.from, to: range.to });
+
+    expect(mine.posts).toBe(205);
+    expect(theirs.posts).toBe(205);
+    expect(mine.truncated).toBe(false);
+    expect(theirs.truncated).toBe(false);
+    // The list stays short; only the totals needed to be complete.
+    expect(mine.recent.length).toBeLessThanOrEqual(20);
+  });
+
   it("tells the client which platforms cannot report", async () => {
     await post({ likes: 3 });
     const report = await portalReport(portal, resolveRange("all"));
