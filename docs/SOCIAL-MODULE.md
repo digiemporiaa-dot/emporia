@@ -1040,3 +1040,65 @@ Gate: lint, typecheck, **1652 tests across 101 files**, production build — cle
 
 Phase 10 is automation and notifications: telling people when something needs
 them, using the automation engine that already exists.
+
+---
+
+## 12. Phase 10 — notifications and automation
+
+Two mechanisms, deliberately kept apart, because they answer different
+questions.
+
+**Notifications** are for facts that always need a person, however the agency
+has configured things: a post failed, the client answered. These are not rules.
+An agency that had to *build a rule* to find out its client had rejected a post
+would find out too late.
+
+**Automation triggers** are for what an agency wants to decide for itself —
+email the account manager, tag the client, create a task. Those belong in the
+rules engine that already exists, which now has three social triggers in its
+vocabulary: `SOCIAL_POST_PUBLISHED`, `SOCIAL_POST_FAILED` and
+`SOCIAL_APPROVAL_DECIDED`.
+
+### What gets a notification, and what does not
+
+| Event | Notified | Why |
+|---|---|---|
+| Post failed | Owner, project manager, whoever requested approval | Somebody must know, and the queue link is in the message |
+| Client approved or asked for changes | Owner and requester | The most expensive silence in the workflow — it blocks everything downstream |
+| Post published | **Nobody** | Good news is not an interruption. Automation can act on it; a person is not pinged. |
+
+Recipients are deduplicated, because in a small team the owner is often also the
+project manager and two identical notifications read as a bug. A test pins that.
+
+### Announcements cannot undo what they announce
+
+Every function here runs **outside** the transaction and swallows its own
+errors. By the time `announcePublished` is called the post is already on a
+client's feed; letting a failed notification roll that back would make the
+database disagree with the world. A test calls each one with an id that does not
+exist and asserts it resolves rather than throws.
+
+### What the rules can and cannot see
+
+Social facts are read fresh at fire time like every other fact block, so a rule
+judges the post as it now stands: platform, format, title, campaign, account,
+attempts, client name, plus the failure reason or the client's decision where
+those apply.
+
+The caption is deliberately **not** a condition field. A rule matching on post
+copy is a content filter dressed as automation, and captions are long. There is
+a test asserting it stays absent.
+
+### Verified in a browser
+
+The rule editor at `/admin/automation/new` offers all three social triggers by
+name — "A social post goes out", "A social post fails to publish", "A client
+decides on social content" — so a rule built on them fires against something
+real rather than an enum value nothing raises. No page errors, no overflow.
+
+Gate: lint, typecheck, **1663 tests across 102 files**, production build — clean.
+
+### Next
+
+Phase 11 is reports: the client-facing view of everything phases 8 and 9
+measured.

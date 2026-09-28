@@ -26,6 +26,7 @@ export async function buildFacts(
   if (subject.invoiceId) Object.assign(facts, await invoiceFacts(subject.invoiceId));
   if (subject.projectId) Object.assign(facts, await projectFacts(subject.projectId));
   if (subject.paymentId) Object.assign(facts, await paymentFacts(subject.paymentId));
+  if (subject.socialPostId) Object.assign(facts, await socialPostFacts(subject.socialPostId));
   if (subject.clientId && facts["client.name"] === undefined) {
     const client = await db.client.findUnique({
       where: { id: subject.clientId },
@@ -151,6 +152,40 @@ async function projectFacts(projectId: string): Promise<Facts> {
     "project.health": project.health,
     "project.budget": toMoneyString(project.budget),
     "client.name": project.client.name,
+  };
+}
+
+/**
+ * What a rule knows about a social post.
+ *
+ * Read at fire time like every other fact block, so a rule judges the post as
+ * it now stands. No caption: a condition matching on post copy would be a
+ * content filter dressed as automation, and the copy can be long.
+ */
+async function socialPostFacts(postId: string): Promise<Facts> {
+  const post = await db.socialPost.findUnique({
+    where: { id: postId },
+    select: {
+      provider: true,
+      type: true,
+      attemptCount: true,
+      lastError: true,
+      account: { select: { name: true } },
+      client: { select: { name: true } },
+      contentItem: { select: { title: true, campaign: { select: { name: true } } } },
+    },
+  });
+  if (!post) return {};
+
+  return {
+    "social.provider": post.provider,
+    "social.type": post.type,
+    "social.title": post.contentItem.title,
+    "social.campaignName": post.contentItem.campaign?.name ?? null,
+    "social.accountName": post.account?.name ?? null,
+    "social.attempts": post.attemptCount,
+    "social.error": post.lastError,
+    "client.name": post.client.name,
   };
 }
 
