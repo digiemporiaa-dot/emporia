@@ -25,9 +25,14 @@ export type LinkedInDouble = {
   /** Replace the profile response. */
   profile: (value: object) => void;
   /** Make the next request of a kind fail. */
-  failWith: (path: "accessToken" | "userinfo", status: number, body?: string) => void;
+  failWith: (path: DoubleRoute, status: number, body?: string) => void;
+  /** Answer the next publish with no id header, as LinkedIn occasionally does. */
+  publishWithoutId: () => void;
   close: () => Promise<void>;
 };
+
+/** The endpoints the double speaks. */
+export type DoubleRoute = "accessToken" | "userinfo" | "posts" | "images" | "upload" | "asset";
 
 export async function startLinkedInDouble(): Promise<LinkedInDouble> {
   const requests: RecordedRequest[] = [];
@@ -44,6 +49,8 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
     picture: "https://example.com/avatar.jpg",
   };
   const failures = new Map<string, { status: number; body: string }>();
+  let suppressId = false;
+  let port = 0;
 
   const server: Server = createServer((req, res) => {
     let raw = "";
@@ -58,11 +65,53 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
         contentType: req.headers["content-type"] as string | undefined,
       });
 
-      const kind = path.endsWith("/accessToken") ? "accessToken" : "userinfo";
+      const kind: DoubleRoute = path.endsWith("/accessToken")
+        ? "accessToken"
+        : path.endsWith("/posts")
+          ? "posts"
+          : path.endsWith("/images")
+            ? "images"
+            : path.startsWith("/upload/")
+              ? "upload"
+              : path.startsWith("/asset/")
+                ? "asset"
+                : "userinfo";
+
       const failure = failures.get(kind);
       if (failure) {
         failures.delete(kind);
         res.writeHead(failure.status, { "content-type": "application/json" }).end(failure.body);
+        return;
+      }
+
+      if (kind === "posts") {
+        const headers: Record<string, string> = { "content-type": "application/json" };
+        if (!suppressId) headers["x-restli-id"] = "urn:li:share:7000000000000000001";
+        suppressId = false;
+        res.writeHead(201, headers).end("");
+        return;
+      }
+
+      if (kind === "images") {
+        res.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            value: {
+              uploadUrl: `http://127.0.0.1:${port}/upload/1`,
+              image: "urn:li:image:C4E10AQ",
+            },
+          }),
+        );
+        return;
+      }
+
+      if (kind === "upload") {
+        res.writeHead(201).end();
+        return;
+      }
+
+      // Stands in for the creative sitting on object storage.
+      if (kind === "asset") {
+        res.writeHead(200, { "content-type": "image/jpeg" }).end(Buffer.from("jpegbytes"));
         return;
       }
 
@@ -74,6 +123,7 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (address === null || typeof address === "string") throw new Error("double did not bind");
+  port = address.port;
 
   return {
     url: `http://127.0.0.1:${address.port}`,
@@ -85,6 +135,9 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
       profileResponse = value;
     },
     failWith: (path, status, body = "{}") => failures.set(path, { status, body }),
+    publishWithoutId: () => {
+      suppressId = true;
+    },
     close: () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

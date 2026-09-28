@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Plus, Trash2, X } from "lucide-react";
+import { AlertCircle, Plus, Send, Trash2, X } from "lucide-react";
 import {
   Badge,
   Button,
@@ -26,7 +26,12 @@ import type {
   SocialProvider,
 } from "@/generated/prisma/enums";
 import { POST_STATUS_LABEL, POST_STATUS_TONE, POST_TYPE_LABEL } from "@/lib/social/capabilities";
-import { deletePostAction, savePostAction, setPostStatusAction } from "../actions";
+import {
+  deletePostAction,
+  publishNowAction,
+  savePostAction,
+  setPostStatusAction,
+} from "../actions";
 
 /**
  * The platform version editor.
@@ -62,6 +67,18 @@ export type EditorPost = {
   externalUrl: string | null;
   lastError: string | null;
   media: EditorMedia[];
+  /** Publication attempts, newest first. Empty until something is tried. */
+  attempts: EditorAttempt[];
+};
+
+export type EditorAttempt = {
+  id: string;
+  attempt: number;
+  status: string;
+  error: string | null;
+  at: string | null;
+  /** Who pressed it, or null for the scheduler. */
+  by: string | null;
 };
 
 export type EditorProvider = {
@@ -92,6 +109,7 @@ export function VersionEditor({
   providers,
   canEdit,
   canDelete,
+  canPublish,
 }: {
   clientId: string;
   itemId: string;
@@ -100,6 +118,7 @@ export function VersionEditor({
   providers: readonly EditorProvider[];
   canEdit: boolean;
   canDelete: boolean;
+  canPublish: boolean;
 }) {
   const ready = useHydrated();
   const [adding, setAdding] = React.useState(false);
@@ -149,6 +168,7 @@ export function VersionEditor({
                 provider={provider}
                 canEdit={canEdit}
                 canDelete={canDelete}
+                canPublish={canPublish}
               />
             );
           })}
@@ -165,6 +185,7 @@ export function VersionEditor({
           provider={draftProvider}
           canEdit
           canDelete={false}
+          canPublish={false}
           onDiscard={() => setDraft(null)}
         />
       ) : null}
@@ -203,8 +224,17 @@ function emptyPost(provider: EditorProvider, type: string): EditorPost {
     externalUrl: null,
     lastError: null,
     media: [],
+    attempts: [],
   };
 }
+
+const ATTEMPT_TIME = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "short",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Kolkata",
+});
 
 function VersionCard({
   clientId,
@@ -214,6 +244,7 @@ function VersionCard({
   provider,
   canEdit,
   canDelete,
+  canPublish,
   onDiscard,
 }: {
   clientId: string;
@@ -223,6 +254,7 @@ function VersionCard({
   provider: EditorProvider;
   canEdit: boolean;
   canDelete: boolean;
+  canPublish: boolean;
   onDiscard?: () => void;
 }) {
   const router = useRouter();
@@ -230,6 +262,7 @@ function VersionCard({
   const [pending, start] = React.useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [confirmPublish, setConfirmPublish] = React.useState(false);
 
   const [type, setType] = React.useState(post.type);
   const [accountId, setAccountId] = React.useState(post.accountId ?? "");
@@ -244,6 +277,9 @@ function VersionCard({
 
   const locked = LOCKED.includes(post.status);
   const editable = canEdit && !locked;
+  // The engine refuses anything the client has not signed off, so the button
+  // says so rather than offering a click that comes back as an error.
+  const approved = stage === "APPROVED" || stage === "SCHEDULED" || stage === "PUBLISHED";
   const has = (field: string) => provider.fields.includes(field);
 
   const tags = hashtags
@@ -304,6 +340,19 @@ function VersionCard({
     });
   };
 
+  const publish = () => {
+    setError(null);
+    start(async () => {
+      const result = await publishNowAction({ clientId, postId: post.id });
+      if (result.ok) {
+        push({ tone: "success", title: `Posted to ${provider.label}.` });
+        router.refresh();
+      } else {
+        setError(result.message);
+      }
+    });
+  };
+
   const remove = () => {
     start(async () => {
       const result = await deletePostAction({ clientId, postId: post.id });
@@ -346,6 +395,28 @@ function VersionCard({
             This version has gone out. Its copy is the record of what was published, so it can no
             longer be edited.
           </p>
+        ) : null}
+
+        {post.attempts.length > 0 ? (
+          <details className="rounded-md border border-line bg-surface-muted px-3 py-2">
+            <summary className="cursor-pointer text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+              {post.attempts.length} publication attempt
+              {post.attempts.length === 1 ? "" : "s"}
+            </summary>
+            <ol className="mt-2 space-y-1.5">
+              {post.attempts.map((attempt) => (
+                <li key={attempt.id} className="text-2xs text-ink-muted">
+                  <span className="tabular-nums">#{attempt.attempt}</span>{" "}
+                  <span className="font-medium">{attempt.status.toLowerCase()}</span>
+                  {attempt.by ? ` · ${attempt.by}` : " · scheduler"}
+                  {attempt.at ? ` · ${ATTEMPT_TIME.format(new Date(attempt.at))}` : null}
+                  {attempt.error ? (
+                    <span className="block text-brand-red-text">{attempt.error}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </details>
         ) : null}
 
         {post.lastError ? (
@@ -603,6 +674,26 @@ function VersionCard({
               </Button>
             ) : null}
 
+            {/* Publishing early and retrying a failure are the same act, so
+                they are the same button with the honest label for each. */}
+            {post.id && canPublish && (post.status === "SCHEDULED" || post.status === "FAILED") ? (
+              <Button
+                variant="secondary"
+                disabled={pending || !approved || !accountId}
+                onClick={() => setConfirmPublish(true)}
+                title={
+                  !accountId
+                    ? "Connect an account for this platform first."
+                    : approved
+                      ? undefined
+                      : "The client has not approved this yet."
+                }
+              >
+                <Send size={14} aria-hidden="true" />
+                {post.status === "FAILED" ? "Try again" : "Publish now"}
+              </Button>
+            ) : null}
+
             {onDiscard ? (
               <Button variant="ghost" disabled={pending} onClick={onDiscard}>
                 Discard
@@ -623,6 +714,30 @@ function VersionCard({
           </div>
         ) : null}
       </CardBody>
+
+      {confirmPublish ? (
+        <Dialog
+          open
+          onClose={() => setConfirmPublish(false)}
+          title={`Post to ${provider.label} now?`}
+          description="This goes out immediately and cannot be taken back from here."
+        >
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setConfirmPublish(false)}>
+              Not yet
+            </Button>
+            <Button
+              disabled={pending}
+              onClick={() => {
+                setConfirmPublish(false);
+                publish();
+              }}
+            >
+              {pending ? "Posting…" : "Post it"}
+            </Button>
+          </div>
+        </Dialog>
+      ) : null}
 
       {confirmDelete ? (
         <Dialog

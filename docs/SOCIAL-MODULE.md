@@ -643,3 +643,137 @@ Gate: lint, typecheck, **1552 tests across 95 files**, production build — clea
 
 Phase 6 is the publishing engine: taking an approved, scheduled version and
 actually putting it on the platform, exactly once.
+
+---
+
+## 8. Phase 6 — the publishing engine
+
+### Exactly once, and how it is actually guaranteed
+
+The brief's hardest line is "a post must never be published twice". That
+guarantee does not come from being careful. It comes from one conditional
+update:
+
+```sql
+UPDATE "SocialPost" SET status = 'PUBLISHING'
+ WHERE id = $1 AND status IN ('SCHEDULED', 'FAILED')
+```
+
+Postgres serialises that. Exactly one caller sees a row affected, and only that
+caller goes on to call the platform. Two overlapping cron runs, a cron
+overlapping a person pressing **Publish now**, two people pressing it at once —
+they all contend for one row in one transaction, and all but one lose. No queue,
+no lock table, no advisory lock, and no check-then-act window to lose a race in.
+
+`SocialPublication.idempotencyKey` is the second belt, `post:<id>:<attempt>` —
+**derived, not random**, which is the whole point of an idempotency key. A
+replayed attempt collides on a unique index rather than recording a second
+publication that never happened. The attempt number is in the key because a
+genuine retry *should* be allowed a new row: a failure and its later success are
+two real events and the history is worth keeping.
+
+Two tests fire concurrent publishes and assert the double received exactly one
+`POST /posts`. That assertion, not the prose above, is the guarantee.
+
+### Retrying, and the one failure that must never be retried
+
+A failed publish is safe to retry. An **ambiguous** one is not. LinkedIn
+accepting a post and returning no id is the real case: the post exists, we
+simply do not know its id, and a retry would put a second copy on the client's
+feed. `AmbiguousPublishError` exists for exactly that, and the engine treats it
+as terminal — no automatic retry, and a message telling a person to go and look.
+A human checking one feed is cheap; a duplicate on a client's LinkedIn is not.
+
+Everything else retries up to `MAX_ATTEMPTS`, and rests at `FAILED` rather than
+being put back to `SCHEDULED` — a post sitting at scheduled with three failures
+behind it reads as fine on every screen. A person may retry past the ceiling:
+the ceiling exists to stop a cron hammering a broken platform, not to stop
+somebody who has just fixed the problem.
+
+### What it refuses to do
+
+Checked **before** the claim, so a post that cannot go out is never left
+stranded in `PUBLISHING`: no account, an account needing reconnection, an
+account for the wrong platform, an unconfigured provider, and — the one that
+ties the phases together — an idea the client has not approved.
+
+That last check is defence in depth rather than the primary guard. Phase 3 will
+not let a version be scheduled unless its idea is approved, and Phase 5 pulls an
+item back out of `APPROVED` the moment its copy is edited. So copy that has
+drifted from what the client signed off cannot reach here. It is re-checked
+anyway, because this is the last gate before something becomes public and
+irreversible.
+
+### LinkedIn, for real
+
+`publish` is implemented against the Posts API (`/rest/posts`), not the older
+`ugcPosts`. Notes worth keeping:
+
+- The `LinkedIn-Version` header is required, and without it LinkedIn answers
+  **426 Upgrade Required**, which does not read like the missing header it is.
+  The version is pinned rather than tracking latest, so LinkedIn's breaking
+  changes land on our schedule.
+- The post id comes back in the `x-restli-id` **header**; the body is empty.
+- Images are a three-step dance: register an upload, PUT the bytes, reference
+  the returned URN. Uploads happen **before** the post is created, so a broken
+  creative cannot produce a text-only post nobody asked for — there is a test
+  asserting no `/posts` call is made when the upload fails.
+- Hashtags are appended to the end of the copy, which is where LinkedIn expects
+  them, rather than being expected inline in the caption.
+
+### UTM tagging
+
+Links are tagged by the service, never by an adapter and never by hand in a
+form. Two reasons: attribution has to be consistent or §9's campaign reporting
+compares differently-labelled traffic and calls it a trend; and a person typing
+`utm_source=linkedin` will eventually type `Linkedin`, which lands as a second
+source in every report forever. Campaign names are flattened once
+(`Diwali Sale` → `diwali-sale`).
+
+The rule is **only add what is missing**: a link already carrying a `utm_source`
+was tagged deliberately by somebody, and overwriting it would discard their
+intent. Non-http schemes are left alone rather than decorated.
+
+### The scheduler
+
+`publishDuePosts` hangs off the existing `/api/cron` endpoint rather than
+introducing a second scheduler. Pages and social posts are settled
+independently, so one batch failing wholesale does not cost the other its run,
+and the response reports both. The scheduler acts as a SYSTEM actor with exactly
+`social.view` and `social.publish` — the same pattern `schedulerActor` already
+uses for pages — so the audit trail records automation rather than a person, and
+there is no permission bypass anywhere.
+
+One client's broken account does not stop another client's launch: posts are
+worked one at a time and a crash is caught per post.
+
+### Verified in a browser
+
+The success path is covered by 23 database tests running the **real** LinkedIn
+adapter against a local wire double — it cannot be exercised in a browser here,
+because a genuine post requires a genuine OAuth connection, and faking one is
+the thing the brief rules out. What the browser verified is the honest-refusal
+path, which is what an operator without a connected account actually meets:
+
+- **Publish now** appears on a scheduled version and reads **Try again** on a
+  failed one.
+- Pressing it with no connected account produces "No account is connected for
+  this version", the post stays `SCHEDULED`, no publication row is written, and
+  nothing claims success.
+- The attempt history renders: `#1 failed · scheduler · 28 Sept, 11:35 am` with
+  the platform's reason under it.
+- `/api/cron` answers 401 without the secret and with a wrong one, and returns
+  the combined page and social result with the right one.
+- No page errors; no horizontal overflow at 1440px or 375px.
+
+One defect found and fixed, the same class as Phase 5's: **Publish now was
+enabled with no account connected**, offering a click that could only fail. Now
+disabled, with the reason in its tooltip.
+
+Gate: lint, typecheck, **1597 tests across 98 files**, production build — clean.
+
+### Next
+
+Phase 7 is the scheduler's own screen — a queue view of what is due, what
+failed, and what is waiting — and the retry and bulk actions that belong with
+it.

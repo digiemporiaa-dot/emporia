@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LinkedInProvider, LINKEDIN_SCOPES } from "@/lib/social/linkedin";
+import { AmbiguousPublishError } from "@/lib/social/errors";
 import { ValidationError } from "@/lib/errors";
 import { startLinkedInDouble, type LinkedInDouble } from "./support/linkedin-double";
 
@@ -22,6 +23,7 @@ beforeAll(async () => {
     clientSecret: "app-secret",
     authBase: `${double.url}/oauth/v2`,
     apiBase: `${double.url}/v2`,
+    restBase: `${double.url}/rest`,
   });
 });
 
@@ -159,9 +161,126 @@ describe("failures", () => {
   });
 });
 
+describe("publishing", () => {
+  const credentials = { accessToken: "li-access-token", refreshToken: null, expiresAt: null };
+  const account = { externalId: "li-member-1" };
+
+  const input = (over: Partial<Parameters<LinkedInProvider["publish"]>[2]> = {}) => ({
+    type: "TEXT" as const,
+    caption: "Every table we ship starts at one of four mills.",
+    headline: null,
+    hashtags: [] as string[],
+    mentions: [] as string[],
+    callToAction: null,
+    firstComment: null,
+    linkUrl: null,
+    media: [] as { url: string; mimeType: string; thumbnailUrl: string | null }[],
+    ...over,
+  });
+
+  it("posts the copy and returns the id LinkedIn put in the header", async () => {
+    const before = double.requests.length;
+    const result = await provider.publish(credentials, account, input());
+
+    expect(result.externalPostId).toBe("urn:li:share:7000000000000000001");
+    expect(result.externalUrl).toContain("urn:li:share:7000000000000000001");
+
+    const posted = double.requests.slice(before).find((r) => r.path.endsWith("/posts"))!;
+    const body = JSON.parse(posted.body) as Record<string, unknown>;
+    expect(body["author"]).toBe("urn:li:person:li-member-1");
+    expect(body["commentary"]).toBe("Every table we ship starts at one of four mills.");
+    expect(body["lifecycleState"]).toBe("PUBLISHED");
+  });
+
+  it("sends the version header LinkedIn refuses the call without", async () => {
+    const before = double.requests.length;
+    await provider.publish(credentials, account, input());
+    const posted = double.requests.slice(before).find((r) => r.path.endsWith("/posts"))!;
+    expect(posted.authorization).toBe("Bearer li-access-token");
+  });
+
+  it("appends hashtags to the end of the copy, where LinkedIn expects them", async () => {
+    const before = double.requests.length;
+    await provider.publish(credentials, account, input({ hashtags: ["diwali", "homestyling"] }));
+    const posted = double.requests.slice(before).find((r) => r.path.endsWith("/posts"))!;
+    const body = JSON.parse(posted.body) as { commentary: string };
+    expect(body.commentary.endsWith("#diwali #homestyling")).toBe(true);
+  });
+
+  it("shares a bare link as an article so LinkedIn renders its card", async () => {
+    const before = double.requests.length;
+    await provider.publish(credentials, account, input({ linkUrl: "https://example.com/a?utm_source=linkedin" }));
+    const posted = double.requests.slice(before).find((r) => r.path.endsWith("/posts"))!;
+    const body = JSON.parse(posted.body) as { content?: { article?: { source: string } } };
+    expect(body.content?.article?.source).toBe("https://example.com/a?utm_source=linkedin");
+  });
+
+  it("uploads a creative before posting, and references the returned urn", async () => {
+    const before = double.requests.length;
+    await provider.publish(
+      credentials,
+      account,
+      input({ media: [{ url: `${double.url}/asset/1.jpg`, mimeType: "image/jpeg", thumbnailUrl: null }] }),
+    );
+
+    const sent = double.requests.slice(before);
+    const order = sent.map((r) => r.path.replace(/\/\d+(\.jpg)?$/, ""));
+    // Register, fetch our copy, upload, and only then post.
+    expect(order.indexOf("/rest/images")).toBeLessThan(order.indexOf("/rest/posts"));
+    expect(order.indexOf("/upload")).toBeLessThan(order.indexOf("/rest/posts"));
+
+    const posted = sent.find((r) => r.path.endsWith("/posts"))!;
+    const body = JSON.parse(posted.body) as { content?: { media?: { id: string } } };
+    expect(body.content?.media?.id).toBe("urn:li:image:C4E10AQ");
+  });
+
+  it("does not post at all when the creative fails to upload", async () => {
+    double.failWith("images", 500);
+    const before = double.requests.length;
+
+    await expect(
+      provider.publish(
+        credentials,
+        account,
+        input({ media: [{ url: `${double.url}/asset/1.jpg`, mimeType: "image/jpeg", thumbnailUrl: null }] }),
+      ),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    // A text-only post nobody asked for is the failure mode being prevented.
+    expect(double.requests.slice(before).some((r) => r.path.endsWith("/posts"))).toBe(false);
+  });
+
+  it("refuses an empty post rather than sending nothing", async () => {
+    await expect(
+      provider.publish(credentials, account, input({ caption: null })),
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("says the post may exist when LinkedIn accepts it but returns no id", async () => {
+    double.publishWithoutId();
+    const error = await provider
+      .publish(credentials, account, input())
+      .then(() => null)
+      .catch((e: unknown) => e as Error);
+
+    // Critically it is not an ordinary failure: the engine must not retry it,
+    // because retrying would duplicate the post.
+    expect(error).toBeInstanceOf(AmbiguousPublishError);
+    expect(error?.message).toContain("Check the page before retrying");
+  });
+
+  it("maps a rejected token to something an operator can act on", async () => {
+    double.failWith("posts", 401);
+    const error = await provider
+      .publish(credentials, account, input())
+      .then(() => null)
+      .catch((e: unknown) => e as Error);
+    expect(error?.message).toContain("Reconnect the account");
+  });
+});
+
 describe("what this phase does not do", () => {
-  it("refuses to publish rather than returning a fabricated post id", async () => {
-    await expect(provider.publish()).rejects.toBeInstanceOf(ValidationError);
+  it("refuses to read metrics rather than returning fabricated numbers", async () => {
     await expect(provider.getMetrics()).rejects.toBeInstanceOf(ValidationError);
   });
 });
