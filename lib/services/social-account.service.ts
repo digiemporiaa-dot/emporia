@@ -9,7 +9,11 @@ import { resolveClientScope } from "@/lib/social/scope";
 import { log } from "@/lib/logger";
 import type { SocialAccountStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
-import type { ProviderAccount, ProviderCredentials } from "@/lib/social/types";
+import type {
+  ProviderAccount,
+  ProviderCredentials,
+  SocialProviderAdapter,
+} from "@/lib/social/types";
 
 /**
  * Connected social accounts.
@@ -396,5 +400,71 @@ export function assertConnectable(account: ProviderAccount): void {
   }
   if (!account.name.trim()) {
     throw new ValidationError("The provider returned an account with no name.");
+  }
+}
+
+/** Refresh this far ahead of expiry, so a post never goes out on a dying token. */
+const REFRESH_BEFORE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Credentials that will actually work for the next call.
+ *
+ * `credentialsFor` decrypts what is stored; this also refreshes it when it is
+ * about to expire and the platform issued a refresh token. Before this existed
+ * nothing called `refresh()` at all, so a LinkedIn token quietly reached its
+ * sixty-day end and every scheduled post failed with "reconnect the account"
+ * while the accounts screen still said healthy.
+ *
+ * A failed refresh marks the account as needing reconnection through the same
+ * `recordSyncResult` the sync path uses, so the screen and the engine agree.
+ * Returns null when there is nothing usable, and the caller says so.
+ */
+export async function usableCredentials(
+  id: string,
+  adapter: Pick<SocialProviderAdapter, "refresh">,
+  now = new Date(),
+): Promise<ProviderCredentials | null> {
+  const credentials = await credentialsFor(id);
+  if (!credentials) return null;
+
+  const expiring =
+    credentials.expiresAt !== null &&
+    credentials.expiresAt.getTime() - now.getTime() < REFRESH_BEFORE_MS;
+  if (!expiring) return credentials;
+
+  if (!credentials.refreshToken) {
+    // Nothing to refresh with. If it has already expired, say so now rather
+    // than letting the platform say it three times.
+    if (credentials.expiresAt!.getTime() <= now.getTime()) {
+      await recordSyncResult(id, {
+        ok: false,
+        error: "The access token has expired. Reconnect the account.",
+        credentialsRejected: true,
+      });
+      return null;
+    }
+    return credentials;
+  }
+
+  try {
+    const fresh = await adapter.refresh(credentials);
+    await db.socialAccount.update({
+      where: { id },
+      data: {
+        accessToken: encryptSecret(fresh.accessToken),
+        // Some platforms rotate the refresh token, some keep the old one.
+        refreshToken: encryptSecret(fresh.refreshToken ?? credentials.refreshToken),
+        tokenExpiresAt: fresh.expiresAt,
+      },
+    });
+    return { ...fresh, refreshToken: fresh.refreshToken ?? credentials.refreshToken };
+  } catch (error) {
+    await recordSyncResult(id, {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "The access token could not be refreshed.",
+      credentialsRejected: true,
+    });
+    return null;
   }
 }

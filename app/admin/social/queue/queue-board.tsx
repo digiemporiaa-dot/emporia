@@ -165,12 +165,32 @@ export function QueueBoard({
             variant="secondary"
             size="sm"
             disabled={!ready || busy}
-            onClick={() =>
-              run(
-                () => retryAllFailedAction({ clientId: activeClient }),
-                "Retried every failure.",
-              )
-            }
+            onClick={async () => {
+              setBusy(true);
+              const result = await retryAllFailedAction({
+                clientId: activeClient,
+                provider: activeProvider,
+              });
+              setBusy(false);
+              if (!result.ok) {
+                push({ tone: "error", title: result.message });
+                return;
+              }
+              const { published, failed, notAttempted } = result.data;
+              // Say exactly what happened. "Retried every failure" was true only
+              // when every one of them happened to work.
+              push({
+                tone: failed > 0 ? "info" : "success",
+                title: [
+                  `${published} posted`,
+                  failed > 0 ? `${failed} still failing` : null,
+                  notAttempted > 0 ? `${notAttempted} left for later (rate limit)` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+              });
+              router.refresh();
+            }}
           >
             <RotateCw size={14} aria-hidden="true" />
             Retry all {failedCount}
@@ -181,9 +201,9 @@ export function QueueBoard({
       </div>
 
       <Band
-        title="Interrupted — needs checking"
+        title="Needs checking"
         tone="danger"
-        description="A publication was cut off before it finished. We cannot tell whether the platform received it, so someone has to look before anything else happens."
+        description="These may already be live. A publication was cut off, or the platform failed in a way that means it may have the post anyway — so nothing is sent again until someone looks."
         cards={bands.stranded}
         empty={null}
         render={(card) => (

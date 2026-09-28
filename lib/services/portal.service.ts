@@ -5,7 +5,7 @@ import { record } from "@/lib/services/audit.service";
 import { div, mul, toMoneyString } from "@/lib/money";
 import { rangeFilter, type DateRange } from "@/lib/analytics/range";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { canTransitionContent } from "@/lib/projects/lifecycle";
+import { stageAfterDecision } from "@/lib/projects/lifecycle";
 import { readSnapshot } from "@/lib/social/approval-snapshot";
 import { announceClientDecision } from "@/lib/services/social-notify.service";
 import { CAPABILITIES } from "@/lib/social/capabilities";
@@ -13,13 +13,14 @@ import { type MetricKey, type MetricTotal } from "@/lib/social/metrics";
 import {
   engagementOf,
   isMeasured,
+  REPORT_POST_CAP,
   SNAPSHOT_SELECT,
   totalsOf,
   toReportRow,
 } from "@/lib/social/report";
 import type { PortalActor } from "@/lib/actor/types";
 import type { PortalMessageInput, PortalProfileInput } from "@/lib/validation/portal";
-import type { ContentStage, ProposalStatus, SocialProvider } from "@/generated/prisma/enums";
+import type { ProposalStatus, SocialProvider } from "@/generated/prisma/enums";
 
 /**
  * The client portal's only data access.
@@ -326,22 +327,6 @@ export async function decideApproval(
   return result;
 }
 
-/**
- * Where a content item lands once the client has spoken.
- *
- * Approved means approved; changes requested sends it back to the people who
- * wrote it. Returns null when the move is not legal from where the item
- * actually is — a decision on a stale approval must not drag an item that has
- * since moved on backwards, and the transition table is the authority on that.
- */
-function stageAfterDecision(
-  current: ContentStage,
-  decision: "APPROVED" | "CHANGES_REQUESTED",
-): ContentStage | null {
-  const target: ContentStage = decision === "APPROVED" ? "APPROVED" : "DRAFT";
-  if (current === target) return null;
-  return canTransitionContent(current, target) ? target : null;
-}
 
 // ---------------------------------------------------------------------------
 // Documents: proposals and contracts
@@ -785,6 +770,8 @@ export async function changePassword(
 export type PortalSocialReport = {
   posts: number;
   measured: number;
+  /** True when there were more posts than a report aggregates. */
+  truncated: boolean;
   totals: Record<MetricKey, MetricTotal>;
   byProvider: { provider: SocialProvider; posts: number; reportsMetrics: boolean }[];
   recent: {
@@ -817,7 +804,7 @@ export async function socialReport(
   actor: PortalActor,
   range: DateRange,
 ): Promise<PortalSocialReport> {
-  const posts = await db.socialPost.findMany({
+  const fetched = await db.socialPost.findMany({
     where: {
       clientId: actor.clientId,
       status: "PUBLISHED",
@@ -827,7 +814,7 @@ export async function socialReport(
       },
     },
     orderBy: { publishedAt: "desc" },
-    take: 200,
+    take: REPORT_POST_CAP + 1,
     select: {
       id: true,
       provider: true,
@@ -838,12 +825,15 @@ export async function socialReport(
     },
   });
 
+  const truncated = fetched.length > REPORT_POST_CAP;
+  const posts = truncated ? fetched.slice(0, REPORT_POST_CAP) : fetched;
   const rows = posts.map(toReportRow);
   const byRow = new Map(rows.map((row) => [row.postId, row]));
 
   return {
     posts: rows.length,
     measured: rows.filter(isMeasured).length,
+    truncated,
     totals: totalsOf(rows),
     byProvider: [...new Set(posts.map((post) => post.provider))].sort().map((provider) => ({
       provider,

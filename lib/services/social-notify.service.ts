@@ -82,7 +82,7 @@ async function audienceFor(postId: string): Promise<{
 }
 
 /** A post went out. Quiet by design — this is good news, not an interruption. */
-export async function announcePublished(postId: string, externalUrl: string | null) {
+export async function announcePublished(postId: string) {
   try {
     const audience = await audienceFor(postId);
     await runAutomations("SOCIAL_POST_PUBLISHED", {
@@ -90,7 +90,6 @@ export async function announcePublished(postId: string, externalUrl: string | nu
       clientId: audience.clientId,
       contentItemId: audience.itemId,
     });
-    void externalUrl;
   } catch (error) {
     notifyLog.error({ err: error, postId }, "announcing a publication failed");
   }
@@ -174,7 +173,10 @@ export async function announceClientDecision(
             ? `${item.client.name} approved "${item.title}"`
             : `${item.client.name} asked for changes to "${item.title}"`,
           body: feedback,
-          href: `/admin/content/${contentItemId}`,
+          // The social item, where the approval panel and the versions are —
+          // not the delivery calendar's page for the same row, which shows
+          // neither.
+          href: `/admin/clients/${item.clientId}/social/content/${contentItemId}`,
           entity: { type: "ContentCalendarItem", id: contentItemId },
         }),
       ),

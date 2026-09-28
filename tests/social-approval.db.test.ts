@@ -8,6 +8,10 @@ import {
 } from "@/lib/services/social-approval.service";
 import { savePost } from "@/lib/services/social-post.service";
 import { decideApproval, getApproval } from "@/lib/services/portal.service";
+import {
+  addApprovalVersion,
+  decideApproval as staffDecideApproval,
+} from "@/lib/services/delivery-content.service";
 import { socialPostSchema } from "@/lib/validation/social";
 import type { Actor, PortalActor } from "@/lib/actor/types";
 
@@ -26,6 +30,10 @@ const describeDb = connectionString ? describe : describe.skip;
 const SUFFIX = `appr5-${Date.now()}`;
 
 const FULL = [
+  "approvals.request",
+  "approvals.decide",
+  "approvals.view",
+  "projects.view",
   "social.view",
   "social.create",
   "social.edit",
@@ -434,6 +442,95 @@ describeDb("social client approval", () => {
       select: { status: true },
     });
     expect(approval.status).toBe("APPROVED");
+  });
+
+  it("un-approves an idea that was already scheduled when its copy is edited", async () => {
+    const itemId = await makeItem("edit-after-scheduling");
+    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await decideApproval(portalA, approvalId, "APPROVED", null);
+
+    // Approved, then scheduled: APPROVED -> SCHEDULED is a legal move, and the
+    // version is queued to go out.
+    await db.contentCalendarItem.update({ where: { id: itemId }, data: { stage: "SCHEDULED" } });
+    const post = await db.socialPost.findFirstOrThrow({
+      where: { contentItemId: itemId },
+      select: { id: true },
+    });
+    await db.socialPost.update({ where: { id: post.id }, data: { status: "SCHEDULED" } });
+
+    await savePost(
+      staff,
+      post.id,
+      socialPostSchema.parse({
+        contentItemId: itemId,
+        provider: "LINKEDIN",
+        type: "TEXT",
+        caption: "Words the client never saw.",
+      }),
+    );
+
+    const after = await db.socialPost.findUniqueOrThrow({
+      where: { id: post.id },
+      select: { status: true, contentItem: { select: { stage: true } } },
+    });
+    expect(after.contentItem.stage).toBe("INTERNAL_REVIEW");
+    // And it is no longer queued to go out, so the calendar and the queue stop
+    // saying it will.
+    expect(after.status).toBe("DRAFT");
+  });
+
+  it("un-approves an idea when a new version is added after sign-off", async () => {
+    const itemId = await makeItem("new-version-after-approval");
+    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await decideApproval(portalA, approvalId, "APPROVED", null);
+
+    await savePost(
+      staff,
+      null,
+      socialPostSchema.parse({
+        contentItemId: itemId,
+        provider: "X",
+        type: "TEXT",
+        caption: "A platform the client never saw.",
+      }),
+    );
+
+    const item = await db.contentCalendarItem.findUniqueOrThrow({
+      where: { id: itemId },
+      select: { stage: true },
+    });
+    expect(item.stage).toBe("INTERNAL_REVIEW");
+  });
+
+  // -------------------------------------------------------------------------
+  // The staff approval screens
+  // -------------------------------------------------------------------------
+
+  it("moves the stage when staff record the client's approval on their behalf", async () => {
+    const itemId = await makeItem("staff-decides");
+    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+
+    await staffDecideApproval(staff, approvalId, "APPROVED", null);
+
+    const item = await db.contentCalendarItem.findUniqueOrThrow({
+      where: { id: itemId },
+      select: { stage: true },
+    });
+    // Before, this stayed at CLIENT_REVIEW, where nothing could edit, re-send
+    // or withdraw it.
+    expect(item.stage).toBe("APPROVED");
+  });
+
+  it("refuses a notes-only new version of social content from the staff screen", async () => {
+    const itemId = await makeItem("staff-new-version");
+    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await withdrawSocialApproval(staff, itemId);
+
+    // The bypass: a version with no snapshot, leaving the item outside client
+    // review so its copy stays editable while the client "reviews" it.
+    await expect(
+      addApprovalVersion(staff, approvalId, "Here is another look.", null),
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 
   // -------------------------------------------------------------------------

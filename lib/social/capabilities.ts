@@ -37,7 +37,12 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
   },
   LINKEDIN: {
     postTypes: ["SINGLE_IMAGE", "CAROUSEL", "VIDEO", "TEXT", "LINK"],
-    fields: ["caption", "hashtags", "mentions", "callToAction", "linkUrl", "firstComment"],
+    // No `callToAction`: member posts have no button — that is an ads and
+    // company-page feature. No `mentions`: LinkedIn only links a mention when
+    // it carries the member's URN, and a typed name is not one. Both used to be
+    // listed here and silently dropped at publication, which is worse than not
+    // offering them.
+    fields: ["caption", "hashtags", "linkUrl", "firstComment"],
     captionLimit: 3_000,
     carouselLimit: 20,
     metrics: true,

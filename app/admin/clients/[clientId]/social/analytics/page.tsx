@@ -61,6 +61,7 @@ export default async function SocialAnalyticsPage({
       data={{
         posts: report.posts,
         measured: report.measured,
+        truncated: report.truncated,
         totals: report.totals,
         byProvider: report.byProvider,
         top: report.top,

@@ -75,6 +75,12 @@ export type PublishInput = {
 export type PublishResult = {
   externalPostId: string;
   externalUrl: string | null;
+  /**
+   * Things that did not work *after* the post went live — a first comment that
+   * could not be added, say. Never a reason to fail the publication: the post
+   * exists, and failing it would invite a retry that duplicates it.
+   */
+  warnings?: string[];
 };
 
 /** A day of metrics as the provider reports it. Absent ≠ zero. */

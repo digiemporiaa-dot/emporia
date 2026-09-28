@@ -144,6 +144,13 @@ describeDb("social publishing engine", () => {
   // next `publishDuePosts`, and quietly eats the one-shot failure the next
   // test just armed — which is exactly how four of these first went wrong.
   afterEach(async () => {
+    // A test that has LinkedIn reject our token now marks the account as
+    // needing reconnection — correctly — and every test after it shares that
+    // account. Put it back so each test starts from a healthy one.
+    await db.socialAccount.updateMany({
+      where: { id: accountA },
+      data: { status: "CONNECTED", failureCount: 0, lastSyncError: null },
+    });
     await db.socialPublication.deleteMany({ where: { clientId: clientA } });
     await db.socialPost.deleteMany({ where: { clientId: clientA } });
     await db.contentCalendarItem.deleteMany({ where: { clientId: clientA } });
@@ -448,6 +455,80 @@ describeDb("social publishing engine", () => {
     expect(outcome.ok).toBe(true);
   });
 
+  it("does not publish an ambiguous post again on the next scheduler run", async () => {
+    // The previous test only checked the *return value* said willRetry=false.
+    // What matters is whether the next cron run actually leaves it alone.
+    const post = await scheduledPost();
+    double.publishWithoutId();
+    await publishDuePosts(new Date(), resolve);
+
+    const before = double.requests.filter((r) => r.path.endsWith("/posts")).length;
+    await publishDuePosts(new Date(), resolve);
+    const after = double.requests.filter((r) => r.path.endsWith("/posts")).length;
+
+    expect(after - before).toBe(0);
+    const row = await db.socialPost.findUniqueOrThrow({ where: { id: post.id }, select: { status: true } });
+    expect(row.status).toBe("FAILED");
+  });
+
+  it("treats a timeout on the create call as possibly live, not as a failure to retry", async () => {
+    const impatient = new LinkedInProvider({
+      clientId: "app-id",
+      clientSecret: "app-secret",
+      authBase: `${double.url}/oauth/v2`,
+      apiBase: `${double.url}/v2`,
+      restBase: `${double.url}/rest`,
+      timeoutMs: 300,
+    });
+    const resolveImpatient: ResolveAdapter = async (which) =>
+      which === "LINKEDIN" ? impatient : new UnconfiguredSocialProvider(which);
+
+    const post = await scheduledPost();
+    double.swallowNextPublish();
+    const run = await publishDuePosts(new Date(), resolveImpatient);
+
+    const failure = run.failed.find((entry) => entry.postId === post.id);
+    expect(failure?.willRetry).toBe(false);
+    expect(failure?.reason).toContain("may be live");
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: post.id },
+      select: { status: true, ambiguous: true },
+    });
+    expect(row).toEqual({ status: "FAILED", ambiguous: true });
+  });
+
+  it("treats a gateway timeout on the create call as possibly live", async () => {
+    const post = await scheduledPost();
+    double.failWith("posts", 504);
+    await publishDuePosts(new Date(), resolve);
+
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: post.id },
+      select: { ambiguous: true },
+    });
+    expect(row.ambiguous).toBe(true);
+  });
+
+  it("still retries an ordinary server error, which did not create anything", async () => {
+    const post = await scheduledPost();
+    double.failWith("posts", 500);
+    await publishDuePosts(new Date(), resolve);
+
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: post.id },
+      select: { ambiguous: true, status: true },
+    });
+    expect(row).toEqual({ ambiguous: false, status: "FAILED" });
+  });
+
+  it("refuses a person pressing Publish now on a post that may already be live", async () => {
+    const post = await scheduledPost();
+    double.publishWithoutId();
+    await publishDuePosts(new Date(), resolve);
+
+    await expect(publishNow(staff, post.id, resolve)).rejects.toBeInstanceOf(ConflictError);
+  });
+
   it("never retries a publish that may have already gone out", async () => {
     const post = await scheduledPost();
     double.publishWithoutId();
@@ -457,6 +538,156 @@ describeDb("social publishing engine", () => {
     expect(failure?.reason).toContain("Check the page before retrying");
     // The critical assertion: the engine must not queue this for another go.
     expect(failure?.willRetry).toBe(false);
+  });
+
+  it("keeps a post published when only its first comment failed, and says so", async () => {
+    const post = await scheduledPost();
+    await db.socialPost.update({ where: { id: post.id }, data: { firstComment: "#festive" } });
+    double.failWith("socialActions", 500);
+
+    await publishDuePosts(new Date(), resolve);
+
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: post.id },
+      select: { status: true, lastError: true, ambiguous: true },
+    });
+    expect(row.status).toBe("PUBLISHED");
+    expect(row.ambiguous).toBe(false);
+    expect(row.lastError).toContain("Published, but");
+  });
+
+  it("notifies when a post first fails and when it gives up, not on every retry", async () => {
+    const post = await scheduledPost();
+    const count = () =>
+      db.notification.count({ where: { entityType: "SocialPost", entityId: post.id } });
+
+    double.failWith("posts", 500);
+    await publishDuePosts(new Date(), resolve);
+    expect(await count()).toBe(1);
+
+    double.failWith("posts", 500);
+    await publishDuePosts(new Date(), resolve);
+    // Attempt two is still retrying on its own: same message, so no new ping.
+    expect(await count()).toBe(1);
+
+    double.failWith("posts", 500);
+    await publishDuePosts(new Date(), resolve);
+    // Attempt three is the last. Now a person has to act, so they hear again.
+    expect(await count()).toBe(2);
+
+    await db.notification.deleteMany({ where: { entityType: "SocialPost", entityId: post.id } });
+  });
+
+  // -------------------------------------------------------------------------
+  // Credentials and claims
+  // -------------------------------------------------------------------------
+
+  it("tells the account when the platform rejects its token, and stops retrying", async () => {
+    const post = await scheduledPost();
+    double.failWith("posts", 401);
+
+    const run = await publishDuePosts(new Date(), resolve);
+    expect(run.failed.find((entry) => entry.postId === post.id)?.willRetry).toBe(false);
+
+    // Before, the account read CONNECTED while every post failed "reconnect".
+    const account = await db.socialAccount.findUniqueOrThrow({
+      where: { id: accountA },
+      select: { status: true },
+    });
+    expect(account.status).toBe("NEEDS_RECONNECT");
+  });
+
+  it("refreshes a token that is about to expire before publishing with it", async () => {
+    await db.socialAccount.update({
+      where: { id: accountA },
+      data: {
+        refreshToken: encryptSecret("li-refresh-token"),
+        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+    double.token({ access_token: "li-fresh-token", expires_in: 5_184_000 });
+
+    const post = await scheduledPost();
+    const before = double.requests.length;
+    await publishDuePosts(new Date(), resolve);
+
+    const sent = double.requests.slice(before);
+    const refreshed = sent.findIndex((r) => r.path.endsWith("/accessToken"));
+    const posted = sent.find((r) => r.path.endsWith("/posts"));
+    expect(refreshed).toBeGreaterThanOrEqual(0);
+    // The post went out on the new token, not the dying one.
+    expect(posted?.authorization).toBe("Bearer li-fresh-token");
+
+    const row = await db.socialPost.findUniqueOrThrow({ where: { id: post.id }, select: { status: true } });
+    expect(row.status).toBe("PUBLISHED");
+
+    await db.socialAccount.update({
+      where: { id: accountA },
+      data: { accessToken: encryptSecret("li-access-token"), refreshToken: null, tokenExpiresAt: null },
+    });
+    double.token({ access_token: "li-access-token", refresh_token: "li-refresh-token", expires_in: 5_184_000 });
+  });
+
+  it("does not call the platform with a token that has already expired and cannot refresh", async () => {
+    await db.socialAccount.update({
+      where: { id: accountA },
+      data: { refreshToken: null, tokenExpiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const post = await scheduledPost();
+    const before = double.requests.filter((r) => r.path.endsWith("/posts")).length;
+    const run = await publishDuePosts(new Date(), resolve);
+
+    expect(double.requests.filter((r) => r.path.endsWith("/posts")).length).toBe(before);
+    expect(run.failed.find((entry) => entry.postId === post.id)?.reason).toContain("no longer usable");
+
+    const account = await db.socialAccount.findUniqueOrThrow({
+      where: { id: accountA },
+      select: { status: true },
+    });
+    expect(account.status).toBe("NEEDS_RECONNECT");
+    await db.socialAccount.update({ where: { id: accountA }, data: { tokenExpiresAt: null } });
+  });
+
+  it("hands the claim back when the attempt cannot be recorded, instead of stranding the post", async () => {
+    const post = await scheduledPost();
+    // The collision a stale attempt count used to cause: a row for attempt 1
+    // already exists, so recording this attempt fails.
+    await db.socialPublication.create({
+      data: {
+        postId: post.id,
+        clientId: clientA,
+        provider: "LINKEDIN",
+        status: "FAILED",
+        idempotencyKey: publicationKey(post.id, 1),
+        attempt: 1,
+      },
+    });
+
+    const before = double.requests.filter((r) => r.path.endsWith("/posts")).length;
+    await publishDuePosts(new Date(), resolve);
+
+    // Nothing sent, and the post is back where it was — not stuck in PUBLISHING.
+    expect(double.requests.filter((r) => r.path.endsWith("/posts")).length).toBe(before);
+    const row = await db.socialPost.findUniqueOrThrow({
+      where: { id: post.id },
+      select: { status: true, attemptCount: true },
+    });
+    expect(row).toEqual({ status: "SCHEDULED", attemptCount: 0 });
+  });
+
+  it("numbers the attempt from the database, not from a stale read", async () => {
+    const post = await scheduledPost();
+    // Someone else's attempt already failed and bumped the count.
+    await db.socialPost.update({ where: { id: post.id }, data: { status: "FAILED", attemptCount: 2 } });
+
+    await publishNow(staff, post.id, resolve);
+
+    const publications = await db.socialPublication.findMany({
+      where: { postId: post.id },
+      select: { idempotencyKey: true },
+    });
+    expect(publications.map((row) => row.idempotencyKey)).toEqual([publicationKey(post.id, 3)]);
   });
 
   // -------------------------------------------------------------------------

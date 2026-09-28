@@ -52,6 +52,7 @@ const postSelect = {
   externalPostId: true,
   externalUrl: true,
   lastError: true,
+  ambiguous: true,
   lastAttemptAt: true,
   attemptCount: true,
   order: true,
@@ -244,10 +245,21 @@ export async function savePost(
       // could be scheduled and published carrying words nobody agreed to. The
       // approval row keeps its own history and its snapshot; what moves is the
       // item, back to the desk it came from.
-      if (item.stage === "APPROVED") {
+      //
+      // APPROVED and SCHEDULED both mean "the client signed this off". Only
+      // checking APPROVED left a scheduled idea's copy freely editable right up
+      // to the moment it went out.
+      if (item.stage === "APPROVED" || item.stage === "SCHEDULED") {
         await tx.contentCalendarItem.update({
           where: { id: item.id },
           data: { stage: "INTERNAL_REVIEW" },
+        });
+        // Its versions are no longer cleared to go out either. Left SCHEDULED,
+        // the publisher would refuse them at the last gate — but the calendar
+        // and the queue would go on promising they were about to be posted.
+        await tx.socialPost.updateMany({
+          where: { contentItemId: item.id, status: "SCHEDULED" },
+          data: { status: "DRAFT" },
         });
       }
 

@@ -140,7 +140,7 @@ describeDb("social notifications", () => {
 
   it("does not interrupt anyone when a post simply goes out", async () => {
     const { postId } = await itemWithPost();
-    await announcePublished(postId, "https://example.com/p");
+    await announcePublished(postId);
 
     // Good news is not an interruption. Automation can act on it; a person is
     // not pinged.
@@ -168,7 +168,8 @@ describeDb("social notifications", () => {
       select: { title: true, href: true },
     });
     expect(sent.title).toContain("approved");
-    expect(sent.href).toContain(itemId);
+    // The social item page, where the approval panel lives.
+    expect(sent.href).toBe(`/admin/clients/${clientA}/social/content/${itemId}`);
   });
 
   it("passes the client's words along when they ask for changes", async () => {
@@ -187,7 +188,7 @@ describeDb("social notifications", () => {
     // The post is already on the platform by the time these run. A failing
     // notification must not become a failing publication.
     await expect(announceFailure("does-not-exist", "x", false)).resolves.toBeUndefined();
-    await expect(announcePublished("does-not-exist", null)).resolves.toBeUndefined();
+    await expect(announcePublished("does-not-exist")).resolves.toBeUndefined();
     await expect(
       announceClientDecision("does-not-exist", "APPROVED", null),
     ).resolves.toBeUndefined();

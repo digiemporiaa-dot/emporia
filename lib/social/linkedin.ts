@@ -1,6 +1,10 @@
 import "server-only";
 import { ValidationError } from "@/lib/errors";
-import { AmbiguousPublishError } from "@/lib/social/errors";
+import {
+  AmbiguousPublishError,
+  CredentialsRejectedError,
+  ProviderUnreachableError,
+} from "@/lib/social/errors";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { log } from "@/lib/logger";
 import type { SocialProvider } from "@/generated/prisma/enums";
@@ -227,11 +231,30 @@ export class LinkedInProvider implements SocialProviderAdapter {
       body["content"] = { article: { source: input.linkUrl } };
     }
 
-    const response = await this.fetch(`${this.restBase}/posts`, {
-      method: "POST",
-      headers: this.restHeaders(credentials),
-      body: JSON.stringify(body),
-    });
+    // The one non-idempotent call in the adapter. If it times out, or the
+    // gateway gives up waiting (504), LinkedIn may well have created the post
+    // and we simply never heard — so neither is an ordinary failure. Treating
+    // them as retryable is how a client's feed ends up with two copies.
+    let response: Response;
+    try {
+      response = await this.fetch(`${this.restBase}/posts`, {
+        method: "POST",
+        headers: this.restHeaders(credentials),
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      if (error instanceof ProviderUnreachableError) {
+        throw new AmbiguousPublishError(
+          "LinkedIn did not answer in time, so the post may be live. Check the page before retrying.",
+        );
+      }
+      throw error;
+    }
+    if (response.status === 504) {
+      throw new AmbiguousPublishError(
+        "LinkedIn's gateway timed out, so the post may be live. Check the page before retrying.",
+      );
+    }
 
     if (!response.ok) throw await this.error(response, "publish a post");
 
@@ -250,10 +273,52 @@ export class LinkedInProvider implements SocialProviderAdapter {
       );
     }
 
+    // The post is live from here on. Anything that fails now is reported as a
+    // warning, never thrown: throwing would mark a published post as failed
+    // and invite the retry that duplicates it.
+    const warnings: string[] = [];
+    if (input.firstComment?.trim()) {
+      const commented = await this.addComment(
+        credentials,
+        author,
+        externalPostId,
+        input.firstComment.trim(),
+      );
+      if (!commented) warnings.push("The first comment could not be added. Add it by hand.");
+    }
+
     return {
       externalPostId,
       externalUrl: `https://www.linkedin.com/feed/update/${externalPostId}`,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
+  }
+
+  /** Post the first comment under a share. Reports success rather than throwing. */
+  private async addComment(
+    credentials: ProviderCredentials,
+    author: string,
+    shareUrn: string,
+    text: string,
+  ): Promise<boolean> {
+    try {
+      const response = await this.fetch(
+        `${this.restBase}/socialActions/${encodeURIComponent(shareUrn)}/comments`,
+        {
+          method: "POST",
+          headers: this.restHeaders(credentials),
+          body: JSON.stringify({ actor: author, object: shareUrn, message: { text } }),
+        },
+      );
+      if (!response.ok) {
+        await this.error(response, "add the first comment");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      linkedinLog.error({ err: error }, "first comment could not be added");
+      return false;
+    }
   }
 
   /**
@@ -425,7 +490,7 @@ export class LinkedInProvider implements SocialProviderAdapter {
       // The underlying cause is logged rather than attached: ValidationError's
       // second argument is `details`, which is rendered to the user.
       linkedinLog.error({ err: cause, url }, "linkedin request could not be made");
-      throw new ValidationError("LinkedIn could not be reached. Try again in a moment.");
+      throw new ProviderUnreachableError("LinkedIn could not be reached. Try again in a moment.");
     } finally {
       clearTimeout(timer);
     }
@@ -445,7 +510,7 @@ export class LinkedInProvider implements SocialProviderAdapter {
     );
 
     if (response.status === 401 || response.status === 403) {
-      return new ValidationError(
+      return new CredentialsRejectedError(
         "LinkedIn rejected the credentials. Reconnect the account to grant access again.",
       );
     }

@@ -84,3 +84,14 @@ export function toReportRow(
   for (const key of METRIC_KEYS) values[key] = snapshot?.[key] ?? null;
   return { postId: post.id, provider: post.provider, ...values };
 }
+
+/**
+ * How many posts a report will aggregate before it says it stopped.
+ *
+ * Both reports used to load the newest 200 or 500 posts and present the sum as
+ * the period's total — a client with 350 posts saw understated all-time figures
+ * and nothing said so. Now a report covers everything up to this cap, which is
+ * far beyond any realistic client, and reports `truncated` if it is ever hit so
+ * the screen can say the figures are partial rather than imply they are whole.
+ */
+export const REPORT_POST_CAP = 10_000;

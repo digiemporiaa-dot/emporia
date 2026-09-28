@@ -1,4 +1,4 @@
-import { AppError } from "@/lib/errors";
+import { AppError, ValidationError } from "@/lib/errors";
 
 /**
  * The provider may or may not have published.
@@ -19,3 +19,23 @@ export class AmbiguousPublishError extends AppError {
     super("CONFLICT", 409, message);
   }
 }
+
+/**
+ * The platform could not be reached at all.
+ *
+ * On a read, or before anything has been created, this is an ordinary
+ * retryable failure. On the one request that *creates* a post it is not —
+ * the request may have landed and the answer been lost — so the adapter turns
+ * it into an `AmbiguousPublishError` at exactly that call and nowhere else.
+ */
+export class ProviderUnreachableError extends ValidationError {}
+
+/**
+ * The platform rejected our credentials.
+ *
+ * Typed so the engine can act on it rather than parse a message: the account is
+ * marked as needing reconnection, and the post is not retried automatically,
+ * because retrying with a revoked token three times buys three failures and
+ * nothing else.
+ */
+export class CredentialsRejectedError extends ValidationError {}

@@ -99,6 +99,7 @@ export default async function SocialContentItemPage({
     publishedAt: post.publishedAt?.toISOString() ?? null,
     externalUrl: post.externalUrl,
     lastError: post.lastError,
+    ambiguous: post.ambiguous,
     attempts: (attempts.get(post.id) ?? []).map((attempt) => ({
       id: attempt.id,
       attempt: attempt.attempt,

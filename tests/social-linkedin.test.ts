@@ -269,6 +269,34 @@ describe("publishing", () => {
     expect(error?.message).toContain("Check the page before retrying");
   });
 
+  it("adds the first comment under the post once it is live", async () => {
+    const before = double.requests.length;
+    const result = await provider.publish(
+      credentials,
+      account,
+      input({ firstComment: "#diwali #homestyling" }),
+    );
+
+    const sent = double.requests.slice(before);
+    const postIndex = sent.findIndex((r) => r.path.endsWith("/posts"));
+    const commentIndex = sent.findIndex((r) => r.path.endsWith("/comments"));
+    // After the post, never before: there is nothing to comment on until then.
+    expect(commentIndex).toBeGreaterThan(postIndex);
+    const body = JSON.parse(sent[commentIndex]!.body) as { message: { text: string } };
+    expect(body.message.text).toBe("#diwali #homestyling");
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it("reports a failed first comment as a warning, never as a failed post", async () => {
+    // The post is live by then. Throwing would mark it failed and invite the
+    // retry that duplicates it.
+    double.failWith("socialActions", 500);
+    const result = await provider.publish(credentials, account, input({ firstComment: "Hello" }));
+
+    expect(result.externalPostId).toBe("urn:li:share:7000000000000000001");
+    expect(result.warnings?.[0]).toContain("first comment could not be added");
+  });
+
   it("maps a rejected token to something an operator can act on", async () => {
     double.failWith("posts", 401);
     const error = await provider

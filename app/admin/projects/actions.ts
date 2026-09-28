@@ -21,7 +21,7 @@ import {
 } from "@/lib/validation/project";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
-import type { ApprovalStatus, ContentStage } from "@/generated/prisma/enums";
+import type { ContentStage } from "@/generated/prisma/enums";
 
 const actionLog = log("delivery");
 
@@ -391,7 +391,7 @@ export async function decideApprovalAction(
     await delivery.decideApproval(
       actor,
       parsed.data.approvalId,
-      parsed.data.decision as Exclude<ApprovalStatus, "PENDING">,
+      parsed.data.decision,
       parsed.data.feedback ?? null,
     );
 
