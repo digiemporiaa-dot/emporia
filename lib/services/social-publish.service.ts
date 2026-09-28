@@ -9,6 +9,7 @@ import { socialProvider } from "@/lib/social";
 import { AmbiguousPublishError } from "@/lib/social/errors";
 import { MAX_ATTEMPTS, publicationKey } from "@/lib/social/idempotency";
 import { tagLink } from "@/lib/social/utm";
+import { announceFailure, announcePublished } from "@/lib/services/social-notify.service";
 import { log } from "@/lib/logger";
 import { systemActor, type Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -333,6 +334,10 @@ async function runPublication(
       },
     });
 
+    // After the transaction, never inside it: the post is already on the
+    // platform, and a failing notification must not roll that back.
+    await announcePublished(post.id, result.externalUrl);
+
     return { postId: post.id, ok: true, externalUrl: result.externalUrl };
   } catch (error) {
     // Ambiguous means the post may be live. Never retry it automatically.
@@ -401,6 +406,8 @@ async function finishFailure(
       by: actor.type === "SYSTEM" ? "scheduler" : "staff",
     },
   });
+
+  await announceFailure(post.id, reason, willRetry);
 
   return { postId: post.id, ok: false, reason, willRetry };
 }

@@ -7,6 +7,7 @@ import { rangeFilter, type DateRange } from "@/lib/analytics/range";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { canTransitionContent } from "@/lib/projects/lifecycle";
 import { readSnapshot } from "@/lib/social/approval-snapshot";
+import { announceClientDecision } from "@/lib/services/social-notify.service";
 import type { PortalActor } from "@/lib/actor/types";
 import type { PortalMessageInput, PortalProfileInput } from "@/lib/validation/portal";
 import type { ContentStage, ProposalStatus } from "@/generated/prisma/enums";
@@ -306,6 +307,12 @@ export async function decideApproval(
     before: { status: approval.status, stage: approval.contentItem?.stage ?? null },
     after: { status: decision, stage: nextStage, by: "client" },
   });
+
+  // The agency needs to know. An approval answered and unnoticed is the most
+  // expensive silence in this workflow — it blocks everything downstream.
+  if (approval.contentItem) {
+    await announceClientDecision(approval.contentItem.id, decision, feedback);
+  }
 
   return result;
 }

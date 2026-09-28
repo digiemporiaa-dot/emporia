@@ -29,6 +29,9 @@ export const WIRED_TRIGGERS = [
   "INVOICE_OVERDUE",
   "PAYMENT_RECEIVED",
   "PROJECT_CREATED",
+  "SOCIAL_POST_PUBLISHED",
+  "SOCIAL_POST_FAILED",
+  "SOCIAL_APPROVAL_DECIDED",
 ] as const satisfies readonly AutomationTriggerType[];
 
 export type WiredTrigger = (typeof WIRED_TRIGGERS)[number];
@@ -44,6 +47,9 @@ export const TRIGGER_LABEL: Record<WiredTrigger, string> = {
   INVOICE_OVERDUE: "An invoice goes overdue",
   PAYMENT_RECEIVED: "A payment is received",
   PROJECT_CREATED: "A project is created",
+  SOCIAL_POST_PUBLISHED: "A social post goes out",
+  SOCIAL_POST_FAILED: "A social post fails to publish",
+  SOCIAL_APPROVAL_DECIDED: "A client decides on social content",
 };
 
 /** What a rule is running about. Ids are the handles actions act through. */
@@ -54,6 +60,8 @@ export type Subject = {
   invoiceId?: string | null;
   projectId?: string | null;
   paymentId?: string | null;
+  socialPostId?: string | null;
+  contentItemId?: string | null;
   /** Whoever caused the trigger, for the audit trail. Null for the system. */
   actorUserId?: string | null;
 };
@@ -88,6 +96,15 @@ export const TRIGGER_FACTS: Record<WiredTrigger, readonly FactField[]> = {
     ...invoiceFacts(),
     { key: "invoice.daysOverdue", label: "Days overdue", kind: "number" },
   ],
+  SOCIAL_POST_PUBLISHED: socialFacts(),
+  SOCIAL_POST_FAILED: [
+    ...socialFacts(),
+    { key: "social.error", label: "Why it failed", kind: "string" },
+  ],
+  SOCIAL_APPROVAL_DECIDED: [
+    ...socialFacts(),
+    { key: "social.decision", label: "The client's decision", kind: "string" },
+  ],
   PAYMENT_RECEIVED: [
     ...invoiceFacts(),
     { key: "payment.amount", label: "Payment amount", kind: "money" },
@@ -114,6 +131,19 @@ function leadFacts(): FactField[] {
     { key: "lead.company", label: "Company", kind: "string" },
     { key: "lead.email", label: "Email", kind: "string" },
     { key: "lead.assigned", label: "Already assigned", kind: "boolean" },
+  ];
+}
+
+/** What a rule can read about a social post. */
+function socialFacts(): FactField[] {
+  return [
+    { key: "social.provider", label: "Platform", kind: "string" },
+    { key: "social.type", label: "Format", kind: "string" },
+    { key: "social.title", label: "Content title", kind: "string" },
+    { key: "social.campaignName", label: "Campaign", kind: "string" },
+    { key: "social.accountName", label: "Account", kind: "string" },
+    { key: "social.attempts", label: "Attempts so far", kind: "number" },
+    { key: "client.name", label: "Client name", kind: "string" },
   ];
 }
 
