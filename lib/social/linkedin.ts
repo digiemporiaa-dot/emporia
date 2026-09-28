@@ -332,10 +332,62 @@ export class LinkedInProvider implements SocialProviderAdapter {
     };
   }
 
-  async getMetrics(): Promise<ProviderMetrics> {
-    throw new ValidationError(
-      "Reading LinkedIn metrics is not enabled in this deployment yet.",
-    );
+  /**
+   * Engagement on one published post.
+   *
+   * ## What LinkedIn will and will not tell us
+   *
+   * This connects **member** accounts (`w_member_social`), and LinkedIn does
+   * not expose impressions, reach or clicks for a member's own posts on the
+   * standard tier — those belong to organisation pages and need
+   * `r_organization_social` plus a verified company page. What is available is
+   * `socialActions`, which reports likes and comments for a share URN.
+   *
+   * So this returns likes and comments, and **null** for everything else. Not
+   * zero: zero is a measurement, and we have not measured it. The whole metric
+   * model is nullable for exactly this reason, and the reporting counts how
+   * many posts reported a figure rather than averaging nulls into it.
+   *
+   * Returning plausible zeros here would be the single easiest way to put
+   * invented numbers in front of a client.
+   */
+  async getMetrics(
+    credentials: ProviderCredentials,
+    _account: { externalId: string },
+    externalPostId: string,
+  ): Promise<ProviderMetrics> {
+    const urn = encodeURIComponent(externalPostId);
+    const response = await this.fetch(`${this.restBase}/socialActions/${urn}`, {
+      headers: this.restHeaders(credentials),
+    });
+
+    if (!response.ok) throw await this.error(response, "read post engagement");
+
+    const json = (await response.json()) as {
+      likesSummary?: { totalLikes?: unknown };
+      commentsSummary?: { aggregatedTotalComments?: unknown; totalFirstLevelComments?: unknown };
+    };
+
+    const count = (value: unknown): number | null =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+
+    return {
+      likes: count(json.likesSummary?.totalLikes),
+      comments: count(
+        json.commentsSummary?.aggregatedTotalComments ??
+          json.commentsSummary?.totalFirstLevelComments,
+      ),
+      // Deliberately absent, not zero — see above.
+      reach: null,
+      impressions: null,
+      shares: null,
+      saves: null,
+      clicks: null,
+      videoViews: null,
+      watchTimeSeconds: null,
+      profileVisits: null,
+      followersGained: null,
+    };
   }
 
   // -------------------------------------------------------------------------

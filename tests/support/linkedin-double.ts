@@ -28,11 +28,20 @@ export type LinkedInDouble = {
   failWith: (path: DoubleRoute, status: number, body?: string) => void;
   /** Answer the next publish with no id header, as LinkedIn occasionally does. */
   publishWithoutId: () => void;
+  /** Replace the engagement response. */
+  engagement: (value: object) => void;
   close: () => Promise<void>;
 };
 
 /** The endpoints the double speaks. */
-export type DoubleRoute = "accessToken" | "userinfo" | "posts" | "images" | "upload" | "asset";
+export type DoubleRoute =
+  | "accessToken"
+  | "userinfo"
+  | "posts"
+  | "images"
+  | "upload"
+  | "asset"
+  | "socialActions";
 
 export async function startLinkedInDouble(): Promise<LinkedInDouble> {
   const requests: RecordedRequest[] = [];
@@ -51,6 +60,10 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
   const failures = new Map<string, { status: number; body: string }>();
   let suppressId = false;
   let port = 0;
+  let engagementResponse: object = {
+    likesSummary: { totalLikes: 12 },
+    commentsSummary: { aggregatedTotalComments: 3 },
+  };
 
   const server: Server = createServer((req, res) => {
     let raw = "";
@@ -65,8 +78,10 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
         contentType: req.headers["content-type"] as string | undefined,
       });
 
-      const kind: DoubleRoute = path.endsWith("/accessToken")
-        ? "accessToken"
+      const kind: DoubleRoute = path.includes("/socialActions/")
+        ? "socialActions"
+        : path.endsWith("/accessToken")
+          ? "accessToken"
         : path.endsWith("/posts")
           ? "posts"
           : path.endsWith("/images")
@@ -81,6 +96,13 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
       if (failure) {
         failures.delete(kind);
         res.writeHead(failure.status, { "content-type": "application/json" }).end(failure.body);
+        return;
+      }
+
+      if (kind === "socialActions") {
+        res.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify(engagementResponse),
+        );
         return;
       }
 
@@ -137,6 +159,9 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
     failWith: (path, status, body = "{}") => failures.set(path, { status, body }),
     publishWithoutId: () => {
       suppressId = true;
+    },
+    engagement: (value) => {
+      engagementResponse = value;
     },
     close: () =>
       new Promise<void>((resolve, reject) =>

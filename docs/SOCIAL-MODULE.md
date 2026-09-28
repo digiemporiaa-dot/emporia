@@ -894,3 +894,95 @@ Gate: lint, typecheck, **1617 tests across 99 files**, production build — clea
 Phase 8 is analytics: reading metrics back from the platforms that support it,
 and the reporting that hangs off them. `SocialMetricSnapshot` has been waiting
 since Phase 1, with every metric nullable because absent is not zero.
+
+---
+
+## 10. Phase 8 — analytics
+
+`/admin/clients/[clientId]/social/analytics`, plus a collector on the cron.
+
+### Absent is not zero
+
+The whole phase is organised around one rule, and it is not a stylistic
+preference. LinkedIn tells us likes and comments for a member's post and will
+**not** tell us impressions, reach or clicks — those need an organisation page
+and `r_organization_social`, which this integration does not have. X reports
+nothing at all on the tier it targets.
+
+Recording those unknowns as `0` would be inventing data, and it compounds
+quietly: a zero flows into a sum, the sum into an average, the average into a
+slide a client is shown. So:
+
+- every metric column is nullable, and the adapter returns `null` — not `0` —
+  for anything the platform did not say;
+- a post the platform reported nothing for gets **no snapshot row at all**,
+  because a row of nulls would claim we measured and found nothing;
+- every total carries how many posts contributed to it, so a sum over 3 of 4
+  posts is never presented as a sum over 4;
+- a metric nobody reported totals to `null`, and the screen says **"Not
+  reported — no platform gave us this figure"** rather than showing a zero;
+- the per-platform table uses a dash, with "a dash means the platform did not
+  report that figure. It does not mean zero." printed under it;
+- platforms that cannot report are marked *no reporting* rather than appearing
+  to have scored nothing.
+
+Returning plausible zeros from `getMetrics` would have been the single easiest
+way to put invented numbers in front of a client, and it would have looked
+finished.
+
+### Collection
+
+One snapshot per post per day — `@@unique([postId, capturedOn])` makes a second
+run in the same day update rather than duplicate, which is right because
+engagement is cumulative on every platform here. Collection stops after
+`COLLECT_FOR_DAYS` (14): engagement is mostly settled within a fortnight, and
+asking about a six-month-old post every night spends the API budget that gets
+posts out.
+
+Sequential, like Phase 7's bulk retry and for the same reason. It runs on the
+existing `/api/cron` after publishing — a post going out in this run is worth
+asking about on the next one, and reading metrics must never delay something
+going live. A metrics failure is logged and reported but never makes the
+endpoint look like publishing broke.
+
+### The report
+
+Stat tiles and tables, **no charts**. Four headline numbers are a KPI row, not a
+grouped bar chart; a ten-metric per-platform breakdown is a table, because ten
+series is past the point anyone can tell colours apart — and the brand palette
+is navy, red and white, which has no categorical hues to spend anyway.
+
+"Engagement" ranks the top posts and appears nowhere else. It is a sum of
+whatever happened to be reported, so it is comparable between two posts on the
+same platform and not across platforms that count different things — the screen
+says exactly that. Posts with no figures are left out of the ranking rather than
+ranked zero.
+
+### A structural fix on the way
+
+The report is a client component and needs the metric keys and labels, but they
+were sitting in a `server-only` service — which failed the build by dragging the
+database into the browser bundle. They moved to `lib/social/metrics.ts`:
+constants both sides need are not service internals. Same lesson as the label
+consolidation in Phase 4.
+
+### Verified in a browser
+
+With four published posts and figures for three of them:
+
+- Impressions and Clicks read **"Not reported — no platform gave us this
+  figure"**; Likes and Comments show real totals with *from 3 of 4 posts* under
+  each.
+- The coverage note reads "1 of 4 posts have no figures yet."
+- The platform table shows dashes with the disclaimer, and the ranking lists
+  only posts that actually reported something.
+- The period control drives the URL (`?range=7d`).
+- No page errors; no horizontal overflow at 1440px or 375px.
+
+Gate: lint, typecheck, **1639 tests across 100 files**, production build — clean.
+
+### Next
+
+Phase 9 is AI content assistance — drafting captions per platform, through the
+existing `AIService`, as drafts that are always editable and never auto-posted,
+and never permitted to invent a metric.
