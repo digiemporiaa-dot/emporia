@@ -5,6 +5,7 @@ import { can } from "@/lib/auth/rbac";
 import { socialProvider } from "@/lib/social";
 import { OAUTH_STATE_COOKIE, callbackUrl, readState } from "@/lib/social/oauth-state";
 import { assertConnectable, connectAccount } from "@/lib/services/social-account.service";
+import { startPendingConnection } from "@/lib/services/social-pending.service";
 import { isAppError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { siteOrigin } from "@/lib/seo/urls";
@@ -115,6 +116,43 @@ export async function GET(
 
   try {
     const credentials = await adapter.exchangeCode(code, callbackUrl(provider));
+
+    // One sign-in, several accounts (a Facebook user's Pages). With exactly
+    // one there is nothing to ask; otherwise the operator chooses, and the
+    // grant waits server-side — encrypted, minutes, never in the browser.
+    if (adapter.listAccounts && adapter.selectAccount) {
+      const accounts = await adapter.listAccounts(credentials);
+      if (accounts.length === 0) return back(state.value.returnTo, "no-accounts");
+
+      if (accounts.length > 1) {
+        const pendingId = await startPendingConnection(actor, {
+          clientId: state.value.clientId,
+          provider,
+          credentials,
+          accounts,
+          returnTo: state.value.returnTo,
+        });
+        const response = NextResponse.redirect(
+          new URL(
+            `/admin/clients/${state.value.clientId}/social/accounts/choose/${pendingId}`,
+            siteOrigin(),
+          ),
+        );
+        response.cookies.delete(OAUTH_STATE_COOKIE);
+        return response;
+      }
+
+      const selected = await adapter.selectAccount(credentials, accounts[0]!.externalId);
+      assertConnectable(selected.account);
+      await connectAccount(actor, {
+        clientId: state.value.clientId,
+        provider,
+        account: selected.account,
+        credentials: selected.credentials,
+      });
+      return back(state.value.returnTo, "connected");
+    }
+
     const account = await adapter.getAccount(credentials);
     assertConnectable(account);
 

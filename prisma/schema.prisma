@@ -504,8 +504,9 @@ model User {
   blogPosts          BlogPost[]
   pageVersions       PageVersion[]         @relation("PageVersionAuthor")
 
-  socialAccountsConnected SocialAccount[]     @relation("SocialAccountConnectedBy")
-  socialPublications      SocialPublication[] @relation("SocialPublicationTriggeredBy")
+  socialAccountsConnected  SocialAccount[]           @relation("SocialAccountConnectedBy")
+  socialPendingConnections SocialPendingConnection[]
+  socialPublications       SocialPublication[]       @relation("SocialPublicationTriggeredBy")
 
   @@index([type, status])
   @@index([roleId])
@@ -1642,24 +1643,25 @@ model Client {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  portalUsers        User[]                 @relation("ClientPortalUsers")
-  contacts           ClientContact[]
-  convertedFrom      Lead[]                 @relation("LeadConversion")
-  opportunities      Opportunity[]
-  proposals          Proposal[]
-  contracts          Contract[]
-  projects           Project[]
-  campaigns          Campaign[]
-  invoices           Invoice[]
-  payments           Payment[]
-  retainers          Retainer[]
-  contentItems       ContentCalendarItem[]
-  approvals          Approval[]
-  messages           ClientMessage[]
-  socialAccounts     SocialAccount[]
-  socialPosts        SocialPost[]
-  socialPublications SocialPublication[]
-  socialMetrics      SocialMetricSnapshot[]
+  portalUsers              User[]                    @relation("ClientPortalUsers")
+  contacts                 ClientContact[]
+  convertedFrom            Lead[]                    @relation("LeadConversion")
+  opportunities            Opportunity[]
+  proposals                Proposal[]
+  contracts                Contract[]
+  projects                 Project[]
+  campaigns                Campaign[]
+  invoices                 Invoice[]
+  payments                 Payment[]
+  retainers                Retainer[]
+  contentItems             ContentCalendarItem[]
+  approvals                Approval[]
+  messages                 ClientMessage[]
+  socialAccounts           SocialAccount[]
+  socialPendingConnections SocialPendingConnection[]
+  socialPosts              SocialPost[]
+  socialPublications       SocialPublication[]
+  socialMetrics            SocialMetricSnapshot[]
 
   @@index([deletedAt])
   @@index([ownerId])
@@ -2750,6 +2752,39 @@ model SocialAccount {
   @@index([provider, status])
   @@index([avatarId])
   @@index([connectedById])
+}
+
+/// A sign-in that can reach several accounts, waiting for the operator to say
+/// which one this client means.
+///
+/// One Facebook login manages many Pages; one Google login many business
+/// locations. The OAuth callback cannot guess, so it parks the grant here and
+/// sends the operator to a picker. Only the user-level token is kept, encrypted,
+/// for a few minutes; the Page or location token is fetched at the moment of
+/// choosing and goes straight onto the SocialAccount, never through the browser.
+model SocialPendingConnection {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  provider SocialProvider
+
+  /// Only the operator who signed in may finish it: the grant is their login.
+  startedById String
+  startedBy   User   @relation(fields: [startedById], references: [id], onDelete: Cascade)
+
+  /// Encrypted JSON of the user-level credentials. Never returned by a service.
+  credentials String
+  /// What the picker shows: id, name, username, profile URL. Never a token.
+  options     Json
+  returnTo    String
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([startedById])
+  @@index([expiresAt])
 }
 
 /// One platform's version of one content idea.

@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { decryptSecret } from "@/lib/security/secret";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { FacebookProvider } from "@/lib/social/facebook";
 import { InstagramProvider } from "@/lib/social/instagram";
 import { LinkedInProvider } from "@/lib/social/linkedin";
 import { UnconfiguredSocialProvider } from "@/lib/social/unconfigured";
@@ -17,8 +18,8 @@ import type { SocialProviderAdapter } from "@/lib/social/types";
  * The secret half is encrypted at rest with `lib/security/secret`.
  *
  * Adapters arrive one platform at a time, because each platform's API is a
- * piece of work in its own right. LinkedIn and Instagram are implemented; the
- * rest resolve to
+ * piece of work in its own right. LinkedIn, Instagram and Facebook are
+ * implemented; the rest resolve to
  * `UnconfiguredSocialProvider`, which reports its capabilities and refuses
  * every call with a typed error. That is deliberate — a half-written adapter
  * that silently no-ops is worse than an honest "Not configured" on the screen.
@@ -71,7 +72,11 @@ export async function appConfig(provider: SocialProvider): Promise<SocialAppConf
 }
 
 /** Which providers have a real adapter written, configured or not. */
-const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>(["LINKEDIN", "INSTAGRAM"]);
+const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>([
+  "LINKEDIN",
+  "INSTAGRAM",
+  "FACEBOOK",
+]);
 
 /**
  * The adapter for a provider.
@@ -93,6 +98,8 @@ export async function socialProvider(
       return new LinkedInProvider(config);
     case "INSTAGRAM":
       return new InstagramProvider(config);
+    case "FACEBOOK":
+      return new FacebookProvider(config);
     default:
       return new UnconfiguredSocialProvider(provider);
   }

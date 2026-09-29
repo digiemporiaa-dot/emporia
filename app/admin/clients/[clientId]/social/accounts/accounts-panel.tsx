@@ -61,6 +61,14 @@ const OUTCOME: Record<string, { tone: "success" | "error"; text: string }> = {
     tone: "error",
     text: "That provider is not configured yet. Add its app credentials in Settings first.",
   },
+  expired: {
+    tone: "error",
+    text: "That sign-in waited too long and has expired. Connect again.",
+  },
+  "no-accounts": {
+    tone: "error",
+    text: "That sign-in does not manage any account that can be connected. Check it has admin access to the Page.",
+  },
   "already-connected": {
     tone: "error",
     text: "That account is already connected to another client.",
