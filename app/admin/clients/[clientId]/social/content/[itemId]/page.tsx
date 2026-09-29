@@ -101,6 +101,7 @@ export default async function SocialContentItemPage({
     externalUrl: post.externalUrl,
     lastError: post.lastError,
     ambiguous: post.ambiguous,
+    aiDraft: post.aiDraftedAt !== null,
     attempts: (attempts.get(post.id) ?? []).map((attempt) => ({
       id: attempt.id,
       attempt: attempt.attempt,
@@ -126,6 +127,8 @@ export default async function SocialContentItemPage({
     fields: [...CAPABILITIES[provider].fields],
     captionLimit: CAPABILITIES[provider].captionLimit,
     carouselLimit: CAPABILITIES[provider].carouselLimit,
+    lengthRule: CAPABILITIES[provider].lengthRule ?? "characters",
+    linkInText: CAPABILITIES[provider].linkInText === true,
     callToActionOptions: (CAPABILITIES[provider].callToActionOptions ?? []).map(({ value, label }) => ({
       value,
       label,

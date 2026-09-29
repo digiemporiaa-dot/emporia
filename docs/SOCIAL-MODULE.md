@@ -2233,3 +2233,150 @@ Editing needs `social.edit`; `social.view` can read.
     created were removed.
 - **Gate:** lint, typecheck, **1903 tests across 115 files**, production build.
   All clean.
+
+---
+
+## 22. Gap phase 2 — the AI assists, and repurposing
+
+Brief sections 25–26. Phase 9 had shipped one assist, a caption drafted from
+the brief. The rest are built now, all inside the existing `AIService`: no new
+abstraction and no direct provider call. Each new task joins the same budget
+table, the same audit trail and the same `Draft<T>` wrapper.
+
+### What each assist does
+
+| Brief asked for | Where | Task |
+|---|---|---|
+| Generate caption | version card, *Draft* | `draftSocialPost` (existing) |
+| Create LinkedIn / Instagram / Facebook version | version card, *Based on: the Instagram version* | `draftSocialPost` with `fromPostId` |
+| Improve caption | version card, *Improve caption* | `assistSocialCopy` (`improve`) |
+| Generate hashtags | version card, *Suggest hashtags* | `assistSocialCopy` (`hashtags`) |
+| Create CTA | version card, *Suggest a call to action* | `assistSocialCopy` (`cta`) |
+| Repurpose blog into social posts | content page, *Repurpose an article* | `repurposeContent` |
+| Generate campaign ideas | content page, *Suggest ideas* | `generateContentIdeas` |
+
+*Generate monthly content calendar* belongs to the monthly planner (gap phase
+3) and is not here.
+
+Every assist reads the client's brand kit (section 21) through one builder,
+`socialContext`, so all of them hear the same voice and the same forbidden
+words. Forbidden words are checked on every result and shown, never silently
+edited out. The system prompts share one rules block, and "never invent a
+fact" comes first in each.
+
+### Each one bounded, not trusted
+
+- **Adapting a version:** only a version of *the same idea* can be adapted.
+  An id from the browser is not a way to read another idea's (or another
+  client's) copy. The model is told to adapt, not copy.
+- **Improve:** it works on the caption as it stands in the editor, unsaved
+  edits included, and is told to keep its facts and add none. There is nothing
+  to improve in an empty caption, so that is refused before the model is
+  called.
+- **Hashtags:** refused where the platform has none. The brand's own tags are
+  added.
+- **Call to action:**
+  - On Google Business Profile the model may pick only one of Google's
+    buttons, enforced by the schema's enum and checked again on the way back.
+    Anything else is an error, not a button.
+  - Elsewhere it writes a closing line, which the editor appends to the
+    caption.
+- **Repurposing:**
+  - **The source:** a pasted article (title, text, optional link) or one of
+    the site's *published* blog posts. A draft blog post is refused, as is
+    text too short to repurpose. Nothing is fetched from a URL on the server,
+    so there is no request-forgery surface.
+  - **What the model is told:** every word comes from the article.
+  - **How each post is bounded:** fields the platform lacks are dropped. The
+    article's link goes on platforms that take one, and the publishing engine
+    adds the campaign tracking parameters. The caption is **fitted the way the
+    editor counts** (`fitCaption`, using the same `textLength` as validation),
+    so an X post that fits the model's idea of 280 but not X's is trimmed
+    until it saves.
+  - **Skipped platforms:** a platform the model skipped is simply missing,
+    never invented.
+  - **Extras:** optional carousel slide copy and a video script. They go into
+    the new idea's brief, labelled as AI drafts, where the designer works from
+    them.
+- **Ideas:**
+  - The model is told the client's facts, strategy objectives, pillars and
+    their 30 most recent ideas, and told not to repeat them. Repeats are
+    filtered anyway.
+  - A pillar is assigned only by exact name from the client's own list; a
+    pillar the model made up becomes no pillar.
+  - Nothing is created until a person presses *Add* on an idea, which makes an
+    ordinary draft idea.
+
+### AI drafts stay drafts until a person puts their name to them
+
+Repurposing is the one assist that writes, because the brief asks for its
+outputs to become separate editable platform versions. It writes only when
+the person presses *Create* after reading the preview, and what it writes is
+marked:
+
+- **`SocialPost.aiDraftedAt`** is set on every version repurposing creates.
+  The editor shows **AI draft — check and save**, and the content list shows
+  *AI draft*.
+- **A person saving the version clears it.** `savePost` always sets it back
+  to null: whoever wrote the first words, a person has now put their name to
+  them.
+- **An unsaved AI draft cannot be sent to the client.** The approval
+  readiness check refuses with *"The LinkedIn version is an unreviewed AI
+  draft. Open it, check it and save it first."* The snapshot the client sees
+  maps fields by name, so the flag never reaches the portal.
+- **Checked before anything is written:** the versions come back from the
+  browser, since the person may have edited them in the preview. They are
+  validated exactly as typed copy is, *before* anything is written, so a bad
+  one leaves nothing behind. The idea is made by `createSocialContent` (which
+  proves project, campaign and pillar are the client's) and each version by
+  `savePost`.
+- **Linked to the article:** an idea repurposed from a site blog post keeps
+  `ContentCalendarItem.sourceBlogPostId`.
+
+### Found along the way
+
+- **The editor's X counter disagreed with the save.** It counted caption plus
+  hashtags, while saving (since section 20) also counts the link, as 23, and
+  emoji twice.
+  - The counter now calls the same `textLength` and says so.
+  - Checked in a browser: an 80-character caption with `#sofas` and a link
+    reads *111 / 280*, and adding two emoji makes it *116*.
+- **A stored AI setting from an earlier verification session** points at a
+  local Gemini stub (`127.0.0.1:4321`). It was left untouched. For this
+  phase's browser check it was pointed at this phase's stub and then restored
+  exactly.
+
+### Verified
+
+- **Tests:** 17 new, in `tests/social-ai-assist.db.test.ts`.
+  - Adapting: across platforms, and refused for another idea's version before
+    any call.
+  - Polishing: improve, with forbidden words flagged; empty text refused
+    before any call; hashtags, with brand tags added and refused on Business
+    Profile; the Business Profile CTA limited to Google's buttons, with an
+    invented button rejected; a closing line elsewhere.
+  - Repurposing: an article's words and link, X fitted to the editor's rule
+    (checked with the real schema), fields dropped per platform, an unasked
+    script dropped, nothing written; a skipped platform stays missing; an
+    unpublished article, a scrap of text and a wrong format all refused before
+    any call.
+  - Creating: one idea with marked versions linked to the article; an
+    unreviewed draft refused for approval and then accepted once a person
+    saves it; a bad version leaving nothing behind; another client's project
+    refused; a portal user refused.
+  - Ideas: pillars only from the client's own list, repeats skipped, nothing
+    created; another client's campaign refused; `ai.use` required for each
+    assist.
+  - Mutation-checked: removing the same-idea check, the caption fitting, the
+    pillar name match or the AI-draft approval block each fails a test.
+- **Browser (against a local AI stub):**
+  - Repurposing a pasted article to LinkedIn and X previews both, and creates
+    one idea with two versions marked *AI draft*, each carrying the article's
+    link.
+  - *Improve caption* then *Suggest a call to action* put the improved caption
+    and appended line in the form. Saving cleared that version's mark, and the
+    other kept its own.
+  - *Suggest ideas* then *Add* created exactly one idea.
+  - No page errors. Test rows were removed and the AI setting restored.
+- **Gate:** lint, typecheck, **1920 tests across 116 files**, production build.
+  All clean.

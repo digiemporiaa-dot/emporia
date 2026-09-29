@@ -1260,6 +1260,9 @@ model BlogPost {
 
   tags BlogPostTag[]
 
+  /// Social ideas repurposed from this article.
+  socialContent ContentCalendarItem[] @relation("ContentFromBlogPost")
+
   @@index([status, publishedAt])
   @@index([categoryId])
   @@index([authorId])
@@ -1917,6 +1920,11 @@ model ContentCalendarItem {
   pillarId String?
   pillar   ContentPillar? @relation(fields: [pillarId], references: [id], onDelete: SetNull)
 
+  /// The article this idea was repurposed from, when it came from one of the
+  /// site's own blog posts. Nulled if the article is deleted.
+  sourceBlogPostId String?
+  sourceBlogPost   BlogPost? @relation("ContentFromBlogPost", fields: [sourceBlogPostId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1926,6 +1934,7 @@ model ContentCalendarItem {
   @@index([clientId, stage])
   @@index([campaignId])
   @@index([pillarId])
+  @@index([sourceBlogPostId])
   @@index([scheduledFor])
   @@index([projectId])
   @@index([ownerId])
@@ -2944,6 +2953,10 @@ model SocialPost {
   ambiguous     Boolean   @default(false)
   lastAttemptAt DateTime?
   attemptCount  Int       @default(0)
+  /// Set when the AI wrote this version and no person has saved it since.
+  /// Shown as "AI draft", and such a version cannot be sent to the client:
+  /// every AI result is a draft until a person has put their name to it.
+  aiDraftedAt   DateTime?
 
   /// Ordering within a content item, so the editor lists versions predictably.
   order Int @default(0)

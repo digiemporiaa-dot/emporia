@@ -10,7 +10,16 @@ import {
   withdrawSocialApproval,
 } from "@/lib/services/social-approval.service";
 import { publishNow } from "@/lib/services/social-publish.service";
-import { draftSocialPost } from "@/lib/services/ai.service";
+import {
+  assistSocialCopy,
+  draftSocialPost,
+  generateContentIdeas,
+  repurposeContent,
+  type ContentIdeaDraft,
+  type RepurposeDraft,
+  type SocialAssistDraft,
+} from "@/lib/services/ai.service";
+import { createRepurposedContent } from "@/lib/services/social-repurpose.service";
 import { socialPostSchema } from "@/lib/validation/social";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -248,6 +257,7 @@ export async function draftCaptionAction(input: unknown): Promise<
           .transform((value) => (value === "" ? null : value))
           .nullable()
           .default(null),
+        fromPostId: z.string().trim().max(40).nullable().default(null),
       })
       .safeParse(input);
     if (!parsed.success) {
@@ -259,6 +269,7 @@ export async function draftCaptionAction(input: unknown): Promise<
       provider: parsed.data.provider,
       type: parsed.data.type,
       instruction: parsed.data.instruction,
+      fromPostId: parsed.data.fromPostId || null,
     });
 
     // Returned to the browser, never written. The editor puts it in the form
@@ -296,6 +307,196 @@ export async function setContentPillarAction(input: unknown): Promise<ActionResu
     return { ok: true, data: { id: item.id } };
   } catch (error) {
     actionLog.error({ err: error }, "setting a content pillar failed");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI assists. Each returns a draft to the browser; only the two "create"
+// actions write, and they write drafts a person still has to review.
+// ---------------------------------------------------------------------------
+
+const PROVIDER_ENUM = z.enum(["INSTAGRAM", "FACEBOOK", "LINKEDIN", "YOUTUBE", "X", "GOOGLE_BUSINESS_PROFILE"]);
+const optionalSteer = z
+  .string()
+  .trim()
+  .max(500)
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .default(null);
+
+export async function assistCopyAction(
+  input: unknown,
+): Promise<ActionResult<SocialAssistDraft & { model: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = z
+      .object({
+        itemId: z.string().min(1).max(40),
+        provider: PROVIDER_ENUM,
+        mode: z.enum(["improve", "hashtags", "cta"]),
+        text: z.string().max(10_000).default(""),
+        instruction: optionalSteer,
+      })
+      .safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That request could not be read." };
+
+    const draft = await assistSocialCopy(actor, {
+      contentItemId: parsed.data.itemId,
+      provider: parsed.data.provider,
+      mode: parsed.data.mode,
+      text: parsed.data.text,
+      instruction: parsed.data.instruction,
+    });
+    return { ok: true, data: { ...draft.data, model: draft.model } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "social copy assist failed");
+    return toActionFailure(error);
+  }
+}
+
+const repurposeSchema = z.object({
+  clientId: z.string().min(1).max(40),
+  pillarId: z.string().trim().max(40).nullable().default(null),
+  source: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("blog"), blogPostId: z.string().min(1).max(40) }),
+    z.object({
+      kind: z.literal("text"),
+      title: z.string().trim().min(2, "Give the article its title.").max(300),
+      text: z.string().trim().min(1, "Paste the article.").max(40_000),
+      url: z
+        .string()
+        .trim()
+        .url("The article's link must be a full URL.")
+        .max(2_000)
+        .nullable()
+        .or(z.literal("").transform(() => null))
+        .default(null),
+    }),
+  ]),
+  targets: z
+    .array(z.object({ provider: PROVIDER_ENUM, type: z.string().min(1).max(40) }))
+    .min(1, "Choose at least one platform.")
+    .max(6),
+  carousel: z.boolean().default(false),
+  videoScript: z.boolean().default(false),
+  instruction: optionalSteer,
+});
+
+export async function repurposeAction(
+  input: unknown,
+): Promise<ActionResult<RepurposeDraft & { model: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = repurposeSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check those details." };
+    }
+    const draft = await repurposeContent(actor, parsed.data);
+    return { ok: true, data: { ...draft.data, model: draft.model } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "repurposing content failed");
+    return toActionFailure(error);
+  }
+}
+
+const createRepurposedSchema = z.object({
+  clientId: z.string().min(1).max(40),
+  projectId: z.string().min(1, "Choose a project.").max(40),
+  campaignId: z.string().trim().max(40).nullable().default(null),
+  pillarId: z.string().trim().max(40).nullable().default(null),
+  title: z.string().trim().min(2).max(200),
+  brief: z.string().trim().max(5_000).nullable().default(null),
+  sourceBlogPostId: z.string().trim().max(40).nullable().default(null),
+  versions: z
+    .array(
+      z.object({
+        provider: PROVIDER_ENUM,
+        type: z.string().min(1).max(40),
+        caption: z.string().max(10_000),
+        headline: z.string().max(300).nullable(),
+        hashtags: z.array(z.string().max(100)).max(30),
+        linkUrl: z.string().max(2_000).nullable(),
+      }),
+    )
+    .min(1)
+    .max(6),
+});
+
+export async function createRepurposedAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = createRepurposedSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check those details." };
+    }
+    const item = await createRepurposedContent(actor, {
+      ...parsed.data,
+      campaignId: parsed.data.campaignId || null,
+      pillarId: parsed.data.pillarId || null,
+      sourceBlogPostId: parsed.data.sourceBlogPostId || null,
+    });
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/content`);
+    return { ok: true, data: item };
+  } catch (error) {
+    actionLog.error({ err: error }, "creating repurposed content failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function ideasAction(input: unknown): Promise<ActionResult<ContentIdeaDraft & { model: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = z
+      .object({
+        clientId: z.string().min(1).max(40),
+        campaignId: z.string().trim().max(40).nullable().default(null),
+        pillarId: z.string().trim().max(40).nullable().default(null),
+        count: z.coerce.number().int().min(3).max(10).default(5),
+        instruction: optionalSteer,
+      })
+      .safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That request could not be read." };
+    const draft = await generateContentIdeas(actor, {
+      ...parsed.data,
+      campaignId: parsed.data.campaignId || null,
+      pillarId: parsed.data.pillarId || null,
+    });
+    return { ok: true, data: { ...draft.data, model: draft.model } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "suggesting content ideas failed");
+    return toActionFailure(error);
+  }
+}
+
+/** Keep one suggested idea: it becomes an ordinary draft idea, nothing more. */
+export async function addIdeaAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = z
+      .object({
+        clientId: z.string().min(1).max(40),
+        projectId: z.string().min(1, "Choose a project.").max(40),
+        campaignId: z.string().trim().max(40).nullable().default(null),
+        pillarId: z.string().trim().max(40).nullable().default(null),
+        title: z.string().trim().min(2).max(200),
+        brief: z.string().trim().max(5_000).nullable().default(null),
+      })
+      .safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check those details." };
+    }
+    const item = await createSocialContent(actor, {
+      ...parsed.data,
+      campaignId: parsed.data.campaignId || null,
+      pillarId: parsed.data.pillarId || null,
+      ownerId: null,
+      scheduledFor: null,
+    });
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/content`);
+    return { ok: true, data: item };
+  } catch (error) {
+    actionLog.error({ err: error }, "adding a suggested idea failed");
     return toActionFailure(error);
   }
 }

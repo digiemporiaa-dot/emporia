@@ -21,7 +21,11 @@ import { ai } from "@/lib/ai";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
 import { SYSTEM_PROMPTS, factBlock } from "@/lib/ai/prompts";
-import { brandKitForPrompt } from "@/lib/services/social-brand.service";
+import { assertPillarForClient, brandKitForPrompt } from "@/lib/services/social-brand.service";
+import { textLength } from "@/lib/social/text-length";
+import { parseBody, postBodySchema } from "@/lib/content/entity-body";
+import { inlineToText } from "@/lib/content/inline";
+import { siteOrigin } from "@/lib/seo/urls";
 import {
   LEAD_ASSESSMENT_SCHEMA,
   LEAD_SUMMARY_SCHEMA,
@@ -90,6 +94,11 @@ const BUDGET: Record<AITask, { limit: number; windowMs: number }> = {
   // Drafting one idea across several platforms is several calls in a row, and
   // trying two or three tones for each is ordinary work, not a stuck loop.
   draftSocialPost: { limit: 40, windowMs: 60_000 },
+  // Improving and suggesting are the small, repeated nudges of editing.
+  assistSocialCopy: { limit: 60, windowMs: 60_000 },
+  // One call writes several platforms' posts, so fewer are needed.
+  repurposeContent: { limit: 10, windowMs: 60_000 },
+  generateContentIdeas: { limit: 10, windowMs: 60_000 },
 };
 
 async function guardBudget(actor: Actor, task: AITask): Promise<void> {
@@ -795,36 +804,98 @@ export function forbiddenWordsIn(text: string, words: readonly string[]): string
   });
 }
 
-/**
- * Draft one platform's version of an idea.
- *
- * Built from the idea's own brief and the client's own name — facts already in
- * the database — and bounded by the platform's declared capabilities, so the
- * model is told the real character limit and only asked for the fields that
- * platform actually accepts. A LinkedIn draft and an Instagram draft of the
- * same idea are two calls with two different briefs, which is the whole reason
- * versions exist.
- *
- * The result is a `Draft`, like every other assist: labelled, editable, and
- * written nowhere until a person saves it. Nothing here can publish
- * (CLAUDE.md 16).
- */
-export async function draftSocialPost(
-  actor: Actor,
-  input: { contentItemId: string; provider: SocialProvider; type: string; instruction: string | null },
-): Promise<Draft<SocialCaptionDraft>> {
-  requirePermission(actor, "ai.use");
-  requirePermission(actor, "social.edit");
-  await guardBudget(actor, "draftSocialPost");
+// ---------------------------------------------------------------------------
+// Social: shared context
+// ---------------------------------------------------------------------------
 
+/**
+ * What every social task is told about the client, from the client's own
+ * brand kit. One builder, so a caption, a hashtag suggestion and a
+ * repurposed article all hear the same voice and the same forbidden words.
+ */
+async function socialContext(
+  client: { id: string; name: string; industry: string | null },
+  pillarId: string | null,
+) {
+  const { profile: brand, pillar } = await brandKitForPrompt(client.id, pillarId);
+  return {
+    facts: {
+      client: brand?.brandName ?? client.name,
+      industry: brand?.industry ?? client.industry,
+      "content pillar": pillar ? [pillar.name, pillar.description].filter(Boolean).join(" — ") : null,
+      tone: brand?.tone,
+      audience: brand?.targetAudience,
+      language: brand?.preferredLanguage,
+      "call-to-action style": brand?.ctaStyle,
+      "emojis the brand uses": brand?.preferredEmojis.length ? brand.preferredEmojis.join(" ") : null,
+      "posting rules": brand?.postingRules,
+    } as Record<string, string | number | null | undefined>,
+    forbidden: brand?.forbiddenWords ?? [],
+    brandHashtags: brand?.hashtags ?? [],
+  };
+}
+
+function forbiddenRule(forbidden: readonly string[]): string {
+  return forbidden.length > 0 ? `Never use these words or phrases: ${forbidden.join(", ")}.` : "";
+}
+
+/** Normalised the same way the editor normalises typed tags, so they cannot differ. */
+function normaliseTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim().replace(/^#+/, ""))
+    .filter((tag) => tag.length > 0 && /^[\p{L}\p{N}_]+$/u.test(tag))
+    .slice(0, 30);
+}
+
+/** The brand's always-on hashtags, added where missing. Deterministic, so not asked for. */
+function withBrandTags(tags: readonly string[], brandTags: readonly string[]): string[] {
+  const merged = [...tags];
+  for (const tag of brandTags) {
+    if (!merged.some((existing) => existing.toLowerCase() === tag.toLowerCase())) merged.push(tag);
+  }
+  return merged.slice(0, 30);
+}
+
+/**
+ * Trim a caption until the whole post fits the platform, counted the way the
+ * editor's validation counts it — hashtags, mentions and an in-text link
+ * included, X's weighting applied. A draft that fits the model's idea of the
+ * limit but fails the editor's is a draft nobody can save.
+ */
+function fitCaption(
+  provider: SocialProvider,
+  caption: string,
+  hashtags: readonly string[],
+  linkUrl: string | null,
+): string {
+  const capability = CAPABILITIES[provider];
+  if (capability.captionLimit === null) return caption;
+  const extras = [
+    ...hashtags.map((tag) => `#${tag}`),
+    ...(capability.linkInText && linkUrl ? [linkUrl] : []),
+  ];
+  const measure = (text: string) => textLength([text, ...extras].join(" "), capability.lengthRule);
+  let fitted = caption;
+  while (fitted && measure(fitted) > capability.captionLimit) {
+    const over = measure(fitted) - capability.captionLimit;
+    fitted = [...fitted].slice(0, Math.max(0, [...fitted].length - Math.max(1, over))).join("").trimEnd();
+  }
+  return fitted;
+}
+
+/** The idea, its client and campaign, proven visible to the actor. */
+async function socialItem(actor: Actor, contentItemId: string) {
   const item = await db.contentCalendarItem.findUnique({
-    where: { id: input.contentItemId },
+    where: { id: contentItemId },
     select: {
+      id: true,
       title: true,
       brief: true,
       clientId: true,
       pillarId: true,
-      client: { select: { name: true, industry: true } },
+      client: { select: { id: true, name: true, industry: true } },
       campaign: { select: { name: true } },
     },
   });
@@ -832,23 +903,62 @@ export async function draftSocialPost(
   // Same isolation as every other social read: an actor who may not see the
   // client may not have its content drafted either.
   await resolveClientScope(actor, item.clientId);
+  return item;
+}
 
-  // The client's own brand kit: how they sound, what they avoid, which pillar
-  // this idea serves. All of it written by the agency, none of it invented.
-  const { profile: brand, pillar } = await brandKitForPrompt(item.clientId, item.pillarId);
-  const forbidden = brand?.forbiddenWords ?? [];
+// ---------------------------------------------------------------------------
+// Social: drafting a version
+// ---------------------------------------------------------------------------
 
-  const capability = CAPABILITIES[input.provider];
-  const wantsHeadline = capability.fields.includes("headline");
-  const wantsHashtags = capability.fields.includes("hashtags");
+/**
+ * Draft one platform's version of an idea — from its brief, or adapted from
+ * another platform's version of the same idea ("Create LinkedIn version").
+ *
+ * Bounded by the platform's declared capabilities and written in the client's
+ * brand voice. The result is a `Draft`, written nowhere until a person saves
+ * it. Nothing here can publish (CLAUDE.md 16).
+ */
+export async function draftSocialPost(
+  actor: Actor,
+  input: {
+    contentItemId: string;
+    provider: SocialProvider;
+    type: string;
+    instruction: string | null;
+    /** Another version of the same idea to adapt, rather than the brief. */
+    fromPostId?: string | null;
+  },
+): Promise<Draft<SocialCaptionDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "social.edit");
+  await guardBudget(actor, "draftSocialPost");
+
+  const item = await socialItem(actor, input.contentItemId);
+
+  // Adapting is from a sibling version only: an id from the browser is not a
+  // way to read another idea's — or another client's — copy.
+  const source = input.fromPostId
+    ? await db.socialPost.findFirst({
+        where: { id: input.fromPostId, contentItemId: item.id },
+        select: { provider: true, caption: true, headline: true, hashtags: true },
+      })
+    : null;
+  if (input.fromPostId && !source) throw new NotFoundError("That version is not part of this idea.");
+  if (source && !source.caption?.trim()) {
+    throw new ValidationError("That version has no caption yet, so there is nothing to adapt.");
+  }
 
   // A caption drafted from nothing is a guess dressed as a draft.
-  if (!item.brief?.trim() && !item.title.trim()) {
+  if (!source && !item.brief?.trim() && !item.title.trim()) {
     throw new ValidationError(
       "Write the brief first. A caption drafted from an empty idea is invention, not assistance.",
     );
   }
 
+  const context = await socialContext(item.client, item.pillarId);
+  const capability = CAPABILITIES[input.provider];
+  const wantsHeadline = capability.fields.includes("headline");
+  const wantsHashtags = capability.fields.includes("hashtags");
   const limit = capability.captionLimit ?? 2_000;
 
   const result = await (await ai()).completeStructured<SocialCaptionDraft>({
@@ -856,24 +966,28 @@ export async function draftSocialPost(
     system: SYSTEM_PROMPTS.draftSocialPost,
     prompt: [
       factBlock({
-        client: brand?.brandName ?? item.client.name,
-        industry: brand?.industry ?? item.client.industry,
+        ...context.facts,
         campaign: item.campaign?.name,
-        "content pillar": pillar ? [pillar.name, pillar.description].filter(Boolean).join(" — ") : null,
         platform: PROVIDER_LABEL[input.provider],
         format: input.type.toLowerCase().replace(/_/g, " "),
         "caption limit": limit,
-        tone: brand?.tone,
-        audience: brand?.targetAudience,
-        language: brand?.preferredLanguage,
-        "call-to-action style": brand?.ctaStyle,
-        "emojis the brand uses": brand?.preferredEmojis.length ? brand.preferredEmojis.join(" ") : null,
-        "posting rules": brand?.postingRules,
       }),
-      forbidden.length > 0 ? `Never use these words or phrases: ${forbidden.join(", ")}.` : "",
+      forbiddenRule(context.forbidden),
       "",
       `The idea: ${item.title}`,
       item.brief?.trim() ? `The brief: ${item.brief.trim()}` : "",
+      source
+        ? [
+            "",
+            `Adapt the existing ${PROVIDER_LABEL[source.provider]} version below for ${PROVIDER_LABEL[input.provider]}.`,
+            "Keep what it says; rewrite how it says it for the new platform and its audience. Do not copy it word for word.",
+            source.headline ? `Its headline: ${source.headline}` : "",
+            `Its caption: ${source.caption!.trim()}`,
+            source.hashtags.length ? `Its hashtags: ${source.hashtags.join(", ")}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : "",
       input.instruction?.trim() ? `Also: ${input.instruction.trim()}` : "",
       "",
       `Write the ${PROVIDER_LABEL[input.provider]} version. Stay under ${limit} characters.`,
@@ -897,40 +1011,21 @@ export async function draftSocialPost(
       if (typeof shape.caption !== "string" || !shape.caption.trim()) {
         throw new Error("The draft had no caption.");
       }
-      const hashtags = Array.isArray(shape.hashtags)
-        ? shape.hashtags
-            .filter((tag): tag is string => typeof tag === "string")
-            // Normalised the same way the editor normalises typed ones, so an
-            // AI draft and a hand-typed tag cannot become two different tags.
-            .map((tag) => tag.trim().replace(/^#+/, ""))
-            .filter((tag) => tag.length > 0 && /^[\p{L}\p{N}_]+$/u.test(tag))
-            .slice(0, 30)
-        : [];
-
-      // The brand's always-on hashtags, added where the platform takes them
-      // and the model left them out. Deterministic, so it is done here rather
-      // than asked for.
-      const brandTags = wantsHashtags ? (brand?.hashtags ?? []) : [];
-      const merged = [...hashtags];
-      for (const tag of brandTags) {
-        if (!merged.some((existing) => existing.toLowerCase() === tag.toLowerCase())) merged.push(tag);
-      }
-
-      const caption = shape.caption.trim().slice(0, limit);
+      const hashtags = wantsHashtags ? withBrandTags(normaliseTags(shape.hashtags), context.brandHashtags) : [];
       const headline =
         wantsHeadline && typeof shape.headline === "string" && shape.headline.trim()
           ? shape.headline.trim()
           : null;
-      const finalTags = wantsHashtags ? merged.slice(0, 30) : [];
+      // Truncation is the platform's rule, not a preference. A caption over
+      // the limit is unusable, and silently keeping it would push the failure
+      // to 7:30pm.
+      const caption = shape.caption.trim().slice(0, limit);
 
       return {
-        // Truncation is the platform's rule, not a preference. A caption over
-        // the limit is unusable, and silently keeping it would push the failure
-        // to 7:30pm.
         caption,
         headline,
-        hashtags: finalTags,
-        forbiddenUsed: forbiddenWordsIn([caption, headline ?? "", finalTags.join(" ")].join("\n"), forbidden),
+        hashtags,
+        forbiddenUsed: forbiddenWordsIn([caption, headline ?? "", hashtags.join(" ")].join("\n"), context.forbidden),
       };
     },
   });
@@ -944,6 +1039,481 @@ export async function draftSocialPost(
   );
 
   return { data: result.data, generated: true, model: result.model, task: "draftSocialPost" };
+}
+
+// ---------------------------------------------------------------------------
+// Social: polishing part of a version
+// ---------------------------------------------------------------------------
+
+export type SocialAssistMode = "improve" | "hashtags" | "cta";
+
+export type SocialAssistDraft = {
+  /** `improve`: the rewritten caption. */
+  caption?: string;
+  /** `hashtags`: suggested tags, bare, brand tags included. */
+  hashtags?: string[];
+  /** `cta` on a platform with fixed buttons: one of its button values. */
+  callToAction?: string;
+  /** `cta` elsewhere: a closing line to add to the caption. */
+  ctaLine?: string;
+  forbiddenUsed: string[];
+};
+
+/**
+ * Improve a caption, suggest hashtags, or suggest a call to action — for the
+ * text a person is editing right now, which may not be saved yet.
+ *
+ * The call to action follows the platform: where it has fixed buttons
+ * (Google Business Profile) the model may only pick one of them; elsewhere it
+ * writes a closing line the editor adds to the caption.
+ */
+export async function assistSocialCopy(
+  actor: Actor,
+  input: {
+    contentItemId: string;
+    provider: SocialProvider;
+    mode: SocialAssistMode;
+    /** The caption as it currently stands in the editor. */
+    text: string;
+    instruction: string | null;
+  },
+): Promise<Draft<SocialAssistDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "social.edit");
+
+  const capability = CAPABILITIES[input.provider];
+  const text = input.text.trim();
+  if (input.mode === "improve" && !text) {
+    throw new ValidationError("Write a caption first; there is nothing to improve yet.");
+  }
+  if (input.mode === "hashtags" && !capability.fields.includes("hashtags")) {
+    throw new ValidationError(`${PROVIDER_LABEL[input.provider]} does not use hashtags.`);
+  }
+  await guardBudget(actor, "assistSocialCopy");
+
+  const item = await socialItem(actor, input.contentItemId);
+  if (input.mode !== "improve" && !text && !item.brief?.trim() && !item.title.trim()) {
+    throw new ValidationError("Write the brief or a caption first — a suggestion needs something to go on.");
+  }
+
+  const context = await socialContext(item.client, item.pillarId);
+  const limit = capability.captionLimit ?? 2_000;
+  const buttons = capability.callToActionOptions ?? null;
+
+  const ask =
+    input.mode === "improve"
+      ? `Improve this ${PROVIDER_LABEL[input.provider]} caption. Stay under ${limit} characters, keep its facts, add none.`
+      : input.mode === "hashtags"
+        ? `Suggest up to 12 hashtags for this ${PROVIDER_LABEL[input.provider]} post.`
+        : buttons
+          ? `Choose the one button that best fits this post, from: ${buttons.map((b) => `${b.value} (${b.label})`).join(", ")}.`
+          : `Write one closing call-to-action line for this ${PROVIDER_LABEL[input.provider]} post, under 150 characters, in the brand's call-to-action style.`;
+
+  const schema =
+    input.mode === "improve"
+      ? { type: "object", properties: { caption: { type: "string" } }, required: ["caption"] }
+      : input.mode === "hashtags"
+        ? { type: "object", properties: { hashtags: { type: "array", items: { type: "string" } } }, required: ["hashtags"] }
+        : buttons
+          ? { type: "object", properties: { callToAction: { type: "string", enum: buttons.map((b) => b.value) } }, required: ["callToAction"] }
+          : { type: "object", properties: { ctaLine: { type: "string" } }, required: ["ctaLine"] };
+
+  const result = await (await ai()).completeStructured<SocialAssistDraft>({
+    task: "assistSocialCopy",
+    system: SYSTEM_PROMPTS.assistSocialCopy,
+    prompt: [
+      factBlock({ ...context.facts, campaign: item.campaign?.name, platform: PROVIDER_LABEL[input.provider] }),
+      forbiddenRule(context.forbidden),
+      "",
+      `The idea: ${item.title}`,
+      item.brief?.trim() ? `The brief: ${item.brief.trim()}` : "",
+      text ? `The caption so far:\n${text}` : "",
+      input.instruction?.trim() ? `Also: ${input.instruction.trim()}` : "",
+      "",
+      ask,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    maxTokens: input.mode === "improve" ? 900 : 300,
+    schema,
+    parse: (value) => {
+      const shape = value as { caption?: unknown; hashtags?: unknown; callToAction?: unknown; ctaLine?: unknown };
+      if (input.mode === "improve") {
+        if (typeof shape.caption !== "string" || !shape.caption.trim()) throw new Error("No caption came back.");
+        const caption = shape.caption.trim().slice(0, limit);
+        return { caption, forbiddenUsed: forbiddenWordsIn(caption, context.forbidden) };
+      }
+      if (input.mode === "hashtags") {
+        const hashtags = withBrandTags(normaliseTags(shape.hashtags), context.brandHashtags);
+        return { hashtags, forbiddenUsed: forbiddenWordsIn(hashtags.join(" "), context.forbidden) };
+      }
+      if (buttons) {
+        // Only one of the platform's own buttons, whatever came back.
+        const chosen = buttons.find((b) => b.value === shape.callToAction);
+        if (!chosen) throw new Error("No valid button came back.");
+        return { callToAction: chosen.value, forbiddenUsed: [] };
+      }
+      if (typeof shape.ctaLine !== "string" || !shape.ctaLine.trim()) throw new Error("No line came back.");
+      const ctaLine = shape.ctaLine.trim().slice(0, 200);
+      return { ctaLine, forbiddenUsed: forbiddenWordsIn(ctaLine, context.forbidden) };
+    },
+  });
+
+  await auditCall(
+    actor,
+    "assistSocialCopy",
+    { type: "ContentCalendarItem", id: input.contentItemId },
+    result.usage,
+    result.model,
+  );
+  return { data: result.data, generated: true, model: result.model, task: "assistSocialCopy" };
+}
+
+// ---------------------------------------------------------------------------
+// Social: repurposing an article
+// ---------------------------------------------------------------------------
+
+export type RepurposeSource =
+  | { kind: "blog"; blogPostId: string }
+  | { kind: "text"; title: string; text: string; url: string | null };
+
+export type RepurposedVersion = {
+  provider: SocialProvider;
+  type: string;
+  caption: string;
+  headline: string | null;
+  hashtags: string[];
+  linkUrl: string | null;
+  forbiddenUsed: string[];
+};
+
+export type RepurposeDraft = {
+  title: string;
+  sourceUrl: string | null;
+  sourceBlogPostId: string | null;
+  versions: RepurposedVersion[];
+  carouselSlides: string[] | null;
+  videoScript: string | null;
+};
+
+const ARTICLE_MIN_CHARS = 200;
+const ARTICLE_MAX_CHARS = 20_000;
+
+/** A published article's own words, as plain text. Drafts and unknown ids are refused. */
+async function articleFrom(source: RepurposeSource) {
+  if (source.kind === "text") {
+    return {
+      title: source.title.trim(),
+      text: source.text.trim().slice(0, ARTICLE_MAX_CHARS),
+      url: source.url,
+      blogPostId: null as string | null,
+    };
+  }
+  const post = await db.blogPost.findFirst({
+    where: { id: source.blogPostId, status: "PUBLISHED" },
+    select: { id: true, slug: true, title: true, excerpt: true, body: true },
+  });
+  if (!post) throw new NotFoundError("That article is not published.");
+  const body = parseBody(postBodySchema, post.body);
+  const text = [
+    post.excerpt,
+    body.lead,
+    ...(body.sections ?? []).map((section) => `${section.heading}\n${inlineToText(section.text)}`),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return {
+    title: post.title,
+    text: text.slice(0, ARTICLE_MAX_CHARS),
+    url: `${siteOrigin()}/blog/${post.slug}`,
+    blogPostId: post.id,
+  };
+}
+
+/**
+ * One article into a post for each chosen platform — plus, if asked, carousel
+ * slide copy and a short video script.
+ *
+ * Every word comes from the article; the prompt says so and the rules that
+ * forbid invented numbers apply. Each platform gets its own post, bounded by
+ * that platform's capabilities and fitted to its limit the way the editor
+ * counts it. Returns a draft: the caller decides whether it becomes content,
+ * and if it does, each version is marked as an AI draft until a person saves
+ * it.
+ */
+export async function repurposeContent(
+  actor: Actor,
+  input: {
+    clientId: string;
+    pillarId: string | null;
+    source: RepurposeSource;
+    targets: { provider: SocialProvider; type: string }[];
+    carousel: boolean;
+    videoScript: boolean;
+    instruction: string | null;
+  },
+): Promise<Draft<RepurposeDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "social.create");
+  const scope = await resolveClientScope(actor, input.clientId);
+
+  const targets = input.targets.filter(
+    (target, index, all) => all.findIndex((t) => t.provider === target.provider) === index,
+  );
+  if (targets.length === 0) throw new ValidationError("Choose at least one platform.");
+  for (const target of targets) {
+    if (!(CAPABILITIES[target.provider].postTypes as readonly string[]).includes(target.type)) {
+      throw new ValidationError(`${PROVIDER_LABEL[target.provider]} cannot publish that format.`);
+    }
+  }
+
+  const article = await articleFrom(input.source);
+  if (!article.title) throw new ValidationError("The article needs a title.");
+  if (article.text.length < ARTICLE_MIN_CHARS) {
+    throw new ValidationError("That article is too short to repurpose — paste the full text.");
+  }
+  await guardBudget(actor, "repurposeContent");
+
+  const client = await db.client.findUniqueOrThrow({
+    where: { id: scope },
+    select: { id: true, name: true, industry: true },
+  });
+  if (input.pillarId) await assertPillarForClient(input.pillarId, scope);
+  const context = await socialContext(client, input.pillarId);
+
+  const platformLines = targets.map((target) => {
+    const capability = CAPABILITIES[target.provider];
+    return `- ${target.provider} (${PROVIDER_LABEL[target.provider]}), ${target.type.toLowerCase().replace(/_/g, " ")}: caption under ${capability.captionLimit ?? 2000} characters${capability.fields.includes("headline") ? ", with a headline" : ", headline null"}${capability.fields.includes("hashtags") ? ", with hashtags" : ", no hashtags"}.`;
+  });
+
+  const result = await (await ai()).completeStructured<{
+    versions: { provider: string; caption: string; headline: string | null; hashtags: string[] }[];
+    carouselSlides: string[] | null;
+    videoScript: string | null;
+  }>({
+    task: "repurposeContent",
+    system: SYSTEM_PROMPTS.repurposeContent,
+    prompt: [
+      factBlock(context.facts),
+      forbiddenRule(context.forbidden),
+      "",
+      `The article: ${article.title}`,
+      article.text,
+      "",
+      "Write one post for each of these platforms:",
+      ...platformLines,
+      input.carousel ? "Also write carouselSlides: 4 to 8 short slide texts that walk through the article's main points." : "Return carouselSlides as null.",
+      input.videoScript ? "Also write videoScript: a 30 to 60 second script for a short vertical video, in plain lines." : "Return videoScript as null.",
+      input.instruction?.trim() ? `Also: ${input.instruction.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    maxTokens: 3_000,
+    schema: {
+      type: "object",
+      properties: {
+        versions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              provider: { type: "string", enum: targets.map((t) => t.provider) },
+              caption: { type: "string" },
+              headline: { type: ["string", "null"] },
+              hashtags: { type: "array", items: { type: "string" } },
+            },
+            required: ["provider", "caption", "headline", "hashtags"],
+          },
+        },
+        carouselSlides: { type: ["array", "null"], items: { type: "string" } },
+        videoScript: { type: ["string", "null"] },
+      },
+      required: ["versions", "carouselSlides", "videoScript"],
+    },
+    parse: (value) => {
+      const shape = value as { versions?: unknown; carouselSlides?: unknown; videoScript?: unknown };
+      if (!Array.isArray(shape.versions)) throw new Error("No versions came back.");
+      return {
+        versions: shape.versions as { provider: string; caption: string; headline: string | null; hashtags: string[] }[],
+        carouselSlides: Array.isArray(shape.carouselSlides)
+          ? (shape.carouselSlides as unknown[]).filter((s): s is string => typeof s === "string" && s.trim() !== "").map((s) => s.trim().slice(0, 300)).slice(0, 10)
+          : null,
+        videoScript: typeof shape.videoScript === "string" && shape.videoScript.trim() ? shape.videoScript.trim().slice(0, 3_000) : null,
+      };
+    },
+  });
+
+  // Each version bounded by its own platform, whatever came back: fields the
+  // platform lacks are dropped, the caption is fitted the way the editor
+  // counts, and a platform the model skipped is simply missing — not invented.
+  const versions: RepurposedVersion[] = [];
+  for (const target of targets) {
+    const raw = result.data.versions.find((v) => v.provider === target.provider);
+    if (!raw || typeof raw.caption !== "string" || !raw.caption.trim()) continue;
+    const capability = CAPABILITIES[target.provider];
+    const hashtags = capability.fields.includes("hashtags")
+      ? withBrandTags(normaliseTags(raw.hashtags), context.brandHashtags)
+      : [];
+    const linkUrl = capability.fields.includes("linkUrl") ? article.url : null;
+    const headline =
+      capability.fields.includes("headline") && typeof raw.headline === "string" && raw.headline.trim()
+        ? raw.headline.trim().slice(0, 100)
+        : null;
+    const caption = fitCaption(target.provider, raw.caption.trim(), hashtags, linkUrl);
+    versions.push({
+      provider: target.provider,
+      type: target.type,
+      caption,
+      headline,
+      hashtags,
+      linkUrl,
+      forbiddenUsed: forbiddenWordsIn([caption, headline ?? "", hashtags.join(" ")].join("\n"), context.forbidden),
+    });
+  }
+  if (versions.length === 0) throw new ValidationError("The assistant returned nothing usable. Try again.");
+
+  await auditCall(actor, "repurposeContent", { type: "Client", id: scope }, result.usage, result.model);
+
+  return {
+    data: {
+      title: article.title,
+      sourceUrl: article.url,
+      sourceBlogPostId: article.blogPostId,
+      versions,
+      carouselSlides: input.carousel ? result.data.carouselSlides : null,
+      videoScript: input.videoScript ? result.data.videoScript : null,
+    },
+    generated: true,
+    model: result.model,
+    task: "repurposeContent",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Social: content ideas
+// ---------------------------------------------------------------------------
+
+export type ContentIdeaDraft = {
+  ideas: { title: string; brief: string; pillarId: string | null; pillarName: string | null }[];
+};
+
+/**
+ * Suggest ideas for a client's calendar, optionally for one campaign or
+ * pillar. Told what the client does, their strategy's objectives, their
+ * pillars and their recent ideas (so it does not repeat them). Creates
+ * nothing: a person picks which ideas become content.
+ */
+export async function generateContentIdeas(
+  actor: Actor,
+  input: {
+    clientId: string;
+    campaignId: string | null;
+    pillarId: string | null;
+    count: number;
+    instruction: string | null;
+  },
+): Promise<Draft<ContentIdeaDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "social.create");
+  const scope = await resolveClientScope(actor, input.clientId);
+  const count = Math.min(10, Math.max(3, Math.round(input.count)));
+
+  const [client, campaign, pillars, strategy, recent] = await Promise.all([
+    db.client.findUniqueOrThrow({ where: { id: scope }, select: { id: true, name: true, industry: true } }),
+    input.campaignId
+      ? db.campaign.findFirst({
+          where: { id: input.campaignId, clientId: scope },
+          select: { name: true, objective: true, startsAt: true, endsAt: true },
+        })
+      : null,
+    db.contentPillar.findMany({
+      where: { clientId: scope, archivedAt: null },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true, description: true },
+    }),
+    db.socialStrategy.findUnique({ where: { clientId: scope }, select: { objectives: true, campaignGoals: true } }),
+    db.contentCalendarItem.findMany({
+      where: { clientId: scope },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: { title: true },
+    }),
+  ]);
+  if (input.campaignId && !campaign) throw new ValidationError("That campaign does not belong to this client.");
+  if (input.pillarId && !pillars.some((p) => p.id === input.pillarId)) {
+    throw new ValidationError("That content pillar does not belong to this client.");
+  }
+  await guardBudget(actor, "generateContentIdeas");
+
+  const context = await socialContext(client, input.pillarId);
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+
+  const result = await (await ai()).completeStructured<{ ideas: { title: string; brief: string; pillar: string | null }[] }>({
+    task: "generateContentIdeas",
+    system: SYSTEM_PROMPTS.generateContentIdeas,
+    prompt: [
+      factBlock({
+        ...context.facts,
+        campaign: campaign ? `${campaign.name}${campaign.objective ? ` — ${campaign.objective}` : ""}` : null,
+        "campaign dates": campaign ? `${day(campaign.startsAt)} to ${campaign.endsAt ? day(campaign.endsAt) : "open"}` : null,
+        objectives: strategy?.objectives,
+        "campaign goals": strategy?.campaignGoals,
+      }),
+      forbiddenRule(context.forbidden),
+      pillars.length > 0
+        ? `The client's content pillars:\n${pillars.map((p) => `- ${p.name}${p.description ? `: ${p.description}` : ""}`).join("\n")}`
+        : "",
+      recent.length > 0 ? `Recent ideas, not to repeat:\n${recent.map((r) => `- ${r.title}`).join("\n")}` : "",
+      input.instruction?.trim() ? `Also: ${input.instruction.trim()}` : "",
+      "",
+      `Suggest ${count} ideas.${pillars.length > 0 ? " Give each the name of the pillar it serves, or null." : " Return pillar as null."}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    maxTokens: 2_000,
+    schema: {
+      type: "object",
+      properties: {
+        ideas: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              brief: { type: "string" },
+              pillar: { type: ["string", "null"] },
+            },
+            required: ["title", "brief", "pillar"],
+          },
+        },
+      },
+      required: ["ideas"],
+    },
+    parse: (value) => {
+      const shape = value as { ideas?: unknown };
+      if (!Array.isArray(shape.ideas)) throw new Error("No ideas came back.");
+      return { ideas: shape.ideas as { title: string; brief: string; pillar: string | null }[] };
+    },
+  });
+
+  const seen = new Set(recent.map((r) => r.title.trim().toLowerCase()));
+  const ideas: ContentIdeaDraft["ideas"] = [];
+  for (const raw of result.data.ideas) {
+    const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 200) : "";
+    const brief = typeof raw.brief === "string" ? raw.brief.trim().slice(0, 2_000) : "";
+    if (title.length < 2 || !brief || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    // A pillar only by exact name, from this client's own list — never one
+    // the model made up. The requested pillar wins when one was asked for.
+    const pillar = input.pillarId
+      ? pillars.find((p) => p.id === input.pillarId)
+      : pillars.find((p) => typeof raw.pillar === "string" && p.name.toLowerCase() === raw.pillar.trim().toLowerCase());
+    ideas.push({ title, brief, pillarId: pillar?.id ?? null, pillarName: pillar?.name ?? null });
+    if (ideas.length === count) break;
+  }
+
+  await auditCall(actor, "generateContentIdeas", { type: "Client", id: scope }, result.usage, result.model);
+  return { data: { ideas }, generated: true, model: result.model, task: "generateContentIdeas" };
 }
 
 export type MetaDraft = { metaTitle: string; metaDescription: string };
