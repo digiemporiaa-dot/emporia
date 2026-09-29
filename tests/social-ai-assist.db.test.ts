@@ -11,6 +11,7 @@ import { createRepurposedContent } from "@/lib/services/social-repurpose.service
 import { createPillar, saveBrandProfile } from "@/lib/services/social-brand.service";
 import { savePost } from "@/lib/services/social-post.service";
 import { requestSocialApproval } from "@/lib/services/social-approval.service";
+import { approveInternally } from "./support/internal-review";
 import { brandProfileSchema } from "@/lib/validation/social-brand";
 import { socialPostSchema } from "@/lib/validation/social";
 import { textLength } from "@/lib/social/text-length";
@@ -340,6 +341,7 @@ describeDb("social AI assists", () => {
     const post = await db.socialPost.findFirstOrThrow({ where: { contentItemId: item.id }, select: { id: true } });
     await savePost(writer, post.id, socialPostSchema.parse({ ...versions[0], contentItemId: item.id }));
     expect((await db.socialPost.findUniqueOrThrow({ where: { id: post.id }, select: { aiDraftedAt: true } })).aiDraftedAt).toBeNull();
+    await approveInternally(item.id, userId);
     await expect(requestSocialApproval(writer, { contentItemId: item.id, note: null })).resolves.toBeDefined();
   });
 

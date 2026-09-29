@@ -20,6 +20,13 @@ import {
   type SocialAssistDraft,
 } from "@/lib/services/ai.service";
 import { createRepurposedContent } from "@/lib/services/social-repurpose.service";
+import {
+  decideInternalReview,
+  submitForInternalReview,
+  withdrawInternalReview,
+} from "@/lib/services/social-review.service";
+import { BULK_MAX, runBulkAction, type BulkResult } from "@/lib/services/social-bulk.service";
+import { isoDay } from "@/lib/validation/social-occasion";
 import { socialPostSchema } from "@/lib/validation/social";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -497,6 +504,118 @@ export async function addIdeaAction(input: unknown): Promise<ActionResult<{ id: 
     return { ok: true, data: item };
   } catch (error) {
     actionLog.error({ err: error }, "adding a suggested idea failed");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal review
+// ---------------------------------------------------------------------------
+
+function refreshItem(clientId: string, itemId: string) {
+  revalidatePath(`/admin/clients/${clientId}/social/content/${itemId}`);
+  revalidatePath(`/admin/clients/${clientId}/social/content`);
+  revalidatePath(`/admin/clients/${clientId}/social/calendar`);
+}
+
+export async function submitReviewAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = approvalRef
+      .extend({ note: z.string().trim().max(2000).nullable().default(null) })
+      .safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That content could not be identified." };
+    const review = await submitForInternalReview(actor, { contentItemId: parsed.data.itemId, note: parsed.data.note });
+    refreshItem(parsed.data.clientId, parsed.data.itemId);
+    return { ok: true, data: { id: review.id } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "submitting social content for internal review was refused");
+    return toActionFailure(error);
+  }
+}
+
+export async function decideReviewAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = approvalRef
+      .extend({
+        decision: z.enum(["APPROVED", "CHANGES_REQUESTED", "REJECTED"]),
+        feedback: z.string().trim().max(5000).nullable().default(null),
+      })
+      .safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That decision could not be read." };
+    const result = await decideInternalReview(actor, {
+      contentItemId: parsed.data.itemId,
+      decision: parsed.data.decision,
+      feedback: parsed.data.feedback || null,
+    });
+    refreshItem(parsed.data.clientId, parsed.data.itemId);
+    return { ok: true, data: { id: result.id } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "an internal review decision was refused");
+    return toActionFailure(error);
+  }
+}
+
+export async function withdrawReviewAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = approvalRef.safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That content could not be identified." };
+    const result = await withdrawInternalReview(actor, parsed.data.itemId);
+    refreshItem(parsed.data.clientId, parsed.data.itemId);
+    return { ok: true, data: { id: result.id } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "withdrawing an internal review was refused");
+    return toActionFailure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bulk actions
+// ---------------------------------------------------------------------------
+
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .default(null)
+    .transform((v) => v || null);
+
+const bulkSchema = z.object({
+  clientId: z.string().min(1).max(40),
+  itemIds: z.array(z.string().min(1).max(40)).min(1, "Select at least one idea.").max(BULK_MAX),
+  action: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("approve"), feedback: optionalText(2000) }),
+    z.object({ kind: z.literal("requestClientReview"), note: optionalText(2000) }),
+    z.object({ kind: z.literal("schedule") }),
+    z.object({ kind: z.literal("reschedule"), shiftDays: z.coerce.number().int().min(-90).max(90).refine((n) => n !== 0, "Move by at least a day.") }),
+    z.object({ kind: z.literal("rescheduleTo"), toDay: isoDay }),
+    z.object({ kind: z.literal("assign"), ownerId: z.string().max(40).nullable().transform((v) => v || null) }),
+    z.object({ kind: z.literal("deleteDrafts") }),
+  ]),
+});
+
+export async function bulkAction(input: unknown): Promise<ActionResult<{ results: BulkResult[] }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = bulkSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "That request could not be read." };
+    }
+    const { clientId, itemIds, action } = parsed.data;
+    const results = await runBulkAction(actor, {
+      clientId,
+      itemIds,
+      action: action.kind === "rescheduleTo" ? { kind: "reschedule", toDay: action.toDay } : action,
+    });
+    revalidatePath(`/admin/clients/${clientId}/social/content`);
+    revalidatePath(`/admin/clients/${clientId}/social/calendar`);
+    return { ok: true, data: { results } };
+  } catch (error) {
+    actionLog.warn({ err: error }, "a bulk social action was refused");
     return toActionFailure(error);
   }
 }

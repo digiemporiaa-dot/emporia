@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { NotFoundError, ValidationError } from "@/lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
@@ -259,5 +259,89 @@ export async function setContentPillar(actor: Actor, itemId: string, pillarId: s
         data: { pillarId },
         select: { id: true, pillarId: true },
       }),
+  );
+}
+
+/**
+ * Give an idea to someone, or take it off them.
+ *
+ * Who is working on it is agency bookkeeping, not copy anyone approved, so it
+ * reopens nothing. The owner must be active staff — never a portal user.
+ */
+export async function setContentOwner(actor: Actor, itemId: string, ownerId: string | null) {
+  requirePermission(actor, "social.edit");
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: itemId },
+    select: { id: true, clientId: true, ownerId: true },
+  });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  await resolveClientScope(actor, item.clientId);
+
+  if (ownerId) {
+    const owner = await db.user.findFirst({ where: { id: ownerId, type: "STAFF", status: "ACTIVE" }, select: { id: true } });
+    if (!owner) throw new ValidationError("That person is not active staff.");
+  }
+  if (item.ownerId === ownerId) return { id: item.id, ownerId };
+
+  return withAudit(
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "ContentCalendarItem",
+      entityId: itemId,
+      before: { ownerId: item.ownerId },
+      after: { ownerId },
+    },
+    (tx) => tx.contentCalendarItem.update({ where: { id: itemId }, data: { ownerId }, select: { id: true, ownerId: true } }),
+  );
+}
+
+/** Versions that may go with an idea when it is deleted as a draft. */
+const DISPOSABLE_POST_STATUSES = ["DRAFT", "CANCELLED"] as const;
+
+/**
+ * Delete an idea that never got anywhere.
+ *
+ * Drafts only: an idea at idea or draft stage, never sent to the client, whose
+ * versions are drafts or cancelled and never reached a platform. Anything the
+ * client has seen, or that may be live, is history and stays.
+ */
+export async function deleteDraftContent(actor: Actor, itemId: string) {
+  requirePermission(actor, "social.delete");
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: itemId },
+    select: {
+      id: true,
+      clientId: true,
+      title: true,
+      stage: true,
+      _count: { select: { approvals: true } },
+      socialPosts: { select: { status: true, externalPostId: true, attemptCount: true } },
+    },
+  });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  await resolveClientScope(actor, item.clientId);
+
+  if (item.stage !== "IDEA" && item.stage !== "DRAFT") {
+    throw new ConflictError("Only ideas and drafts can be deleted. This one has moved on.");
+  }
+  if (item._count.approvals > 0) {
+    throw new ConflictError("This has been in front of the client. Its history stays.");
+  }
+  const blocking = item.socialPosts.find(
+    (post) =>
+      !(DISPOSABLE_POST_STATUSES as readonly string[]).includes(post.status) || post.externalPostId || post.attemptCount > 0,
+  );
+  if (blocking) throw new ConflictError("A version of this has been scheduled or sent to a platform. It stays.");
+
+  await withAudit(
+    {
+      actor,
+      action: "DELETE",
+      entityType: "ContentCalendarItem",
+      entityId: itemId,
+      before: { title: item.title, stage: item.stage, versions: item.socialPosts.length },
+    },
+    (tx) => tx.contentCalendarItem.delete({ where: { id: itemId }, select: { id: true } }),
   );
 }

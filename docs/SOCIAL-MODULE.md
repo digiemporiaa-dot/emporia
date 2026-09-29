@@ -2519,3 +2519,167 @@ provider is configured.
   - Test rows were removed and the AI setting restored exactly.
 - **Gate:** lint, typecheck, **1941 tests across 117 files**, production build.
   All clean.
+
+## 24. Gap phase 4 — internal review, and bulk actions
+
+Brief sections 15 and 39. Before this phase INTERNAL_REVIEW was only a stage
+name. There was no reviewer, no decision, no feedback and no history, and work
+could be sent to the client straight from DRAFT.
+
+### Three rules the agency chose
+
+1. **Internal review is mandatory.** Nothing goes to the client until an
+   internal reviewer has approved *that exact content*.
+2. **Self-approval is allowed** for anyone holding the review permission.
+3. **A reschedule keeps approvals.** Moving a post's date or time undoes
+   neither the internal approval nor the client's. Changing the words,
+   creative, account, link or versions still undoes both, as before.
+
+### Internal review
+
+- **The record:** `SocialInternalReview`, one row per round (1, 2, 3…),
+  never overwritten. Each round keeps:
+  - who submitted it, when, and with what note;
+  - a frozen snapshot of every platform version, in the same shape as the
+    client approval snapshot;
+  - who decided, when, and with what feedback.
+
+  It is a separate table from `Approval` on purpose. Approvals are what the
+  portal lists, and an internal round must never appear there. Every review
+  function is staff-only: a portal user gets "not found" even when holding
+  the permissions.
+- **Submitting** (`social.edit`) works from idea, draft, or internal review
+  (to resubmit). The same readiness check as sending to the client applies,
+  so an empty version or an unsaved AI draft cannot be submitted. The idea
+  moves to INTERNAL_REVIEW. A second submission while one waits is refused.
+- **Deciding** needs the new `social.review` permission (Marketing manager,
+  Content manager, Project manager, Admin). The reviewer can:
+  - **approve** — the idea stays at internal review, now ready to send;
+  - **request changes** — back to draft, feedback required;
+  - **reject** — back to draft, feedback required.
+
+  The decision is conditional on the round still waiting, so two reviewers
+  deciding at once cannot both win. The reviewer is also refused, and the
+  round withdrawn, if the versions no longer say what was submitted.
+- **Editing withdraws a waiting round.** Saving a version with changed
+  content, adding one, or deleting one marks the waiting round *withdrawn*
+  and puts the idea back to draft, so nobody approves something they never
+  saw. A date-only save does not. The submitter can also withdraw.
+- **The gate:** `requestSocialApproval` sends only from internal review, and
+  only when the latest round is approved *and* its snapshot has the same
+  `contentFingerprint` as the versions now. The fingerprint covers title,
+  platform, format, account, caption, headline, hashtags, mentions, call to
+  action, first comment, link, creatives, and which versions exist. It does
+  not cover times. Yesterday's approval does not license today's caption.
+
+### Found and fixed
+
+- **The general content board could approve social work without the
+  client.** `setContentStage` in the delivery service allowed INTERNAL_REVIEW →
+  APPROVED for any content item, and the publisher trusts the APPROVED stage.
+  Social items (with versions or review rounds) are now refused there and
+  must move through their own workflow.
+- An audit confirmed that APPROVED is otherwise written only by a real
+  approval decision (the client in the portal, or staff recording the
+  client's decision).
+
+### Reschedule
+
+- **`reschedulePost`:** moves a version's time in any stage, including while
+  the client is reviewing, because the time is not part of what they approve.
+  It keeps the version's status and every approval.
+  - Refused for a version that has gone out or is going out.
+  - Refused if a *scheduled* version would move into the past: the
+    scheduler would send it at once, which is a publish, not a reschedule.
+  - Audited with both times.
+- **The editor:** a date-only save keeps approvals the same way. Clearing
+  the time of a scheduled version unschedules it.
+- **The client approval panel** lists versions that moved after sign-off:
+  *"LinkedIn: approved for 5 Oct 7:30 pm, now 6 Oct 7:30 pm"*.
+
+### Bulk actions
+
+Select ideas on the content page (or *select all*) and a bar offers only the
+actions the person may take:
+
+- approve internally
+- send to the client
+- schedule
+- reschedule (by ±N days, or to a date keeping each version's time of day)
+- assign
+- delete drafts
+
+Each action opens a confirmation that says what it does and how many ideas it
+touches. Deleting needs "delete" typed. The result lists every item: done, or
+why not.
+
+- **Each item goes through its own single-item service** (the same
+  permission, scope, readiness and workflow checks, and one audit entry per
+  item), one at a time, never a bulk `updateMany` around them. One idea that
+  is not ready does not stop the others.
+- **The action's permission is checked before any item is touched.** At most
+  100 ideas per action. Ids are matched only within the client, so another
+  client's idea is reported as *not found*.
+- **Schedule** covers draft versions of client-approved ideas whose time is
+  still ahead.
+- **Reschedule** moves every unpublished version with a time, plus the idea's
+  own date, and never into the past.
+- **Assign** accepts active staff only.
+- **Delete drafts** removes ideas still at idea or draft that were never sent
+  to the client and never reached a platform. Everything else is kept as
+  history.
+- **Deliberately absent: bulk *publish now*.** Publishing is the one
+  irreversible step, so it stays a single, confirmed action per version.
+
+On the content page, ideas show their internal review status, and a *Waiting
+for internal review* filter lists the review queue.
+
+### Verified
+
+- **Tests:** 22 new, in `tests/social-review-bulk.db.test.ts`.
+  - The gate: nothing reaches the client from draft, while a round waits, or
+    after changes were requested; it goes once approved.
+  - Deciding: the review permission is required; feedback is required to
+    reject or request changes, and is stored with the reviewer and time;
+    self-approval works with the permission.
+  - Double submissions and simultaneous decisions: exactly one wins.
+  - An empty idea cannot be submitted. Editing or deleting a version
+    withdraws a waiting round.
+  - An edit after approval needs a new round. Rounds 1 and 2 are both kept
+    with their own captions.
+  - A time-only change keeps the internal approval and the client's; a word
+    change still undoes them.
+  - Withdrawing works. Portal users get nothing. The content board can no
+    longer approve social work, so it cannot be scheduled either.
+  - Reschedule keeps the status and stage, audits both times, and refuses
+    the past.
+  - Bulk: approve reports other clients' ideas as not found and skips ideas
+    with nothing waiting; the permission is checked up front and more than
+    100 ids are refused; send goes only for internally approved ideas;
+    schedule only client-approved versions still ahead; reschedule by days
+    keeps the time of day, the approval and the idea's date, reschedule to a
+    date never touches the past or a published version; assign is limited to
+    active staff; delete drafts keeps anything the client saw or that was
+    tried, and audits the delete.
+  - Existing client-approval tests now run the real internal round first
+    (`tests/support/internal-review.ts`).
+  - Mutation-checked: removing any of these fails a test — the internal
+    gate, the fingerprint check, the withdraw-on-edit, the time-only rule,
+    the board guard, the staff-only rule, bulk client scoping, the race
+    guard, the past-time check for bulk schedule, or the feedback
+    requirement.
+- **Browser:**
+  - Send-to-client is locked until review; after submit and approve, it
+    unlocks.
+  - *Request changes* is disabled without feedback, and the round history
+    shows the feedback and what was submitted.
+  - The *waiting for review* filter listed exactly the waiting idea.
+  - Bulk actions, each result exactly as the rules say:
+    - approve: 1 done, 2 with nothing waiting;
+    - send: 2 sent, the draft refused;
+    - reschedule +2 days: all 3 moved;
+    - delete: the draft deleted, the two sent ones kept.
+  - At 390px: no overflow on the list or the item page.
+  - No page errors. The seeded rows were removed.
+- **Gate:** lint, typecheck, **1963 tests across 118 files**, production build.
+  All clean.

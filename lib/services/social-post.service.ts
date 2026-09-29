@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
+import { supersedePendingReview } from "@/lib/services/social-review.service";
 import type { Prisma } from "@/generated/prisma/client";
 import type { SocialPostStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
@@ -167,10 +168,29 @@ export async function savePost(
   }
 
   let before: { status: SocialPostStatus; clientId: string } | null = null;
+  // Whether this save changes what the post *says*. A new version always does;
+  // an edit that only moves the date does not, and keeps its approvals (the
+  // agency's rule: a reschedule is not a new piece of content).
+  let contentChanged = true;
   if (id) {
     const existing = await db.socialPost.findUnique({
       where: { id },
-      select: { status: true, clientId: true },
+      select: {
+        status: true,
+        clientId: true,
+        contentItemId: true,
+        provider: true,
+        type: true,
+        accountId: true,
+        caption: true,
+        headline: true,
+        hashtags: true,
+        mentions: true,
+        callToAction: true,
+        firstComment: true,
+        linkUrl: true,
+        media: { orderBy: { order: "asc" }, select: { mediaId: true } },
+      },
     });
     if (!existing) throw new NotFoundError("That post does not exist.");
     await resolveClientScope(actor, existing.clientId);
@@ -179,7 +199,11 @@ export async function savePost(
         "This post has already gone out. Its copy is the record of what was published.",
       );
     }
-    before = existing;
+    before = { status: existing.status, clientId: existing.clientId };
+    contentChanged = !sameContent(existing, input);
+    if (existing.status === "SCHEDULED" && input.scheduledFor && input.scheduledFor.getTime() < Date.now()) {
+      throw new ValidationError("A scheduled post cannot be moved into the past. Pick a time ahead, or publish it now.");
+    }
   }
 
   if (input.accountId) {
@@ -253,7 +277,16 @@ export async function savePost(
       // APPROVED and SCHEDULED both mean "the client signed this off". Only
       // checking APPROVED left a scheduled idea's copy freely editable right up
       // to the moment it went out.
-      if (item.stage === "APPROVED" || item.stage === "SCHEDULED") {
+      // A waiting internal round no longer describes the idea once its words
+      // change; it is withdrawn rather than approved unseen.
+      if (contentChanged) await supersedePendingReview(tx, item.id);
+
+      // A version left SCHEDULED with no time would be promised and never sent.
+      if (!input.scheduledFor && before?.status === "SCHEDULED") {
+        await tx.socialPost.update({ where: { id: post.id }, data: { status: "DRAFT" } });
+      }
+
+      if (contentChanged && (item.stage === "APPROVED" || item.stage === "SCHEDULED")) {
         await tx.contentCalendarItem.update({
           where: { id: item.id },
           data: { stage: "INTERNAL_REVIEW" },
@@ -269,6 +302,43 @@ export async function savePost(
 
       return tx.socialPost.findUniqueOrThrow({ where: { id: post.id }, select: postSelect });
     },
+  );
+}
+
+/** Everything a reviewer or client signs off, compared field by field. Times are not in it. */
+function sameContent(
+  existing: {
+    provider: SocialProvider;
+    type: string;
+    accountId: string | null;
+    caption: string | null;
+    headline: string | null;
+    hashtags: string[];
+    mentions: string[];
+    callToAction: string | null;
+    firstComment: string | null;
+    linkUrl: string | null;
+    media: { mediaId: string }[];
+  },
+  input: SocialPostInput,
+): boolean {
+  const text = (value: string | null | undefined) => (value ?? "").trim();
+  const list = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+  return (
+    existing.provider === input.provider &&
+    existing.type === input.type &&
+    existing.accountId === input.accountId &&
+    text(existing.caption) === text(input.caption) &&
+    text(existing.headline) === text(input.headline) &&
+    list(existing.hashtags, input.hashtags) &&
+    list(existing.mentions, input.mentions) &&
+    text(existing.callToAction) === text(input.callToAction) &&
+    text(existing.firstComment) === text(input.firstComment) &&
+    text(existing.linkUrl) === text(input.linkUrl) &&
+    list(
+      existing.media.map((m) => m.mediaId),
+      input.mediaIds,
+    )
   );
 }
 
@@ -325,7 +395,7 @@ export async function deletePost(actor: Actor, id: string) {
 
   const post = await db.socialPost.findUnique({
     where: { id },
-    select: { id: true, clientId: true, status: true, provider: true, externalPostId: true },
+    select: { id: true, clientId: true, contentItemId: true, status: true, provider: true, externalPostId: true },
   });
   if (!post) throw new NotFoundError("That post does not exist.");
   await resolveClientScope(actor, post.clientId);
@@ -347,7 +417,61 @@ export async function deletePost(actor: Actor, id: string) {
       entityId: id,
       before: { provider: post.provider, status: post.status },
     },
-    (tx) => tx.socialPost.delete({ where: { id }, select: { id: true } }),
+    async (tx) => {
+      await tx.socialPost.delete({ where: { id }, select: { id: true } });
+      // One version fewer is different content from what a waiting round shows.
+      await supersedePendingReview(tx, post.contentItemId);
+    },
+  );
+}
+
+/**
+ * Move a version's slot, keeping its approvals.
+ *
+ * The agency's rule: a reschedule is not new content, so neither the internal
+ * nor the client approval is undone (the time is not part of the approval
+ * fingerprint). What stays refused: a version that has gone out or is going
+ * out, and a scheduled version moved into the past — the scheduler would send
+ * it at once, which is a publish, not a reschedule. The move is audited with
+ * both times.
+ */
+export async function reschedulePost(actor: Actor, id: string, scheduledFor: Date | null) {
+  requirePermission(actor, "social.edit");
+
+  const post = await db.socialPost.findUnique({
+    where: { id },
+    select: { id: true, clientId: true, status: true, scheduledFor: true },
+  });
+  if (!post) throw new NotFoundError("That post does not exist.");
+  await resolveClientScope(actor, post.clientId);
+
+  if (LOCKED.includes(post.status)) {
+    throw new ConflictError(post.status === "PUBLISHED" ? "This post has already gone out." : "This post is being published right now.");
+  }
+  if (post.status === "SCHEDULED" && scheduledFor && scheduledFor.getTime() < Date.now()) {
+    throw new ValidationError("A scheduled post cannot be moved into the past.");
+  }
+  if (post.scheduledFor?.getTime() === scheduledFor?.getTime()) {
+    return db.socialPost.findUniqueOrThrow({ where: { id }, select: postSelect });
+  }
+
+  return withAudit(
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "SocialPost",
+      entityId: id,
+      before: { scheduledFor: post.scheduledFor?.toISOString() ?? null },
+      after: { scheduledFor: scheduledFor?.toISOString() ?? null, rescheduled: true },
+    },
+    (tx) =>
+      tx.socialPost.update({
+        where: { id },
+        // Unscheduled by clearing the time: a SCHEDULED version with no slot
+        // would be promised and never sent.
+        data: { scheduledFor, ...(scheduledFor === null && post.status === "SCHEDULED" ? { status: "DRAFT" as const } : {}) },
+        select: postSelect,
+      }),
   );
 }
 

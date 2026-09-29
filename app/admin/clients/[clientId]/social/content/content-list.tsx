@@ -24,8 +24,10 @@ import {
 } from "@/components/ui";
 import { useHydrated } from "@/lib/utils/hydrated";
 import type { ActionResult } from "@/lib/errors";
-import type { ContentStage, SocialPostStatus, SocialProvider } from "@/generated/prisma/enums";
+import type { ContentStage, InternalReviewStatus, SocialPostStatus, SocialProvider } from "@/generated/prisma/enums";
 import { createContentAction } from "./actions";
+import { BulkBar } from "./bulk-bar";
+import { REVIEW_STATUS_LABEL, REVIEW_STATUS_TONE } from "./[itemId]/review-panel";
 
 export type VersionRow = {
   id: string;
@@ -54,6 +56,8 @@ export type ContentItemRow = {
   owner: string | null;
   scheduledFor: string | null;
   approvalStatus: string | null;
+  /** The latest internal review round, when there has been one. */
+  reviewStatus: InternalReviewStatus | null;
   versions: VersionRow[];
 };
 
@@ -87,7 +91,9 @@ export function ContentList({
   activeCampaign,
   activePillar,
   search,
+  reviewPending,
   canCreate,
+  permissions,
   aiTools,
 }: {
   clientId: string;
@@ -99,24 +105,36 @@ export function ContentList({
   activeCampaign: string | null;
   activePillar: string | null;
   search: string | null;
+  /** Only ideas waiting for internal review. */
+  reviewPending: boolean;
   canCreate: boolean;
+  /** What the bulk actions may offer this person. */
+  permissions: { review: boolean; send: boolean; edit: boolean; delete: boolean };
   /** The AI assists, when AI is configured and the user may use it. */
   aiTools?: React.ReactNode;
 }) {
   const ready = useHydrated();
   const router = useRouter();
   const [creating, setCreating] = React.useState(false);
+  const [selected, setSelected] = React.useState<string[]>([]);
+  const bulk = permissions.review || permissions.send || permissions.edit || permissions.delete;
+  const toggle = (id: string) =>
+    setSelected((current) => (current.includes(id) ? current.filter((v) => v !== id) : [...current, id]));
+  const allSelected = items.length > 0 && items.every((item) => selected.includes(item.id));
 
   const base = `/admin/clients/${clientId}/social/content`;
 
-  const filter = (next: { campaign?: string | null; pillar?: string | null; q?: string | null }) => {
+  const filter = (next: { campaign?: string | null; pillar?: string | null; q?: string | null; review?: boolean }) => {
     const query = new URLSearchParams();
     const campaign = next.campaign === undefined ? activeCampaign : next.campaign;
     const pillar = next.pillar === undefined ? activePillar : next.pillar;
     const q = next.q === undefined ? search : next.q;
+    const review = next.review === undefined ? reviewPending : next.review;
     if (campaign) query.set("campaign", campaign);
     if (pillar) query.set("pillar", pillar);
     if (q) query.set("q", q);
+    if (review) query.set("review", "pending");
+    setSelected([]);
     const suffix = query.toString();
     router.push((suffix ? `${base}?${suffix}` : base) as Route);
   };
@@ -176,6 +194,16 @@ export function ContentList({
               }}
             />
           </label>
+
+          <label className="flex h-10 items-center gap-2 text-sm text-navy-800">
+            <input
+              type="checkbox"
+              className="size-4 accent-brand-red"
+              checked={reviewPending}
+              onChange={(event) => filter({ review: event.target.checked })}
+            />
+            Waiting for internal review
+          </label>
         </div>
 
         {canCreate ? (
@@ -189,11 +217,35 @@ export function ContentList({
         ) : null}
       </div>
 
+      {bulk && items.length > 0 ? (
+        selected.length > 0 ? (
+          <BulkBar
+            clientId={clientId}
+            selected={selected}
+            staff={staff}
+            permissions={permissions}
+            onClear={() => setSelected([])}
+          />
+        ) : (
+          <label className="flex items-center gap-2 text-xs text-ink-subtle">
+            <input
+              type="checkbox"
+              className="size-4 accent-brand-red"
+              checked={allSelected}
+              onChange={() => setSelected(allSelected ? [] : items.map((item) => item.id))}
+            />
+            Select all {items.length} for a bulk action
+          </label>
+        )
+      ) : null}
+
       {items.length === 0 ? (
         <p className="rounded-lg border border-dashed border-line-strong px-4 py-12 text-center text-sm text-ink-subtle">
-          {activeCampaign || search
-            ? "Nothing matches those filters."
-            : "No social content yet. Start an idea, then write a version for each platform."}
+          {reviewPending
+            ? "Nothing is waiting for internal review."
+            : activeCampaign || search
+              ? "Nothing matches those filters."
+              : "No social content yet. Start an idea, then write a version for each platform."}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -202,22 +254,40 @@ export function ContentList({
               <Card>
                 <CardHeader>
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <CardTitle>
-                        <Link
-                          href={`${base}/${item.id}` as Route}
-                          className="hover:text-brand-red"
-                        >
-                          {item.title}
-                        </Link>
-                      </CardTitle>
-                      <p className="mt-1 text-xs text-ink-subtle">
-                        {[item.campaign, item.pillar, item.project, item.owner, when(item.scheduledFor)]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      {bulk ? (
+                        <input
+                          type="checkbox"
+                          className="mt-1 size-4 shrink-0 accent-brand-red"
+                          aria-label={`Select ${item.title}`}
+                          checked={selected.includes(item.id)}
+                          onChange={() => toggle(item.id)}
+                        />
+                      ) : null}
+                      <div className="min-w-0">
+                        <CardTitle>
+                          <Link
+                            href={`${base}/${item.id}` as Route}
+                            className="hover:text-brand-red"
+                          >
+                            {item.title}
+                          </Link>
+                        </CardTitle>
+                        <p className="mt-1 text-xs text-ink-subtle">
+                          {[item.campaign, item.pillar, item.project, item.owner, when(item.scheduledFor)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      </div>
                     </div>
-                    <Badge tone={CONTENT_STAGE_TONE[item.stage]}>{CONTENT_STAGE_LABEL[item.stage]}</Badge>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {item.reviewStatus && item.reviewStatus !== "WITHDRAWN" && ["IDEA", "DRAFT", "INTERNAL_REVIEW"].includes(item.stage) ? (
+                        <Badge tone={REVIEW_STATUS_TONE[item.reviewStatus]}>
+                          {REVIEW_STATUS_LABEL[item.reviewStatus]}
+                        </Badge>
+                      ) : null}
+                      <Badge tone={CONTENT_STAGE_TONE[item.stage]}>{CONTENT_STAGE_LABEL[item.stage]}</Badge>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardBody>

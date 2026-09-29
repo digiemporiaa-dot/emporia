@@ -92,6 +92,12 @@ export const PERMISSIONS = [
    * client's calendar, not one client's.
    */
   "social.occasions.manage",
+  /**
+   * Internal review: approving, rejecting or sending back social work before
+   * it goes to the client. Separate from `social.approve` (sending to the
+   * client) so the person who reviews need not be the person who sends.
+   */
+  "social.review",
 
   /**
    * Website page CMS. Deliberately NOT folded into `content.*`: that namespace
@@ -373,6 +379,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.analytics.view",
     "social.reports.view",
     "social.occasions.manage",
+    "social.review",
   ],
 
   CONTENT_MANAGER: [
@@ -428,6 +435,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.reports.view",
     // Keeping the festival and event library current is editorial work.
     "social.occasions.manage",
+    "social.review",
   ],
 
   PROJECT_MANAGER: [
@@ -458,6 +466,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.create",
     "social.edit",
     "social.approve",
+    "social.review",
     "social.analytics.view",
     "social.reports.view",
   ],

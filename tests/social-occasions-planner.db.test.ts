@@ -15,7 +15,7 @@ import {
 import { planContentMonth } from "@/lib/services/ai.service";
 import { createPlannedContent, type PlannedItemInput } from "@/lib/services/social-planner.service";
 import { createPillar } from "@/lib/services/social-brand.service";
-import { requestSocialApproval } from "@/lib/services/social-approval.service";
+import { submitForInternalReview } from "@/lib/services/social-review.service";
 import { occasionSchema } from "@/lib/validation/social-occasion";
 import { pillarSchema } from "@/lib/validation/social-brand";
 import { resetEnvCache } from "@/lib/config/env";
@@ -373,8 +373,8 @@ describeDb("occasion library and month planner", () => {
       expect(post.aiDraftedAt).not.toBeNull();
     }
 
-    // Not sendable to the client until someone writes and saves it.
-    await expect(requestSocialApproval(editor, { contentItemId: ideas[0]!.id, note: null })).rejects.toThrow();
+    // Not even submittable for internal review until someone writes and saves it.
+    await expect(submitForInternalReview(editor, { contentItemId: ideas[0]!.id, note: null })).rejects.toThrow(/empty|unreviewed AI draft/);
   });
 
   it("refuses an occasion the client does not have on that day, before writing anything", async () => {
