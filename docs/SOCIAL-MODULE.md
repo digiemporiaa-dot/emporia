@@ -3020,3 +3020,55 @@ and the client's decision, which dragging between columns would skip.
 
 - **Gate:** lint, typecheck, **1993 tests across 122 files**, production build.
   All clean.
+
+## 28. The client's social section in the portal (brief §16)
+
+The portal's Social area had one page (published posts and totals) plus
+Reports. It now has the brief's six tabs, all backed by
+`lib/services/portal-social.service.ts`.
+
+**Scoping:** every function takes the portal actor and scopes by the
+session's `clientId`. No client id is ever read from the browser.
+
+| Tab | What the client sees |
+|---|---|
+| Overview | A banner when posts wait for their approval; this month's posts, reach, impressions, engagement rate, followers gained and engagement (from `periodSummary`, the same numbers as the admin Overview and the reports); the next five scheduled posts; the latest published report. |
+| Calendar | One India-time month, day by day, with previous and next month links. Each card shows the platform, campaign, where the post is, date and time, format and creative (brief §13's card). |
+| Approvals | Social approvals waiting for them, and what they decided in the last 60 days, each linking to the existing approval page where the decision is made. |
+| Published | Published posts, newest first, 20 per page, with interactions, reach and engagement rate where reported, and the live link. |
+| Analytics | The existing totals for a chosen period, plus posts per platform. A platform that shares no figures says so. |
+| Reports | The published monthly reports (section 26). |
+
+**What a client never sees:**
+
+- **Internal steps.** Only work at client review or later appears. Ideas,
+  drafts, internal review and cancelled posts are never shown.
+- **Platform errors.** A failed attempt reads *"Delayed — we are on it"*; the
+  error text stays on the agency's side.
+- **Internal fields.** A card carries exactly: id, title, campaign, platform,
+  format, state, time, creative thumbnail, and the live link once published.
+  No account, token or note. The test pins those keys.
+
+### Verified
+
+- **Tests:** 5 new, in `tests/portal-social.db.test.ts`.
+  - The calendar hides drafts, internal review and cancelled posts, shows
+    each client-facing state, shows a failure as delayed without its error,
+    and puts 31 Oct 20:00 UTC in November.
+  - The card's fields are exactly the public set.
+  - Each client sees only its own posts, approvals and published list.
+  - Only social approvals are listed and counted.
+  - Published pages newest first.
+  - Mutation-checked, 5 of 5 caught: the client-facing stage list, the
+    session scope, hiding cancelled posts, failure shown as delayed, and
+    social-only approvals.
+- **Browser, as the Northwind portal user (seeded, then removed):**
+  - All six tabs.
+  - The Overview banner for the pending approval, with the scheduled post
+    under Coming up.
+  - October's calendar shows "Waiting for your review" and "Scheduled".
+  - A seeded draft never appeared.
+  - The published list showed interactions and reach.
+  - No overflow at 390px, and no page errors.
+- **Gate:** lint, typecheck, **1998 tests across 123 files**, production build.
+  All clean.

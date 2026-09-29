@@ -16,13 +16,7 @@ export default async function PortalSocialReportsPage() {
 
   return (
     <>
-      <header className="mb-5">
-        <Link href={"/portal/social" as Route} className="text-xs text-ink-subtle hover:text-navy-800">
-          ← Social
-        </Link>
-        <h1 className="mt-1.5 text-2xl text-navy-800">Social reports</h1>
-        <p className="mt-1.5 text-xs text-ink-subtle">Your monthly reports, from the figures the platforms reported.</p>
-      </header>
+      <p className="mb-4 text-xs text-ink-subtle">Your monthly reports, from the figures the platforms reported.</p>
       <Card>
         <CardBody>
           {reports.length === 0 ? (
