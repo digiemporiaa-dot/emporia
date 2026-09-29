@@ -2716,6 +2716,10 @@ model SocialAccount {
   /// Instagram account cannot be connected to two clients at once, which would
   /// make "whose post is this" unanswerable.
   externalId String
+  /// What the provider needs alongside `externalId` to address the account,
+  /// where one id is not enough: a Business Profile location is posted to
+  /// through the Google account that manages it. Null for everything else.
+  externalParentId String?
   name       String
   username   String?
   profileUrl String?

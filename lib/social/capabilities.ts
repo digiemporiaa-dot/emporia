@@ -78,8 +78,21 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     fields: ["caption", "callToAction", "linkUrl"],
     captionLimit: 1_500,
     carouselLimit: null,
-    metrics: true,
+    // Google reports performance per location, not per post, so there is no
+    // honest per-post number to collect. Declared off rather than faked.
+    metrics: false,
     nativeScheduling: false,
+    acceptedMediaTypes: ["image/jpeg", "image/png"],
+    // Google's button is one of a fixed set. "Call now" dials the number on the
+    // profile; every other button opens the post's link.
+    callToActionOptions: [
+      { value: "LEARN_MORE", label: "Learn more", needsLink: true },
+      { value: "BOOK", label: "Book", needsLink: true },
+      { value: "ORDER", label: "Order online", needsLink: true },
+      { value: "SHOP", label: "Buy", needsLink: true },
+      { value: "SIGN_UP", label: "Sign up", needsLink: true },
+      { value: "CALL", label: "Call now", needsLink: false },
+    ],
   },
 };
 

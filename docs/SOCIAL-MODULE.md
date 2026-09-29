@@ -1244,9 +1244,9 @@ say "not reported" rather than zero, AI drafting that cannot invent a number or
 publish anything, notifications and automation triggers, and a client-facing
 report that shares its arithmetic with the agency's.
 
-What deliberately does not exist: adapters for X and Google Business Profile.
-LinkedIn is implemented end to end, Instagram since section 16, Facebook since
-section 17 and YouTube since section 18; the rest report
+What deliberately does not exist: an adapter for X. LinkedIn is implemented
+end to end, Instagram since section 16, Facebook since section 17, YouTube
+since section 18 and Google Business Profile since section 19; the rest report
 their capabilities honestly and refuse every call, because a half-written
 adapter that silently no-ops is worse than a screen that says *not configured*.
 Each is a phase of its own when someone wants it.
@@ -1810,3 +1810,154 @@ it stays `null`.
   names come from Google's published discovery document for YouTube Data API
   v3 (revision 20260924); the OAuth endpoints are Google's documented ones.
   The first real upload should be watched, especially privacy and quota.
+
+---
+
+## 19. Phase C — the Google Business Profile adapter
+
+`lib/social/google-business.ts`: posts on a business's Google listing.
+
+### Three APIs, and a location that needs its account
+
+Google split Business Profile across services:
+
+| What | API | Source for this adapter |
+|---|---|---|
+| Accounts | Account Management v1 | published discovery document, rev 20260512 |
+| Locations | Business Information v1 | published discovery document, rev 20260916 |
+| Posts | My Business **v4** `localPosts` | **no published discovery document**; Google's v4 reference as remembered |
+
+The v4 post call addresses a location *through its account*:
+`accounts/{a}/locations/{l}/localPosts`. So `SocialAccount` gained a nullable
+`externalParentId`, which holds the account for a location and is null for
+every other provider. The canonical `locations/{l}` stays the `externalId`.
+
+- **Why not pack both ids into `externalId`:** the same location is often
+  reachable through two accounts (a person's own and an organisation's).
+  Packed ids would let one location be connected to two clients under two
+  names. With the location as the id, "already another client's" remains a
+  one-column check.
+- **Where the account comes from:** it is taken from Google at the moment of
+  choosing (the list is fetched again), never from anything the browser sent.
+
+### Choosing a location
+
+This reuses Facebook's picker (section 17):
+
+- **What is offered:** only locations Google marks `canOperateLocalPost`.
+  Proto3 JSON omits false booleans, so only an explicit `true` counts.
+- **Duplicates:** a location reachable through two accounts is offered once.
+- **Names:** each is shown with its town ("Northwind Studio — Andheri"),
+  because chains share a name.
+- **Credentials:** they stay the person's own Google tokens. Business Profile
+  has no per-location token. Refresh uses the shared Google OAuth from
+  section 18.
+
+### Posting
+
+A standard post has:
+
+- **Text:** required, 1,500 characters.
+- **Photo:** at most one, JPEG or PNG. That is now also declared in
+  `acceptedMediaTypes`, so a wrong file is refused when attached.
+- **Button:** optional.
+
+**The button is one of Google's fixed set:** Learn more, Book, Order online,
+Buy, Sign up, Call now.
+
+- The capability table gained `callToActionOptions`, and for this platform the
+  editor shows a **dropdown** instead of a text box.
+- Save validation refuses anything else, and refuses a button that opens a
+  link when there is no link. "Call now" needs none; it dials the profile's
+  number.
+- A link with no button chosen goes behind *Learn more*, because on a
+  Business Profile post the button *is* the link.
+- The client portal shows the button's name, not its code.
+
+Outcomes of the create call, which is the only call:
+
+- **Lost reply:** a timeout, a 504, or an accepted post with no name raises
+  `AmbiguousPublishError`.
+- **`REJECTED`:** Google refused it under its content policies. The post is a
+  failure with a reason (phone numbers and links in the text are common
+  causes), not a retry, which would be rejected the same way.
+- **`PROCESSING`:** published, with a warning that Google is still reviewing
+  it.
+
+**Metrics are declared off.** Google reports performance per location, not
+per post, so there is no honest per-post number. The capability table said
+`metrics: true` before the adapter existed; it now says `false`, and the
+collector never asks.
+
+### Found along the way: "Check" used a stale token
+
+The accounts screen's **Check** button (`syncAccount`) read the stored token
+as-is, without renewing it. For a Google account idle for more than an hour,
+the check came back 401, and a healthy channel or location was **marked for
+reconnection by the button meant to confirm it was fine**. That covered
+YouTube as shipped in section 18, and Business Profile.
+
+- It now renews first, through `usableCredentials`, like every other use.
+- It passes the account to `getAccount`, which Business Profile needs to know
+  which location to read. The interface gained an optional second parameter;
+  adapters whose sign-in *is* the account ignore it.
+- A test pins it, and was checked by putting the old line back: it fails.
+
+### Setting it up (operator)
+
+1. **Apply for Business Profile API access** for the Google Cloud project.
+   Until Google approves it, the project's quota is **zero** and every call
+   returns 429, which the adapter reports as *"A Google project not yet
+   approved for the Business Profile APIs has no quota at all"*.
+2. Enable **My Business Account Management API**, **My Business Business
+   Information API** and **Google My Business API** (the v4 one that posts).
+3. Use a *Web application* OAuth client with the redirect URI shown for
+   Business Profile on **Settings → Social platforms**:
+   `<NEXTAUTH_URL>/api/social/oauth/google_business_profile/callback`. The
+   YouTube client can be reused, with this URI added.
+4. Publish the consent screen (see section 18 for why *testing* is not
+   viable).
+5. The person who connects must be an owner or manager of the location in
+   Business Profile.
+
+### What was and was not verified
+
+- **Adapter:** 31 tests against a double (`tests/support/google-business-double.ts`)
+  modelling the awkward real estate: an organisation with two postable
+  locations and a warehouse that cannot take posts, plus a personal account
+  reaching one of the same locations.
+  - Listing: what is offered, de-duplication, town names, and pagination on
+    both lists.
+  - Selecting: the account taken from Google; refusal of a non-postable
+    location, even by id; a malformed id refused before any request.
+  - Posting: the exact v4 body and path, *Learn more* for a bare link, *Call
+    now* without one, six pre-flight refusals, a location stored without its
+    account, `REJECTED`, `PROCESSING`, all three ambiguity cases and a
+    retryable 500.
+  - Errors: quota, 401, and the metrics refusal.
+  - The editor's button rules.
+  - Mutation-checked: removing the location filter, the de-duplication or the
+    `REJECTED` handling each fails the tests.
+- **Database:** 3 tests.
+  - The chosen location is stored with its account and the person's lasting
+    Google access.
+  - The engine renews the token and posts through the location's account, and
+    the collector asks for no metrics and records none.
+  - *Check* renews a stale token instead of reporting a healthy location as
+    broken.
+- **Browser:**
+  - Business Profile settings save.
+  - **Connect** hands off to Google with the `business.manage` scope, offline
+    access, consent, a state and the callback URL. No secret is in the URL.
+  - In the editor, a Business Profile version shows the call to action as a
+    **dropdown** of Google's six buttons plus "No button".
+  - Choosing *Book* without a link shows *"The "Book" button needs a link to
+    open."* inline. With a link it saves as `BOOK`.
+  - No page errors. Test rows and credentials were removed afterwards.
+- **Not verified:** not run against a real Business Profile.
+  - The v4 `localPosts` request and response shapes are the least-verified
+    code in the social module. Google publishes no machine-readable
+    definition of them, and its documentation is not reachable from the
+    build environment.
+  - `languageCode` is sent as `en`.
+  - Watch the first real post closely.

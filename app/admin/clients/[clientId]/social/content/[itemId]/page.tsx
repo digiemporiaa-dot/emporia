@@ -125,6 +125,10 @@ export default async function SocialContentItemPage({
     fields: [...CAPABILITIES[provider].fields],
     captionLimit: CAPABILITIES[provider].captionLimit,
     carouselLimit: CAPABILITIES[provider].carouselLimit,
+    callToActionOptions: (CAPABILITIES[provider].callToActionOptions ?? []).map(({ value, label }) => ({
+      value,
+      label,
+    })),
     accounts: options.accounts
       .filter((account) => account.provider === provider)
       .map((account) => ({ id: account.id, name: account.name, status: account.status })),

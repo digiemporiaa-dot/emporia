@@ -1,4 +1,4 @@
-import { POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import type { SocialSnapshot } from "@/lib/social/approval-snapshot";
 
 /**
@@ -107,7 +107,12 @@ export function SocialVersions({ snapshot }: { snapshot: SocialSnapshot }) {
           ) : null}
 
           {post.callToAction ? (
-            <p className="mt-1.5 text-2xs text-ink-subtle">Button: {post.callToAction}</p>
+            <p className="mt-1.5 text-2xs text-ink-subtle">
+              {/* A fixed button is stored by its code; the client reads its name. */}
+              Button:{" "}
+              {CAPABILITIES[post.provider].callToActionOptions?.find((o) => o.value === post.callToAction)
+                ?.label ?? post.callToAction}
+            </p>
           ) : null}
 
           {post.firstComment ? (

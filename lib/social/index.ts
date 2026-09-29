@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { decryptSecret } from "@/lib/security/secret";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { FacebookProvider } from "@/lib/social/facebook";
+import { GoogleBusinessProvider } from "@/lib/social/google-business";
 import { InstagramProvider } from "@/lib/social/instagram";
 import { LinkedInProvider } from "@/lib/social/linkedin";
 import { UnconfiguredSocialProvider } from "@/lib/social/unconfigured";
@@ -19,8 +20,8 @@ import type { SocialProviderAdapter } from "@/lib/social/types";
  * The secret half is encrypted at rest with `lib/security/secret`.
  *
  * Adapters arrive one platform at a time, because each platform's API is a
- * piece of work in its own right. LinkedIn, Instagram, Facebook and YouTube
- * are implemented; the rest resolve to
+ * piece of work in its own right. Every provider but X is implemented; X
+ * resolves to
  * `UnconfiguredSocialProvider`, which reports its capabilities and refuses
  * every call with a typed error. That is deliberate — a half-written adapter
  * that silently no-ops is worse than an honest "Not configured" on the screen.
@@ -78,6 +79,7 @@ const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>([
   "INSTAGRAM",
   "FACEBOOK",
   "YOUTUBE",
+  "GOOGLE_BUSINESS_PROFILE",
 ]);
 
 /**
@@ -104,6 +106,8 @@ export async function socialProvider(
       return new FacebookProvider(config);
     case "YOUTUBE":
       return new YouTubeProvider(config);
+    case "GOOGLE_BUSINESS_PROFILE":
+      return new GoogleBusinessProvider(config);
     default:
       return new UnconfiguredSocialProvider(provider);
   }
