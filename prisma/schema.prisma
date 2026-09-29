@@ -448,6 +448,10 @@ enum AuditAction {
   // record the run itself, which is the thing nothing else would show.
   EXPORT
   IMPORT
+  // Figures read back from an external platform — a post's daily metrics
+  // snapshot. Recorded once per post per day, so the trail says a number
+  // arrived and when, without repeating itself on a rerun.
+  SYNC
 }
 
 // ---------------------------------------------------------------------------

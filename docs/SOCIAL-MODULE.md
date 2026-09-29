@@ -2977,3 +2977,46 @@ and the client's decision, which dragging between columns would skip.
   - No page errors.
 - **Gate:** lint, typecheck, **1992 tests across 121 files**, production build.
   All clean.
+
+## 27. The acceptance scenario, end to end
+
+`tests/social-acceptance.db.test.ts` runs brief §55 as one test.
+
+- **What it drives:** the same services the screens call.
+- **The platforms:** the Instagram, Facebook and LinkedIn wire-level doubles,
+  running the real adapter code.
+- **Not covered:** a live platform. That needs real app credentials and a
+  review by each platform, which cannot happen in a test.
+
+| Brief step | What the test does and checks |
+|---|---|
+| Create client ABC Technologies | Client and project rows. |
+| Connect Instagram, Facebook, LinkedIn | Instagram and LinkedIn through the adapter's account lookup and `connectAccount`; Facebook through the Page picker (`startPendingConnection` → `completePendingConnection`). Three connected accounts. |
+| Create campaign Diwali 2026 | A campaign row for the client. |
+| Create content: Instagram, Facebook, LinkedIn posts, different copy | `createSocialContent`, then three `savePost` calls. Three distinct captions. |
+| Upload creative | The media row an upload leaves, attached to the Instagram and Facebook posts. |
+| Submit for internal review; approve internally | `submitForInternalReview`, then `decideInternalReview` by a reviewer. |
+| Send to client | `requestSocialApproval`. |
+| Client logs in and sees 3 pending posts | Portal `listApprovals` shows one pending approval; `getApproval`'s snapshot holds the three posts. |
+| Client requests a change on LinkedIn | Portal `decideApproval(CHANGES_REQUESTED)` with feedback. |
+| New version created | LinkedIn is edited, internal review runs again, and the item is sent again as version 2 of the same approval. Version 1 is kept with its feedback and its original LinkedIn caption. |
+| Client approves the final version | Portal `decideApproval(APPROVED)`; the item moves to APPROVED. |
+| Post is scheduled | `setPostStatus(SCHEDULED)` for each version. |
+| Scheduler publishes it | `publishDuePosts`. Every version PUBLISHED, and the idea PUBLISHED. |
+| External post ID stored | Each post's `externalPostId` is set. |
+| Analytics sync runs | `collectMetrics` writes snapshots with no failures for these posts. |
+| Metrics appear in the dashboard | `socialReport`: 3 posts, the measured count matches the snapshots, and figures are present. |
+| Monthly report includes the post | `generateReport` for the publishing month, run as if on the 2nd of the next month: 3 posts, all under Diwali 2026. |
+| Audit trail: created, reviewed, approved, scheduled, published, synced | CREATE on the idea; STATUS_CHANGE with the internal approval; the client's APPROVED on the approval; 3 SCHEDULED; 3 PUBLISH; one SYNC per snapshot. |
+
+### Found and fixed
+
+- **Metric syncs were never audited**, so the trail could not show "synced".
+  There is a new `SYNC` audit action. The collector records it by the system
+  the first time it captures a post's figures on a given day, with the day
+  and the metrics reported, so a rerun the same day refreshes the figures
+  without repeating the entry. Removing the entry, or recording on every
+  rerun, each fails the test.
+
+- **Gate:** lint, typecheck, **1993 tests across 122 files**, production build.
+  All clean.
