@@ -6,7 +6,14 @@ import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
 import { buildSnapshot, readSnapshot, type SnapshotSource } from "@/lib/social/approval-snapshot";
 import { canTransitionContent } from "@/lib/projects/lifecycle";
-import { POST_TYPE_LABEL, PROVIDER_LABEL, TYPES_REQUIRING_MEDIA } from "@/lib/social/capabilities";
+import {
+  CAPABILITIES,
+  POST_TYPE_LABEL,
+  PROVIDER_LABEL,
+  REQUIRED_FIELD_LABEL,
+  TYPES_REQUIRING_LINK,
+  TYPES_REQUIRING_MEDIA,
+} from "@/lib/social/capabilities";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -68,6 +75,16 @@ function readinessError(posts: readonly SnapshotSource[]): string | null {
     }
     if (TYPES_REQUIRING_MEDIA.has(post.type) && !hasMedia) {
       return `The ${name} ${POST_TYPE_LABEL[post.type].toLowerCase()} needs a creative.`;
+    }
+    if (TYPES_REQUIRING_LINK.has(post.type) && !post.linkUrl?.trim()) {
+      return `The ${name} link post needs a link.`;
+    }
+    // What the platform itself will not publish without. Approving a YouTube
+    // upload with no title would only move the refusal to publication time.
+    for (const field of CAPABILITIES[post.provider].requiredFields ?? []) {
+      const value = post[field as keyof typeof post];
+      const present = Array.isArray(value) ? value.length > 0 : typeof value === "string" && value.trim() !== "";
+      if (!present) return `The ${name} version needs a ${REQUIRED_FIELD_LABEL[field]}.`;
     }
   }
 

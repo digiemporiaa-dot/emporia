@@ -1,5 +1,5 @@
 import type { SocialPostStatus, SocialPostType, SocialProvider } from "@/generated/prisma/enums";
-import type { SocialCapabilities } from "@/lib/social/types";
+import type { SocialCapabilities, SocialField } from "@/lib/social/types";
 
 /**
  * What each provider can actually do.
@@ -58,6 +58,8 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     postTypes: ["YOUTUBE_VIDEO", "YOUTUBE_SHORT"],
     // A YouTube upload is titled, not captioned; the description is the body.
     fields: ["headline", "caption", "hashtags"],
+    // YouTube refuses an upload without a title.
+    requiredFields: ["headline"],
     captionLimit: 5_000,
     carouselLimit: null,
     metrics: true,
@@ -106,6 +108,20 @@ export const TYPES_REQUIRING_MEDIA: ReadonlySet<SocialPostType> = new Set<Social
   "YOUTUBE_VIDEO",
   "YOUTUBE_SHORT",
 ]);
+
+/** A link post is nothing without its link, on every platform that has one. */
+export const TYPES_REQUIRING_LINK: ReadonlySet<SocialPostType> = new Set<SocialPostType>(["LINK"]);
+
+/** How a required field is named to an editor. YouTube calls its headline a title. */
+export const REQUIRED_FIELD_LABEL: Record<SocialField, string> = {
+  caption: "caption",
+  headline: "title",
+  hashtags: "hashtag",
+  mentions: "mention",
+  callToAction: "call to action",
+  firstComment: "first comment",
+  linkUrl: "link",
+};
 
 /**
  * Two-letter platform codes, for a month cell where a full name would push the

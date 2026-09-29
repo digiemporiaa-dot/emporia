@@ -45,6 +45,12 @@ export type SocialCapabilities = {
    * in the editor rather than at publication time.
    */
   readonly acceptedMediaTypes?: readonly string[];
+  /**
+   * Fields the platform will not publish without. Checked before a version is
+   * sent for client sign-off, so a post cannot be approved in a state the
+   * platform refuses at publication.
+   */
+  readonly requiredFields?: readonly SocialField[];
 };
 
 /** What a connected account looks like to us, whatever the provider calls it. */
