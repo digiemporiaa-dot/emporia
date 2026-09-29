@@ -504,9 +504,11 @@ model User {
   blogPosts          BlogPost[]
   pageVersions       PageVersion[]         @relation("PageVersionAuthor")
 
-  socialAccountsConnected  SocialAccount[]           @relation("SocialAccountConnectedBy")
-  socialPendingConnections SocialPendingConnection[]
-  socialPublications       SocialPublication[]       @relation("SocialPublicationTriggeredBy")
+  socialAccountsConnected    SocialAccount[]           @relation("SocialAccountConnectedBy")
+  socialPendingConnections   SocialPendingConnection[]
+  socialBrandProfilesUpdated SocialBrandProfile[]      @relation("SocialBrandProfileUpdatedBy")
+  socialStrategiesUpdated    SocialStrategy[]          @relation("SocialStrategyUpdatedBy")
+  socialPublications         SocialPublication[]       @relation("SocialPublicationTriggeredBy")
 
   @@index([type, status])
   @@index([roleId])
@@ -1659,6 +1661,9 @@ model Client {
   messages                 ClientMessage[]
   socialAccounts           SocialAccount[]
   socialPendingConnections SocialPendingConnection[]
+  socialBrandProfile       SocialBrandProfile?
+  socialStrategy           SocialStrategy?
+  contentPillars           ContentPillar[]
   socialPosts              SocialPost[]
   socialPublications       SocialPublication[]
   socialMetrics            SocialMetricSnapshot[]
@@ -1906,6 +1911,12 @@ model ContentCalendarItem {
   campaignId String?
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
+  /// Which of the client's content pillars this serves ("Product education").
+  /// Nulled, not cascaded, when a pillar is deleted: the idea outlives the
+  /// label. Must belong to the same client — checked in the service.
+  pillarId String?
+  pillar   ContentPillar? @relation(fields: [pillarId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1914,6 +1925,7 @@ model ContentCalendarItem {
 
   @@index([clientId, stage])
   @@index([campaignId])
+  @@index([pillarId])
   @@index([scheduledFor])
   @@index([projectId])
   @@index([ownerId])
@@ -2715,14 +2727,14 @@ model SocialAccount {
   /// The provider's own id for the account. Unique per provider: the same
   /// Instagram account cannot be connected to two clients at once, which would
   /// make "whose post is this" unanswerable.
-  externalId String
+  externalId       String
   /// What the provider needs alongside `externalId` to address the account,
   /// where one id is not enough: a Business Profile location is posted to
   /// through the Google account that manages it. Null for everything else.
   externalParentId String?
-  name       String
-  username   String?
-  profileUrl String?
+  name             String
+  username         String?
+  profileUrl       String?
 
   avatarId String?
   avatar   Media?  @relation("SocialAccountAvatar", fields: [avatarId], references: [id], onDelete: SetNull)
@@ -2789,6 +2801,92 @@ model SocialPendingConnection {
   @@index([clientId])
   @@index([startedById])
   @@index([expiresAt])
+}
+
+/// How a client sounds and what it will not say: the brief every caption is
+/// written against, by a person or by the AI assistant.
+///
+/// One per client. Everything is optional — an agency fills it in over time,
+/// and a half-written profile is still better than none.
+model SocialBrandProfile {
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /// What the brand calls itself in copy, where it differs from the client's
+  /// legal name ("Northwind" for "Northwind Technologies Pvt Ltd").
+  brandName         String?
+  tone              String?
+  industry          String?
+  targetAudience    String?
+  preferredLanguage String?
+  ctaStyle          String?
+  /// Hex values, for the designer; not used to generate anything.
+  brandColors       String[] @default([])
+  /// Always-on hashtags, stored without the leading #.
+  hashtags          String[] @default([])
+  /// Words and phrases the brand never uses. Checked against AI drafts.
+  forbiddenWords    String[] @default([])
+  preferredEmojis   String[] @default([])
+  postingRules      String?
+
+  updatedById String?
+  updatedBy   User?   @relation("SocialBrandProfileUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedById])
+}
+
+/// A recurring theme a client's content is built around ("Customer stories").
+/// Content items point at one; the calendar filters by it.
+model ContentPillar {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  /// Display order in pickers and the strategy page.
+  position    Int       @default(0)
+  /// Archived pillars keep their content's history but are no longer offered.
+  archivedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items ContentCalendarItem[]
+
+  @@unique([clientId, name])
+  @@index([clientId, archivedAt])
+}
+
+/// What the agency has agreed to do for a client on social, and what it is
+/// aiming at. Targets only: nothing here is ever marked "achieved" — the
+/// dashboards compare against stored numbers where they exist, and say so
+/// where they do not.
+model SocialStrategy {
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  objectives       String?
+  platforms        SocialProvider[] @default([])
+  /// Planned posts per week, per platform: `{ "INSTAGRAM": 4, "LINKEDIN": 2 }`.
+  /// Validated in the service against `SocialProvider`.
+  postingFrequency Json             @default("{}")
+  campaignGoals    String?
+  /// `[{ metric, target, period }]` — targets as agreed with the client.
+  kpiTargets       Json             @default("[]")
+
+  updatedById String?
+  updatedBy   User?   @relation("SocialStrategyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedById])
 }
 
 /// One platform's version of one content idea.

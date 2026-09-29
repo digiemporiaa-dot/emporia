@@ -278,7 +278,7 @@ function VersionCard({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmPublish, setConfirmPublish] = React.useState(false);
   const [draft, setDraft] = React.useState<
-    { caption: string; headline: string | null; hashtags: string[]; model: string } | null
+    { caption: string; headline: string | null; hashtags: string[]; forbiddenUsed: string[]; model: string } | null
   >(null);
   const [instruction, setInstruction] = React.useState("");
 
@@ -474,6 +474,13 @@ function VersionCard({
               {draft.hashtags.length > 0 ? (
                 <p className="text-xs text-navy-700">
                   {draft.hashtags.map((tag) => `#${tag}`).join(" ")}
+                </p>
+              ) : null}
+              {draft.forbiddenUsed.length > 0 ? (
+                // Shown, not silently edited: the operator decides the rewrite.
+                <p role="alert" className="rounded-md border border-red-100 bg-red-50 px-2.5 py-2 text-xs text-brand-red-text">
+                  Uses words on this client&apos;s forbidden list: {draft.forbiddenUsed.join(", ")}. Rewrite
+                  before saving.
                 </p>
               ) : null}
               <p className="text-2xs text-ink-subtle">

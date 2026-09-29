@@ -238,6 +238,7 @@ export const socialCalendarParamsSchema = z.object({
     "PUBLISHED",
   ]),
   campaignId: optionalIdParam,
+  pillarId: optionalIdParam,
   projectId: optionalIdParam,
   ownerId: optionalIdParam,
 });

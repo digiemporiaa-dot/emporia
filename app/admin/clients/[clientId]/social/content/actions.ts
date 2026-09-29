@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActor } from "@/lib/actor";
-import { createSocialContent } from "@/lib/services/social-content.service";
+import { createSocialContent, setContentPillar } from "@/lib/services/social-content.service";
 import { deletePost, savePost, setPostStatus } from "@/lib/services/social-post.service";
 import {
   requestSocialApproval,
@@ -36,6 +36,7 @@ const createSchema = z.object({
   title: z.string().trim().min(2, "Give the idea a title.").max(200),
   brief: z.string().trim().max(5000).nullable().default(null),
   campaignId: z.string().trim().max(40).nullable().default(null),
+  pillarId: z.string().trim().max(40).nullable().default(null),
   ownerId: z.string().trim().max(40).nullable().default(null),
   scheduledFor: z.coerce.date().nullable().default(null),
 });
@@ -52,6 +53,7 @@ export async function createContentAction(
       title: formData.get("title"),
       brief: blank(formData.get("brief")),
       campaignId: blank(formData.get("campaignId")),
+      pillarId: blank(formData.get("pillarId")),
       ownerId: blank(formData.get("ownerId")),
       scheduledFor: blank(formData.get("scheduledFor")),
     });
@@ -217,7 +219,13 @@ export async function publishNowAction(input: unknown): Promise<ActionResult<{ i
 }
 
 export async function draftCaptionAction(input: unknown): Promise<
-  ActionResult<{ caption: string; headline: string | null; hashtags: string[]; model: string }>
+  ActionResult<{
+    caption: string;
+    headline: string | null;
+    hashtags: string[];
+    forbiddenUsed: string[];
+    model: string;
+  }>
 > {
   try {
     const actor = await requireActor();
@@ -261,11 +269,33 @@ export async function draftCaptionAction(input: unknown): Promise<
         caption: draft.data.caption,
         headline: draft.data.headline,
         hashtags: draft.data.hashtags,
+        forbiddenUsed: draft.data.forbiddenUsed,
         model: draft.model,
       },
     };
   } catch (error) {
     actionLog.warn({ err: error }, "drafting a social caption failed");
+    return toActionFailure(error);
+  }
+}
+
+const pillarRef = z.object({
+  clientId: z.string().min(1).max(40),
+  itemId: z.string().min(1).max(40),
+  pillarId: z.string().trim().max(40).nullable(),
+});
+
+export async function setContentPillarAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = pillarRef.safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That pillar could not be set." };
+
+    const item = await setContentPillar(actor, parsed.data.itemId, parsed.data.pillarId || null);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/content`);
+    return { ok: true, data: { id: item.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "setting a content pillar failed");
     return toActionFailure(error);
   }
 }

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
+import { assertPillarForClient } from "@/lib/services/social-brand.service";
 import { visibilityFilter } from "@/lib/services/project.service";
 import {
   contentTransitionError,
@@ -154,6 +155,15 @@ export async function saveContentItem(actor: Actor, id: string | null, input: Co
     if (!campaign) throw new ValidationError("That campaign does not belong to this client.");
   }
 
+  // Same for a pillar. The item's current pillar may be archived and still be
+  // kept; a newly chosen one may not.
+  if (input.pillarId) {
+    const current = id
+      ? await db.contentCalendarItem.findUnique({ where: { id }, select: { pillarId: true } })
+      : null;
+    await assertPillarForClient(input.pillarId, project.clientId, current?.pillarId ?? null);
+  }
+
   return withAudit(
     {
       actor,
@@ -174,6 +184,8 @@ export async function saveContentItem(actor: Actor, id: string | null, input: Co
         // `undefined || null` used to turn "not mentioned" into "cleared",
         // silently dropping the item out of its campaign on every edit there.
         ...(input.campaignId === undefined ? {} : { campaignId: input.campaignId || null }),
+        // Same "not mentioned is not cleared" rule as the campaign.
+        ...(input.pillarId === undefined ? {} : { pillarId: input.pillarId || null }),
       };
 
       return id

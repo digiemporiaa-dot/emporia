@@ -95,8 +95,9 @@ A separate `SocialCampaign` would have bought nothing and cost that chain.
 
 `SocialBrandProfile`, `SocialContentPillar` and `SocialStrategy` are **not** in
 Phase 1. They exist to feed AI drafting and calendar grouping, and creating
-tables nothing reads yet is how a schema grows surface it never earns. They land
-with Phase 9, where they are consumed.
+tables nothing reads yet is how a schema grows surface it never earns. They
+were meant to land with Phase 9; they did not (Phase 9 shipped caption drafting
+only), and were built afterwards — see section 21.
 
 ---
 
@@ -2120,3 +2121,115 @@ The same questions were asked of every platform:
 The answers differ, and the capability table records them. Across the four
 phases the suite rose from 1742 to **1886** tests (114 files), each phase
 adding exactly what it wrote and losing none.
+
+---
+
+## 21. Gap phase 1 — brand profile, content pillars, social strategy
+
+An audit against the original brief found sections 27–29 unbuilt. Section 2
+had said they would arrive with Phase 9, and they had not. They are built now,
+and each one is **read by something on the day it lands**, which was the
+reason for waiting in the first place.
+
+### What was added, and what it extends
+
+| Brief | Model | Relationship |
+|---|---|---|
+| 27 Brand profile | `SocialBrandProfile` | one per client |
+| 28 Content pillars | `ContentPillar` | many per client; `ContentCalendarItem.pillarId` (nullable, `SetNull`) |
+| 29 Strategy | `SocialStrategy` | one per client |
+
+- **Brand profile:** tone, audience, language, CTA style, colours, always-on
+  hashtags, forbidden words, emojis and posting rules.
+- **Pillars:** unique per client, case-insensitive. **Archived, not
+  deleted**: an archived pillar stops being offered but stays on the ideas
+  that carry it.
+- **Strategy:** objectives, platforms, posts per week per platform, campaign
+  goals and KPI **targets**.
+
+These are three records rather than one because they change at different
+speeds and for different reasons. No second content model: a pillar is a
+column on the existing content item.
+
+### Where each is consumed
+
+- **AI caption drafting** (the existing `draftSocialPost`, no new AI path):
+  - It reads the brand kit: brand name, industry, tone, audience, language,
+    CTA style, emojis, posting rules, and the idea's pillar with its
+    description.
+  - The prompt says *"Never use these words or phrases: …"*. The draft is then
+    **checked** with `forbiddenWordsIn`: whole words and phrases, any case,
+    Devanagari included.
+  - A draft that used one anyway is **flagged on screen, not silently
+    edited**, and the operator decides.
+  - The brand's own hashtags are added where the platform takes hashtags and
+    the model left them out.
+- **Content list and calendar:**
+  - Both gained a pillar filter.
+  - The "new content" dialog takes a pillar.
+  - The idea page has a pillar picker. Changing the pillar does not reopen
+    client approval: it is the agency's filing, not copy the client signed off.
+- **The strategy page** (`/admin/clients/[id]/social/brand`, a new *Brand &
+  strategy* tab):
+  - It holds all three editors.
+  - Its one comparison is *this week against the plan*: versions scheduled or
+    published this week, per platform, beside the planned frequency. The week
+    runs Monday to Sunday in the calendar's time zone.
+  - Nothing is ever marked "achieved". KPI targets are stored as agreed, and a
+    test checks the record makes no such claim.
+
+### Isolation
+
+A pillar id from a form is only a suggestion until it is found under the
+client the item belongs to. `assertPillarForClient` runs on:
+
+- the social create path;
+- the delivery calendar's save;
+- the idea page's picker.
+
+This is the same rule campaigns follow. Tests cover these cases:
+
+- another client's pillar is refused;
+- an archived pillar cannot be newly chosen, but an idea that already has it
+  keeps it;
+- a portal user cannot read another client's kit, and cannot write any kit.
+
+Editing needs `social.edit`; `social.view` can read.
+
+### Found along the way
+
+- **The social section has no Overview page.** Brief section 7: the index
+  redirects to Content. Recorded for the admin-pages gap phase.
+- **The pillar field was labelled just "Name".** A screen-reader user heard
+  only "Name", and the browser check could not tell it from "Brand name". It
+  is now "Pillar name".
+- **Card titles wrapped onto two lines.** "Brand profile" wrapped beside its
+  description. Titles and descriptions are now stacked.
+
+### Verified
+
+- **Tests:** 17 new, in `tests/social-brand.db.test.ts`.
+  - Normalisation, and forbidden-word matching (including a Hindi word).
+  - Profile save with audit.
+  - Permission and portal refusals.
+  - Duplicate pillar names, ordering, archiving.
+  - Cross-client filing refused.
+  - List and calendar pillar filters.
+  - A damaged strategy row read as empty.
+  - The weekly count: drafts and other weeks excluded.
+  - The AI prompt carrying the brand kit, brand hashtags added, and forbidden
+    words flagged.
+  - Mutation-checked: removing the pillar ownership check or the forbidden-word
+    check each fails a test.
+- **Browser:**
+  - The profile saves with normalisation (duplicates in any case collapsed,
+    hashtags stored bare).
+  - Three pillars added and one moved up. A duplicate name is refused in
+    words.
+  - The strategy saves, and the week card shows *0 of 4* for Instagram.
+  - The content list and calendar show the pillar filter, and new content is
+    created under a pillar.
+  - One `<h1>`, no horizontal overflow at 390px, no page errors. Rows the check
+    created were removed.
+- **Gate:** lint, typecheck, **1903 tests across 115 files**, production build.
+  All clean.

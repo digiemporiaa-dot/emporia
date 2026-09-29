@@ -101,6 +101,7 @@ export type CalendarFilters = {
   status?: SocialPostStatus | null;
   stage?: ContentStage | null;
   campaignId?: string | null;
+  pillarId?: string | null;
   projectId?: string | null;
   ownerId?: string | null;
 };
@@ -120,7 +121,7 @@ export async function calendarPosts(
   const scope = await resolveClientScope(actor, filters.clientId);
 
   const window = { gte: filters.from, lt: filters.to };
-  const item = filters.projectId || filters.stage || filters.campaignId || filters.ownerId;
+  const item = filters.projectId || filters.stage || filters.campaignId || filters.pillarId || filters.ownerId;
 
   const rows = await db.socialPost.findMany({
     where: {
@@ -139,6 +140,7 @@ export async function calendarPosts(
             contentItem: {
               ...(filters.stage ? { stage: filters.stage } : {}),
               ...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
+              ...(filters.pillarId ? { pillarId: filters.pillarId } : {}),
               ...(filters.projectId ? { projectId: filters.projectId } : {}),
               ...(filters.ownerId ? { ownerId: filters.ownerId } : {}),
             },
@@ -221,12 +223,13 @@ export async function unscheduledPosts(
       // and the planner cannot tell whether the filter took.
       ...(filters.provider ? { provider: filters.provider } : {}),
       ...(filters.type ? { type: filters.type } : {}),
-      ...(filters.stage || filters.campaignId || filters.projectId || filters.ownerId
+      ...(filters.stage || filters.campaignId || filters.pillarId || filters.projectId || filters.ownerId
         ? {
             contentItem: {
               scheduledFor: null,
               ...(filters.stage ? { stage: filters.stage } : {}),
               ...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
+              ...(filters.pillarId ? { pillarId: filters.pillarId } : {}),
               ...(filters.projectId ? { projectId: filters.projectId } : {}),
               ...(filters.ownerId ? { ownerId: filters.ownerId } : {}),
             },

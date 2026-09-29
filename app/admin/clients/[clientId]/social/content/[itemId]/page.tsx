@@ -14,6 +14,7 @@ import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { isAppError } from "@/lib/errors";
 import { VersionEditor, type EditorPost, type EditorProvider } from "./version-editor";
 import { ApprovalPanel, type ApprovalSummary } from "./approval-panel";
+import { PillarPicker } from "./pillar-picker";
 
 export const metadata: Metadata = { title: "Social content" };
 export const dynamic = "force-dynamic";
@@ -147,6 +148,23 @@ export default async function SocialContentItemPage({
         <p className="mt-1 text-xs text-ink-subtle">
           {[item.campaign?.name, item.project.name, item.owner?.name].filter(Boolean).join(" · ")}
         </p>
+        {options.pillars.length > 0 || item.pillar ? (
+          <div className="mt-2">
+            <PillarPicker
+              clientId={clientId}
+              itemId={item.id}
+              value={item.pillar?.id ?? null}
+              // An archived pillar the idea still carries stays selectable here,
+              // so viewing the idea does not silently offer to drop it.
+              pillars={
+                item.pillar && !options.pillars.some((p) => p.id === item.pillar!.id)
+                  ? [...options.pillars, { id: item.pillar.id, name: `${item.pillar.name} (archived)` }]
+                  : options.pillars
+              }
+              canEdit={can(actor, "social.edit")}
+            />
+          </div>
+        ) : null}
         {item.brief ? (
           <p className="mt-3 max-w-2xl whitespace-pre-wrap rounded-md border border-line bg-surface-muted px-3.5 py-3 text-sm text-ink-muted">
             {item.brief}
