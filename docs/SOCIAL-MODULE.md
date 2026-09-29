@@ -1244,12 +1244,12 @@ say "not reported" rather than zero, AI drafting that cannot invent a number or
 publish anything, notifications and automation triggers, and a client-facing
 report that shares its arithmetic with the agency's.
 
-What deliberately does not exist: an adapter for X. LinkedIn is implemented
-end to end, Instagram since section 16, Facebook since section 17, YouTube
-since section 18 and Google Business Profile since section 19; the rest report
-their capabilities honestly and refuse every call, because a half-written
-adapter that silently no-ops is worse than a screen that says *not configured*.
-Each is a phase of its own when someone wants it.
+Every platform now has an adapter: LinkedIn from the start, then Instagram
+(section 16), Facebook (17), YouTube (18), Google Business Profile (19) and X
+(20). A platform whose app credentials are not entered still says *not
+configured* and refuses every call. None of the five later adapters has been
+run against the real platform; each section says exactly what it was checked
+against.
 
 ---
 
@@ -1961,3 +1961,162 @@ YouTube as shipped in section 18, and Business Profile.
     build environment.
   - `languageCode` is sent as `en`.
   - Watch the first real post closely.
+
+---
+
+## 20. Phase D — the X adapter, and renewing single-use tokens
+
+`lib/social/x.ts`, through the v2 API with OAuth 2.0.
+
+### PKCE, without a new cookie or table
+
+X's OAuth 2.0 requires PKCE: a secret verifier the server keeps between
+sending the browser away and receiving it back.
+
+- **How it is derived:** as an HMAC of the flow's nonce under a key from
+  `AUTH_SECRET` (`pkceVerifier` in `lib/social/oauth-state.ts`). The start
+  route sends only the S256 challenge. The callback recomputes the verifier
+  from the verified state.
+- **Why that is safe:** anyone who reads the state in a URL still cannot
+  compute it without the key. The verifier never travels.
+- **Other platforms:** the adapter interface gained an optional `pkce`
+  argument. Every flow now carries one, and platforms that do not use PKCE
+  ignore it.
+- **Token exchange:** the client secret goes as Basic auth, as X's
+  confidential clients require. A grant without offline access, or without
+  permission to post, is refused at connection.
+
+### X's refresh tokens work once, which exposed a race
+
+X rotates refresh tokens: each renewal spends the presented one and issues a
+new one. Building against that exposed two problems in the shared credential
+service.
+
+1. **Two renewals could race.**
+   - The cron is documented as safe to call twice at once, and **Check** can
+     be pressed mid-run. Both would present the same refresh token; X
+     honours one and refuses the other.
+   - The refusal marked a healthy account for reconnection.
+   - Renewal now holds a **per-account Postgres advisory lock**. Whoever gets
+     it second re-reads the row, and if the access token has changed, uses
+     the one just obtained instead of spending the refresh token again.
+   - A test races two renewals against a double that refuses a spent refresh
+     token. With the lock removed, it fails.
+2. **Short-lived tokens renewed on every use.**
+   - The renewal window was a day, meant for sixty-day tokens. A one-hour
+     Google or two-hour X token is *always* within a day of expiry, so every
+     call renewed it, and with X, raced itself.
+   - An account holding a refresh token can be renewed at any time, even
+     after expiry, so it now renews only in its **last fifteen minutes**.
+   - Tokens with no refresh token (Instagram) keep the day's margin, plus the
+     week-long keep-alive from section 18.
+   - An existing LinkedIn test had pinned the old behaviour: an hour-left
+     token was renewed. It now uses ten minutes, and a new test pins that an
+     hour-left refreshable token is *not* renewed.
+
+### Posting
+
+- **Upload:** X does not fetch from a URL. Creatives go up through the v2
+  chunked upload: `initialize`, then `append` in 4 MB segments cut from the
+  storage stream as it arrives (a large video is never held whole), then
+  `finalize`. Video is then waited on: *failed* is a failure; still
+  processing after 90 seconds is a plain retry next run, since nothing was
+  posted.
+- **The post:** `POST /2/tweets` is the only call that can be ambiguous.
+- **Text:** caption, then mentions (kept for X: a typed @handle is a real
+  mention here), then the link, then hashtags.
+
+**Measured the way X measures.** X counts every link as 23 characters and
+emoji and CJK as two (twitter-text v3's ranges; Devanagari counts one).
+
+- `lib/social/text-length.ts` holds that rule, and **both** the editor's
+  validation and the adapter use it.
+- The capability table gained `lengthRule` and `linkInText`.
+- The shared limit check now counts mentions (where a platform takes them)
+  and an in-text link.
+- Before this, an X post that fitted until its link was added would save,
+  pass approval and fail at publication.
+
+**Duplicates.** X refuses a post that duplicates a recent one from the same
+account. The refusal is shown in words: after an uncertain attempt it usually
+means the first one went out.
+
+**Metrics are declared off.** Posting works on X's free tier; reading a
+post's numbers back needs a paid tier. Rather than failing every collection,
+the capability is off. Switching it on is an adapter method plus one flag,
+once a deployment has the tier.
+
+### Setting it up (operator)
+
+1. In the X developer portal, create a Project and App, and turn on **OAuth
+   2.0** with type *Web App* (a confidential client).
+2. App permissions: **Read and write**.
+3. Callback URI: the one shown for X on **Settings → Social platforms**,
+   `<NEXTAUTH_URL>/api/social/oauth/x/callback`.
+4. Paste the OAuth 2.0 **Client ID and Client Secret** (not the API key and
+   secret) and tick *Offer X connections to clients*.
+5. Check the plan's posting limits. They are per app, across every client,
+   and a rate-limit refusal says when it lifts.
+
+### What was and was not verified
+
+- **Adapter:** 26 tests against a double (`tests/support/x-double.ts`) with
+  rotating single-use refresh tokens, a PKCE check, the chunked upload and
+  video processing. It plays storage too, so a 9 MB video really goes up as
+  three segments.
+  - Connecting: the challenge sent and never the verifier, a verifier nobody
+    can compute from the nonce alone, refusal to start without PKCE, Basic
+    auth, a mismatched verifier, a grant without posting rights, and rotation
+    stored while a spent token is refused.
+  - Posting: text order, image upload, a segmented video with processing, a
+    failed and a never-finishing video (nothing posted), and four pre-flight
+    refusals.
+  - Ambiguity: three cases, plus a failed upload staying non-ambiguous.
+  - Errors: duplicate, rate limit with its reset time, and 401.
+  - Length counting, in the adapter and at save.
+- **Database:** 2 tests. The engine renews, stores the rotated refresh token
+  and posts. Two racing renewals refresh once, and both callers get the new
+  token.
+- **Engine:** the adjusted LinkedIn refresh test, plus the new test that an
+  hour-left refreshable token is not renewed.
+- **Browser:**
+  - X settings save.
+  - **Connect** hands off to `x.com/i/oauth2/authorize` with the five
+    scopes, `code_challenge_method=S256` and the callback URL. No secret is
+    in the URL.
+  - The `code_challenge` in that URL matches an **independent
+    recomputation**: the nonce read from the signed state, the key derived
+    from `AUTH_SECRET`, HMAC, then S256. That is exactly what the callback
+    will derive.
+  - The verifier appears in neither the URL nor the cookie, and the cookie
+    holds only the nonce.
+  - No page errors. Credentials were removed afterwards.
+- **Not verified:** not run against a real X account.
+  - Post creation and the user lookup come from X's own generated TypeScript
+    SDK types.
+  - The OAuth 2.0 endpoints, scopes and v2 media upload come from
+    `twitter-api-v2`'s current source, which targets `api.x.com`.
+
+---
+
+## The adapters, finished
+
+Four phases, one per platform. What each needed beyond its own adapter:
+
+| Phase | Platform | What it added to the shared module |
+|---|---|---|
+| A | Facebook | Choosing one of several accounts after sign-in: a short-lived, encrypted, single-use grant and a picker |
+| B | YouTube | Shared Google OAuth, resumable-upload ambiguity resolved by asking the session, health that knows which accounts renew themselves, an idle-token keep-alive, required fields checked before sign-off |
+| C | Business Profile | A parent id for accounts addressed through another, fixed call-to-action buttons (editor dropdown, validation, portal label), **Check** renewing before it checks |
+| D | X | PKCE, single-flight renewal under a lock, a renewal window that suits short-lived tokens, platform-accurate length counting shared by editor and adapter |
+
+The same questions were asked of every platform:
+
+- Which call makes the post visible, and so is the only one allowed to be
+  ambiguous?
+- What would the platform refuse, and can the editor refuse it first?
+- Which numbers does it really report?
+
+The answers differ, and the capability table records them. Across the four
+phases the suite rose from 1742 to **1886** tests (114 files), each phase
+adding exactly what it wrote and losing none.

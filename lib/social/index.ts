@@ -7,6 +7,7 @@ import { GoogleBusinessProvider } from "@/lib/social/google-business";
 import { InstagramProvider } from "@/lib/social/instagram";
 import { LinkedInProvider } from "@/lib/social/linkedin";
 import { UnconfiguredSocialProvider } from "@/lib/social/unconfigured";
+import { XProvider } from "@/lib/social/x";
 import { YouTubeProvider } from "@/lib/social/youtube";
 import type { SocialProvider } from "@/generated/prisma/enums";
 import type { SocialProviderAdapter } from "@/lib/social/types";
@@ -20,8 +21,8 @@ import type { SocialProviderAdapter } from "@/lib/social/types";
  * The secret half is encrypted at rest with `lib/security/secret`.
  *
  * Adapters arrive one platform at a time, because each platform's API is a
- * piece of work in its own right. Every provider but X is implemented; X
- * resolves to
+ * piece of work in its own right. All six are now implemented; an
+ * unconfigured one resolves to
  * `UnconfiguredSocialProvider`, which reports its capabilities and refuses
  * every call with a typed error. That is deliberate — a half-written adapter
  * that silently no-ops is worse than an honest "Not configured" on the screen.
@@ -80,6 +81,7 @@ const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>([
   "FACEBOOK",
   "YOUTUBE",
   "GOOGLE_BUSINESS_PROFILE",
+  "X",
 ]);
 
 /**
@@ -108,6 +110,8 @@ export async function socialProvider(
       return new YouTubeProvider(config);
     case "GOOGLE_BUSINESS_PROFILE":
       return new GoogleBusinessProvider(config);
+    case "X":
+      return new XProvider(config);
     default:
       return new UnconfiguredSocialProvider(provider);
   }

@@ -281,8 +281,11 @@ export async function recordSyncResult(
  * `AUTH_SECRET` is rotated — rather than throwing, so the account shows as
  * needing reconnection instead of the screen breaking.
  */
-export async function credentialsFor(id: string): Promise<ProviderCredentials | null> {
-  const row = await db.socialAccount.findUnique({
+export async function credentialsFor(
+  id: string,
+  client: Pick<typeof db, "socialAccount"> = db,
+): Promise<ProviderCredentials | null> {
+  const row = await client.socialAccount.findUnique({
     where: { id },
     select: { accessToken: true, refreshToken: true, tokenExpiresAt: true, status: true },
   });
@@ -290,7 +293,7 @@ export async function credentialsFor(id: string): Promise<ProviderCredentials | 
 
   const accessToken = decryptSecret(row.accessToken);
   if (!accessToken) {
-    await db.socialAccount.update({
+    await client.socialAccount.update({
       where: { id },
       data: {
         status: "NEEDS_RECONNECT",
@@ -440,8 +443,17 @@ export function assertConnectable(account: ProviderAccount): void {
   }
 }
 
-/** Refresh this far ahead of expiry, so a post never goes out on a dying token. */
+/**
+ * Refresh this far ahead of expiry, so a post never goes out on a dying token.
+ *
+ * A day, for tokens that can only be renewed while they still work (Instagram
+ * renews by presenting itself). An account holding a refresh token can be
+ * renewed at any moment, even after expiry, so it waits for the last
+ * `REFRESHABLE_MARGIN_MS` — otherwise a one-hour Google or two-hour X token,
+ * always "within a day of expiry", would be renewed on every single use.
+ */
 const REFRESH_BEFORE_MS = 24 * 60 * 60 * 1000;
+const REFRESHABLE_MARGIN_MS = 15 * 60 * 1000;
 
 /**
  * Credentials that will actually work for the next call.
@@ -465,10 +477,11 @@ export async function usableCredentials(
   const credentials = await credentialsFor(id);
   if (!credentials) return null;
 
-  const expiring =
-    credentials.expiresAt !== null &&
-    credentials.expiresAt.getTime() - now.getTime() < windowMs;
-  if (!expiring) return credentials;
+  const expiring = (c: ProviderCredentials) =>
+    c.expiresAt !== null &&
+    c.expiresAt.getTime() - now.getTime() <
+      (c.refreshToken ? Math.min(windowMs, REFRESHABLE_MARGIN_MS) : windowMs);
+  if (!expiring(credentials)) return credentials;
 
   const canRefresh = Boolean(credentials.refreshToken) || adapter.refreshesWithAccessToken === true;
   if (!canRefresh) {
@@ -485,31 +498,52 @@ export async function usableCredentials(
     return credentials;
   }
 
-  try {
-    const fresh = await adapter.refresh(credentials);
-    await db.socialAccount.update({
-      where: { id },
-      data: {
-        accessToken: encryptSecret(fresh.accessToken),
+  // One renewal per account at a time. X's refresh tokens are single-use and
+  // rotate: two renewals racing — an overlapping cron run, the Check button
+  // pressed mid-run — would spend the same refresh token twice, and the
+  // loser's refusal would mark a healthy account for reconnection. So the
+  // renewal holds a per-account advisory lock, and whoever gets it second
+  // re-reads and uses the token the first one just obtained.
+  let failure: string | null = null;
+  const renewed = await db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`social-credentials:${id}`}))`;
+
+      const current = await credentialsFor(id, tx);
+      if (!current) return null;
+      // Renewed by whoever held the lock before us: use theirs. Presenting
+      // the refresh token again would spend it twice.
+      if (current.accessToken !== credentials.accessToken || !expiring(current)) return current;
+
+      try {
+        const fresh = await adapter.refresh(current);
         // Some platforms rotate the refresh token, some keep the old one, and
         // some (Instagram) never issue one at all.
-        refreshToken:
-          (fresh.refreshToken ?? credentials.refreshToken)
-            ? encryptSecret((fresh.refreshToken ?? credentials.refreshToken)!)
-            : null,
-        tokenExpiresAt: fresh.expiresAt,
-      },
-    });
-    return { ...fresh, refreshToken: fresh.refreshToken ?? credentials.refreshToken };
-  } catch (error) {
-    await recordSyncResult(id, {
-      ok: false,
-      error:
-        error instanceof Error ? error.message : "The access token could not be refreshed.",
-      credentialsRejected: true,
-    });
+        const refreshToken = fresh.refreshToken ?? current.refreshToken;
+        await tx.socialAccount.update({
+          where: { id },
+          data: {
+            accessToken: encryptSecret(fresh.accessToken),
+            refreshToken: refreshToken ? encryptSecret(refreshToken) : null,
+            tokenExpiresAt: fresh.expiresAt,
+          },
+        });
+        return { ...fresh, refreshToken };
+      } catch (error) {
+        failure = error instanceof Error ? error.message : "The access token could not be refreshed.";
+        return null;
+      }
+    },
+    // The refresh is a network call made while the lock is held; bounded by
+    // the adapter's own timeout, well inside this.
+    { timeout: 60_000, maxWait: 30_000 },
+  );
+
+  if (failure) {
+    await recordSyncResult(id, { ok: false, error: failure, credentialsRejected: true });
     return null;
   }
+  return renewed;
 }
 
 /** How far ahead the keep-alive renews a token that renews itself. */

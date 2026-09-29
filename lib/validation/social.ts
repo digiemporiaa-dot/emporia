@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CAPABILITIES } from "@/lib/social/capabilities";
+import { X_LINK_LENGTH, textLength } from "@/lib/social/text-length";
 import type { SocialProvider } from "@/generated/prisma/enums";
 
 /**
@@ -92,15 +93,27 @@ export const socialPostSchema = z
     }
 
     if (capabilities.captionLimit !== null && value.caption) {
-      // Hashtags ride in the caption on every provider that has a limit, so
-      // they count towards it — a caption that fits until the tags are added
-      // is a caption that fails at publication.
-      const tagLength = value.hashtags.reduce((sum, tag) => sum + tag.length + 2, 0);
-      if (value.caption.length + tagLength > capabilities.captionLimit) {
+      // Everything that rides in the text counts towards the limit: hashtags
+      // on every provider with one, mentions where the platform takes them,
+      // and the link where it sits in the post (X). A caption that fits until
+      // the rest is added is a caption that fails at publication. Counted the
+      // platform's way — see `textLength`.
+      const extras = [
+        ...value.hashtags.map((tag) => `#${tag}`),
+        ...((capabilities.fields as readonly string[]).includes("mentions")
+          ? value.mentions.map((m) => `@${m.replace(/^@+/, "")}`)
+          : []),
+        ...(capabilities.linkInText && value.linkUrl ? [value.linkUrl] : []),
+      ];
+      const composed = [value.caption, ...extras].join(" ");
+      if (textLength(composed, capabilities.lengthRule) > capabilities.captionLimit) {
         ctx.addIssue({
           code: "custom",
           path: ["caption"],
-          message: `Too long for this platform — ${capabilities.captionLimit} characters including hashtags.`,
+          message:
+            capabilities.lengthRule === "x-weighted"
+              ? `Too long for X — ${capabilities.captionLimit} counting hashtags, mentions and the link (which X counts as ${X_LINK_LENGTH}); emoji count twice.`
+              : `Too long for this platform — ${capabilities.captionLimit} characters including hashtags.`,
         });
       }
     }

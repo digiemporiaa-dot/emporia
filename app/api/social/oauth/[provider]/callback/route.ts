@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { currentActor } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { socialProvider } from "@/lib/social";
-import { OAUTH_STATE_COOKIE, callbackUrl, readState } from "@/lib/social/oauth-state";
+import { OAUTH_STATE_COOKIE, callbackUrl, pkceVerifier, readState } from "@/lib/social/oauth-state";
 import { assertConnectable, connectAccount } from "@/lib/services/social-account.service";
 import { startPendingConnection } from "@/lib/services/social-pending.service";
 import { isAppError } from "@/lib/errors";
@@ -115,7 +115,10 @@ export async function GET(
   if (!adapter.configured) return back(state.value.returnTo, "unconfigured");
 
   try {
-    const credentials = await adapter.exchangeCode(code, callbackUrl(provider));
+    // Recomputed from the verified state: the verifier itself never left us.
+    const credentials = await adapter.exchangeCode(code, callbackUrl(provider), {
+      verifier: pkceVerifier(state.value.nonce),
+    });
 
     // One sign-in, several accounts (a Facebook user's Pages). With exactly
     // one there is nothing to ask; otherwise the operator chooses, and the
