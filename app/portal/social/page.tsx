@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import type { Route } from "next";
 import { ExternalLink, Info } from "lucide-react";
 import { requirePortalActorPage } from "@/lib/actor/portal";
 import { socialReport } from "@/lib/services/portal.service";
@@ -40,11 +42,16 @@ export default async function PortalSocialPage() {
 
   return (
     <>
-      <header className="mb-5">
-        <h1 className="text-2xl text-navy-800">Social</h1>
-        <p className="mt-1.5 text-xs text-ink-subtle">
-          Everything published on your accounts, and what the platforms reported back.
-        </p>
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl text-navy-800">Social</h1>
+          <p className="mt-1.5 text-xs text-ink-subtle">
+            Everything published on your accounts, and what the platforms reported back.
+          </p>
+        </div>
+        <Link href={"/portal/social/reports" as Route} className="text-sm text-navy-800 underline underline-offset-4">
+          Monthly reports
+        </Link>
       </header>
 
       {report.posts === 0 ? (

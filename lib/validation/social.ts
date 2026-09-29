@@ -216,7 +216,7 @@ const optionalIdParam = z
   .catch(null);
 
 export const socialCalendarParamsSchema = z.object({
-  view: z.enum(["month", "week", "day", "list"]).catch("month"),
+  view: z.enum(["month", "week", "day", "list", "board"]).catch("month"),
   /** `YYYY-MM` or `YYYY-MM-DD`; the grid reads it, and falls back to today. */
   date: z
     .string()

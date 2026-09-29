@@ -196,3 +196,22 @@ export function dailyTrend(snapshots: readonly Snapshot[], days: readonly string
 export function reportedTrendKeys(points: readonly TrendPoint[]): TrendKey[] {
   return TREND_KEYS.filter((key) => points.some((point) => point[key] !== null));
 }
+
+/**
+ * Engagement rate across many posts: total engagement over total reach, from
+ * the posts that reported both. Not the average of per-post rates, which
+ * would let a post seen by ten people weigh as much as one seen by ten
+ * thousand. Null when no post reported reach.
+ */
+export function aggregateRate(rows: readonly Record<MetricKey, number | null>[]): { value: number | null; reporting: number } {
+  let engagement = 0;
+  let reach = 0;
+  let reporting = 0;
+  for (const row of rows) {
+    if (engagementRate(row) === null) continue;
+    engagement += engagementOf(row);
+    reach += row.reach!;
+    reporting += 1;
+  }
+  return { value: reporting ? (engagement / reach) * 100 : null, reporting };
+}

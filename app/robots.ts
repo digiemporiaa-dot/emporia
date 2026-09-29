@@ -4,9 +4,10 @@ import { absoluteUrl } from "@/lib/seo/urls";
 /**
  * robots.txt.
  *
- * The four private prefixes are disallowed explicitly here as well as being
+ * The private prefixes are disallowed explicitly here as well as being
  * absent from the sitemap — belt and braces, since a crawler can find a URL
- * without the sitemap.
+ * without the sitemap. `/print` holds printable reports, which authenticate
+ * and are noindex, but are no more public than the portal.
  */
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/portal", "/auth", "/api"],
+        disallow: ["/admin", "/portal", "/auth", "/api", "/print"],
       },
     ],
     sitemap: absoluteUrl("/sitemap.xml"),

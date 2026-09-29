@@ -33,7 +33,7 @@
  */
 export const CALENDAR_TIME_ZONE = "Asia/Kolkata";
 
-export const CALENDAR_VIEWS = ["month", "week", "day", "list"] as const;
+export const CALENDAR_VIEWS = ["month", "week", "day", "list", "board"] as const;
 export type CalendarView = (typeof CALENDAR_VIEWS)[number];
 
 export function isCalendarView(value: string): value is CalendarView {
@@ -262,7 +262,8 @@ export function buildGrid(
   const firstOfNext = nextMonthStart(first);
   const firstOfPrevious = previousMonthStart(first);
 
-  if (view === "list") {
+  // The board covers the same month as the list; it groups by stage, not day.
+  if (view === "list" || view === "board") {
     const days: CalendarDay[] = [];
     for (let d = first; d.month === first.month; d = addDays(d, 1)) days.push(cell(d, true));
     return {

@@ -1,6 +1,7 @@
 import { bucketByDay, WEEKDAYS, type CalendarGrid } from "@/lib/social/calendar";
 import type { CalendarCard as Card } from "@/lib/services/social-calendar.service";
 import { CalendarCard } from "./calendar-card";
+import { CONTENT_STAGES, CONTENT_STAGE_LABEL } from "@/lib/projects/lifecycle";
 
 /**
  * The grid itself, in four shapes.
@@ -64,6 +65,44 @@ export function CalendarBody({
   // plain calendar dates rather than instants.
   const labelFor = (day: { year: number; month: number; day: number }) =>
     DAY_LABEL.format(new Date(Date.UTC(day.year, day.month - 1, day.day, 12)));
+
+  if (grid.view === "board") {
+    // Read-only on purpose: a stage moves through internal review and the
+    // client's decision, which a drag between columns would skip.
+    const ordered = [...cards].sort((a, b) => (a.effectiveAt ?? "").localeCompare(b.effectiveAt ?? ""));
+    return (
+      <div className="space-y-2">
+        <p className="text-2xs text-ink-subtle">
+          This month&rsquo;s versions by where their idea is in the workflow. Stages move through review and
+          approval on each idea&rsquo;s page.
+        </p>
+        <div className="grid auto-cols-[minmax(15rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-2">
+          {CONTENT_STAGES.map((stage) => {
+            const column = ordered.filter((card) => card.stage === stage);
+            return (
+              <section key={stage} aria-label={CONTENT_STAGE_LABEL[stage]} className="min-w-0 rounded-lg border border-line bg-surface-muted p-2">
+                <h3 className="mb-2 flex items-center justify-between px-1 text-xs font-medium text-navy-800">
+                  {CONTENT_STAGE_LABEL[stage]}
+                  <span className="text-2xs font-normal text-ink-subtle">{column.length}</span>
+                </h3>
+                {column.length === 0 ? (
+                  <p className="px-1 py-3 text-2xs text-ink-subtle">Nothing here.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {column.map((card) => (
+                      <li key={card.id}>
+                        <CalendarCard card={card} density="full" base={base} timeFormat={timeFormat} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   if (grid.view === "list") {
     const populated = grid.days.filter(
