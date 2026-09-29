@@ -20,6 +20,8 @@ import {
 } from "@/lib/social/report";
 import { engagementRate } from "@/lib/social/insights";
 import { log } from "@/lib/logger";
+import { record } from "@/lib/services/audit.service";
+import { systemActor } from "@/lib/actor/types";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
 import type { SocialProvider } from "@/generated/prisma/enums";
@@ -149,11 +151,26 @@ export async function collectMetrics(
         continue;
       }
 
+      const columns = toColumns(metrics);
+      const firstToday = !(await db.socialMetricSnapshot.findUnique({
+        where: { postId_capturedOn: { postId: post.id, capturedOn } },
+        select: { id: true },
+      }));
       await db.socialMetricSnapshot.upsert({
         where: { postId_capturedOn: { postId: post.id, capturedOn } },
-        create: { postId: post.id, clientId: post.clientId, capturedOn, ...toColumns(metrics) },
-        update: toColumns(metrics),
+        create: { postId: post.id, clientId: post.clientId, capturedOn, ...columns },
+        update: columns,
       });
+      // The audit trail's "synced": once per post per day, by the system.
+      if (firstToday) {
+        await record({
+          actor: systemActor(),
+          action: "SYNC",
+          entityType: "SocialPost",
+          entityId: post.id,
+          after: { capturedOn: capturedOn.toISOString().slice(0, 10), reported: METRIC_KEYS.filter((key) => columns[key] !== null) },
+        });
+      }
       run.captured += 1;
     } catch (error) {
       metricsLog.error({ err: error, postId: post.id }, "reading metrics failed");
