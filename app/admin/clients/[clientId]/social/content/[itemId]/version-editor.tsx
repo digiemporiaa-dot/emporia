@@ -21,6 +21,7 @@ import {
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
 import { AIDraft } from "@/components/admin/ai-draft";
 import { useHydrated } from "@/lib/utils/hydrated";
+import { X_LINK_LENGTH, textLength, type LengthRule } from "@/lib/social/text-length";
 import type {
   ContentStage,
   SocialPostStatus,
@@ -29,12 +30,23 @@ import type {
 } from "@/generated/prisma/enums";
 import { POST_STATUS_LABEL, POST_STATUS_TONE, POST_TYPE_LABEL } from "@/lib/social/capabilities";
 import {
+  assistCopyAction,
   deletePostAction,
   publishNowAction,
   draftCaptionAction,
   savePostAction,
   setPostStatusAction,
 } from "../actions";
+
+/** What an assist sends back, less the model name the badge shows. */
+type SocialAssistResult = {
+  caption?: string;
+  hashtags?: string[];
+  callToAction?: string;
+  ctaLine?: string;
+  forbiddenUsed: string[];
+  model: string;
+};
 
 /**
  * The platform version editor.
@@ -71,6 +83,8 @@ export type EditorPost = {
   lastError: string | null;
   /** The last attempt may already be live; only the queue can resolve it. */
   ambiguous: boolean;
+  /** Written by the AI and not yet saved by a person. */
+  aiDraft: boolean;
   media: EditorMedia[];
   /** Publication attempts, newest first. Empty until something is tried. */
   attempts: EditorAttempt[];
@@ -92,6 +106,9 @@ export type EditorProvider = {
   postTypes: string[];
   fields: string[];
   captionLimit: number | null;
+  /** How the limit is counted, and whether the link rides in the text (X). */
+  lengthRule: LengthRule;
+  linkInText: boolean;
   carouselLimit: number | null;
   /** A fixed set of buttons, where the platform has one. Empty means free text. */
   callToActionOptions: { value: string; label: string }[];
@@ -144,6 +161,15 @@ export function VersionEditor({
     ? (providers.find((entry) => entry.provider === draft.provider) ?? null)
     : null;
 
+  /** Other saved versions with a caption — what "Create a LinkedIn version from…" can start from. */
+  const siblingsOf = (id: string) =>
+    posts
+      .filter((other) => other.id !== id && other.id && other.caption.trim())
+      .map((other) => ({
+        id: other.id,
+        label: providers.find((entry) => entry.provider === other.provider)?.label ?? other.provider,
+      }));
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -175,6 +201,7 @@ export function VersionEditor({
                 stage={stage}
                 post={post}
                 provider={provider}
+                siblings={siblingsOf(post.id)}
                 canEdit={canEdit}
                 canDelete={canDelete}
                 canPublish={canPublish}
@@ -193,6 +220,7 @@ export function VersionEditor({
           stage="DRAFT"
           post={emptyPost(draftProvider, draft?.type ?? "TEXT")}
           provider={draftProvider}
+          siblings={siblingsOf("")}
           canEdit
           canDelete={false}
           canPublish={false}
@@ -235,6 +263,7 @@ function emptyPost(provider: EditorProvider, type: string): EditorPost {
     externalUrl: null,
     lastError: null,
     ambiguous: false,
+    aiDraft: false,
     media: [],
     attempts: [],
   };
@@ -259,12 +288,14 @@ function VersionCard({
   canPublish,
   aiReady,
   onDiscard,
+  siblings,
 }: {
   clientId: string;
   itemId: string;
   stage: ContentStage;
   post: EditorPost;
   provider: EditorProvider;
+  siblings: { id: string; label: string }[];
   canEdit: boolean;
   canDelete: boolean;
   canPublish: boolean;
@@ -281,6 +312,10 @@ function VersionCard({
     { caption: string; headline: string | null; hashtags: string[]; forbiddenUsed: string[]; model: string } | null
   >(null);
   const [instruction, setInstruction] = React.useState("");
+  const [basedOn, setBasedOn] = React.useState("");
+  const [assist, setAssist] = React.useState<
+    ({ mode: "improve" | "hashtags" | "cta" } & SocialAssistResult) | null
+  >(null);
 
   const [type, setType] = React.useState(post.type);
   const [accountId, setAccountId] = React.useState(post.accountId ?? "");
@@ -305,8 +340,15 @@ function VersionCard({
     .map((tag) => tag.replace(/^#+/, "").trim())
     .filter(Boolean);
 
-  // Counted exactly as the platform counts it: the tags ride in the caption.
-  const used = caption.length + tags.reduce((sum, tag) => sum + tag.length + 2, 0);
+  // Counted exactly as saving counts it (`textLength`, shared with the
+  // validation): the tags ride in the caption, and on X so does the link, at
+  // X's weighting. A counter that disagreed with the save would be a lie.
+  const used = textLength(
+    [caption, ...tags.map((tag) => `#${tag}`), ...(provider.linkInText && linkUrl.trim() ? [linkUrl.trim()] : [])].join(
+      " ",
+    ),
+    provider.lengthRule,
+  );
   const overLimit = provider.captionLimit !== null && used > provider.captionLimit;
 
   const carouselOver =
@@ -366,10 +408,36 @@ function VersionCard({
         provider: provider.provider,
         type,
         instruction: instruction.trim() || null,
+        fromPostId: basedOn || null,
       });
       if (result.ok) setDraft(result.data);
       else setError(result.message);
     });
+  };
+
+  const askForAssist = (mode: "improve" | "hashtags" | "cta") => {
+    setError(null);
+    start(async () => {
+      const result = await assistCopyAction({
+        itemId,
+        provider: provider.provider,
+        mode,
+        text: caption,
+        instruction: instruction.trim() || null,
+      });
+      if (result.ok) setAssist({ mode, ...result.data });
+      else setError(result.message);
+    });
+  };
+
+  /** Put a suggestion in the form. Still unsaved — the person presses save. */
+  const applyAssist = () => {
+    if (!assist) return;
+    if (assist.caption) setCaption(assist.caption);
+    if (assist.hashtags) setHashtags(assist.hashtags.join(" "));
+    if (assist.callToAction) setCallToAction(assist.callToAction);
+    if (assist.ctaLine) setCaption((current) => (current.trim() ? `${current.trimEnd()}\n\n${assist.ctaLine}` : assist.ctaLine!));
+    setAssist(null);
   };
 
   /** Put the draft in the form. Still unsaved — the person presses save. */
@@ -418,6 +486,11 @@ function VersionCard({
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={POST_STATUS_TONE[post.status]}>{POST_STATUS_LABEL[post.status]}</Badge>
+            {post.aiDraft ? (
+              <Badge tone="warning" title="Written by the AI. Check it and save it before it can go to the client.">
+                AI draft — check and save
+              </Badge>
+            ) : null}
             {post.externalUrl ? (
               <a
                 href={post.externalUrl}
@@ -452,16 +525,77 @@ function VersionCard({
                   onChange={(event) => setInstruction(event.target.value)}
                 />
               </label>
+              {siblings.length > 0 ? (
+                <label>
+                  <span className="mb-1 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+                    Based on
+                  </span>
+                  <Select value={basedOn} onChange={(event) => setBasedOn(event.target.value)} className="w-48">
+                    <option value="">The brief</option>
+                    {siblings.map((sibling) => (
+                      <option key={sibling.id} value={sibling.id}>
+                        The {sibling.label} version
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              ) : null}
               <Button variant="secondary" disabled={pending} onClick={askForDraft}>
                 <Sparkles size={14} aria-hidden="true" />
-                {pending ? "Drafting…" : "Draft"}
+                {pending ? "Drafting…" : basedOn ? `Create ${provider.label} version` : "Draft"}
+              </Button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-2xs font-medium uppercase tracking-wide text-ink-subtle">Or</span>
+              <Button size="sm" variant="ghost" disabled={pending || !caption.trim()} onClick={() => askForAssist("improve")}>
+                Improve caption
+              </Button>
+              {has("hashtags") ? (
+                <Button size="sm" variant="ghost" disabled={pending} onClick={() => askForAssist("hashtags")}>
+                  Suggest hashtags
+                </Button>
+              ) : null}
+              <Button size="sm" variant="ghost" disabled={pending} onClick={() => askForAssist("cta")}>
+                Suggest a call to action
               </Button>
             </div>
             <p className="mt-1.5 text-2xs text-ink-subtle">
-              Written from this idea&rsquo;s brief. It will not invent figures, offers or results —
-              if the brief has no numbers, the caption has none.
+              Written from this idea&rsquo;s brief and the client&rsquo;s brand profile. It will not
+              invent figures, offers or results — if the brief has no numbers, the caption has none.
             </p>
           </div>
+        ) : null}
+
+        {assist ? (
+          <AIDraft model={assist.model} onDismiss={() => setAssist(null)}>
+            <div className="space-y-2">
+              {assist.caption ? <p className="whitespace-pre-wrap text-sm text-ink">{assist.caption}</p> : null}
+              {assist.hashtags ? (
+                <p className="text-xs text-navy-700">{assist.hashtags.map((tag) => `#${tag}`).join(" ")}</p>
+              ) : null}
+              {assist.callToAction ? (
+                <p className="text-sm text-ink">
+                  Button:{" "}
+                  {provider.callToActionOptions.find((option) => option.value === assist.callToAction)?.label ??
+                    assist.callToAction}
+                </p>
+              ) : null}
+              {assist.ctaLine ? (
+                <p className="text-sm text-ink">
+                  <span className="text-2xs uppercase tracking-wide text-ink-subtle">Added to the caption: </span>
+                  {assist.ctaLine}
+                </p>
+              ) : null}
+              {assist.forbiddenUsed.length > 0 ? (
+                <p role="alert" className="rounded-md border border-red-100 bg-red-50 px-2.5 py-2 text-xs text-brand-red-text">
+                  Uses words on this client&apos;s forbidden list: {assist.forbiddenUsed.join(", ")}.
+                </p>
+              ) : null}
+              <Button size="sm" onClick={applyAssist}>
+                Use this
+              </Button>
+            </div>
+          </AIDraft>
         ) : null}
 
         {draft ? (
@@ -620,7 +754,10 @@ function VersionCard({
                 {provider.captionLimit !== null ? (
                   <p className="mt-1 text-2xs">
                     <span className={overLimit ? "text-brand-red-text" : "text-ink-subtle"}>
-                      {used} / {provider.captionLimit} including hashtags
+                      {used} / {provider.captionLimit}{" "}
+                      {provider.lengthRule === "x-weighted"
+                        ? `counted X's way: hashtags and the link (as ${X_LINK_LENGTH}) included, emoji twice`
+                        : "including hashtags"}
                     </span>
                   </p>
                 ) : null}

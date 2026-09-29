@@ -29,7 +29,15 @@ export type AITask =
   | "generateMeta"
   // Social. One caption per platform, drafted against that platform's own
   // limits and fields, and never written to a post until a person saves it.
-  | "draftSocialPost";
+  | "draftSocialPost"
+  // Polishing one part of a version: a better caption, hashtags, a CTA.
+  | "assistSocialCopy"
+  // One article into several platforms' versions. A draft like the rest: the
+  // versions it becomes are marked AI drafts until a person saves each.
+  | "repurposeContent"
+  // Suggested ideas for a client's calendar. Nothing is created until a
+  // person picks one.
+  | "generateContentIdeas";
 
 export type CompletionRequest = {
   /** Which product feature is asking. Recorded, and used for logging. */

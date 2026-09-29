@@ -52,6 +52,7 @@ const itemSelect = {
       publishedAt: true,
       externalUrl: true,
       lastError: true,
+      aiDraftedAt: true,
       account: { select: { id: true, name: true, status: true } },
       media: {
         orderBy: { order: "asc" },

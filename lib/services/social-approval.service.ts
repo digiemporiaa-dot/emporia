@@ -44,6 +44,9 @@ const snapshotSelect = {
   firstComment: true,
   linkUrl: true,
   scheduledFor: true,
+  // Read for the readiness check only; `buildSnapshot` maps fields by name,
+  // so this never reaches what the client is shown.
+  aiDraftedAt: true,
   account: { select: { name: true } },
   media: {
     orderBy: { order: "asc" },
@@ -58,7 +61,7 @@ const snapshotSelect = {
  * nothing written on it, wastes the one piece of the client's attention the
  * agency gets to spend per round.
  */
-function readinessError(posts: readonly SnapshotSource[]): string | null {
+function readinessError(posts: readonly (SnapshotSource & { aiDraftedAt: Date | null })[]): string | null {
   if (posts.length === 0) {
     return "Write at least one platform version before sending this to the client.";
   }
@@ -75,6 +78,11 @@ function readinessError(posts: readonly SnapshotSource[]): string | null {
     }
     if (TYPES_REQUIRING_MEDIA.has(post.type) && !hasMedia) {
       return `The ${name} ${POST_TYPE_LABEL[post.type].toLowerCase()} needs a creative.`;
+    }
+    // Every AI result is a draft until a person has saved it. An AI-written
+    // version nobody has opened is not something to put in front of a client.
+    if (post.aiDraftedAt) {
+      return `The ${name} version is an unreviewed AI draft. Open it, check it and save it first.`;
     }
     if (TYPES_REQUIRING_LINK.has(post.type) && !post.linkUrl?.trim()) {
       return `The ${name} link post needs a link.`;

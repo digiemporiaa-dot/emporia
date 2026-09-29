@@ -55,6 +55,7 @@ const postSelect = {
   ambiguous: true,
   lastAttemptAt: true,
   attemptCount: true,
+  aiDraftedAt: true,
   order: true,
   createdAt: true,
   updatedAt: true,
@@ -212,6 +213,9 @@ export async function savePost(
     firstComment: input.firstComment,
     linkUrl: input.linkUrl,
     scheduledFor: input.scheduledFor,
+    // A person saving the version is a person putting their name to it: it is
+    // no longer an unreviewed AI draft, whoever wrote the first words.
+    aiDraftedAt: null,
   };
 
   return withAudit(

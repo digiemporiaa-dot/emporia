@@ -37,6 +37,8 @@ export type VersionRow = {
   scheduledFor: string | null;
   externalUrl: string | null;
   lastError: string | null;
+  /** Written by the AI and not yet saved by a person. */
+  aiDraft: boolean;
   accountName: string | null;
   thumbnailUrl: string | null;
   mediaCount: number;
@@ -86,6 +88,7 @@ export function ContentList({
   activePillar,
   search,
   canCreate,
+  aiTools,
 }: {
   clientId: string;
   items: readonly ContentItemRow[];
@@ -97,6 +100,8 @@ export function ContentList({
   activePillar: string | null;
   search: string | null;
   canCreate: boolean;
+  /** The AI assists, when AI is configured and the user may use it. */
+  aiTools?: React.ReactNode;
 }) {
   const ready = useHydrated();
   const router = useRouter();
@@ -174,10 +179,13 @@ export function ContentList({
         </div>
 
         {canCreate ? (
-          <Button size="sm" disabled={!ready} onClick={() => setCreating(true)}>
-            <Plus size={14} aria-hidden="true" />
-            New content
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {aiTools}
+            <Button size="sm" disabled={!ready} onClick={() => setCreating(true)}>
+              <Plus size={14} aria-hidden="true" />
+              New content
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -248,6 +256,7 @@ export function ContentList({
                               <Badge tone={POST_STATUS_TONE[version.status]}>
                                 {version.status.toLowerCase()}
                               </Badge>
+                              {version.aiDraft ? <Badge tone="warning">AI draft</Badge> : null}
                               {version.externalUrl ? (
                                 <a
                                   href={version.externalUrl}
