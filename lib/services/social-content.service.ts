@@ -4,6 +4,7 @@ import { NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
+import { assertPillarForClient } from "@/lib/services/social-brand.service";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ContentStage } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
@@ -37,6 +38,7 @@ const itemSelect = {
   updatedAt: true,
   owner: { select: { id: true, name: true } },
   campaign: { select: { id: true, name: true } },
+  pillar: { select: { id: true, name: true } },
   project: { select: { id: true, name: true, code: true } },
   socialPosts: {
     orderBy: { order: "asc" },
@@ -71,6 +73,7 @@ export type SocialContentItem = Prisma.ContentCalendarItemGetPayload<{ select: t
 export type SocialContentFilters = {
   clientId: string | null;
   campaignId?: string | null;
+  pillarId?: string | null;
   stage?: ContentStage | null;
   search?: string | null;
 };
@@ -86,6 +89,7 @@ export async function listContentItems(
     where: {
       clientId: scope,
       ...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
+      ...(filters.pillarId ? { pillarId: filters.pillarId } : {}),
       ...(filters.stage ? { stage: filters.stage } : {}),
       ...(filters.search
         ? { title: { contains: filters.search, mode: "insensitive" as const } }
@@ -122,6 +126,7 @@ export async function createSocialContent(
     title: string;
     brief: string | null;
     campaignId: string | null;
+    pillarId?: string | null;
     ownerId: string | null;
     scheduledFor: Date | null;
   },
@@ -145,6 +150,9 @@ export async function createSocialContent(
     if (!campaign) throw new ValidationError("That campaign does not belong to this client.");
   }
 
+  // A pillar is the client's own, like the campaign above.
+  await assertPillarForClient(input.pillarId, scope);
+
   if (input.ownerId) {
     const owner = await db.user.findFirst({
       where: { id: input.ownerId, type: "STAFF" },
@@ -159,7 +167,7 @@ export async function createSocialContent(
       action: "CREATE",
       entityType: "ContentCalendarItem",
       entityId: input.title,
-      after: { clientId: scope, campaignId: input.campaignId, source: "social" },
+      after: { clientId: scope, campaignId: input.campaignId, pillarId: input.pillarId ?? null, source: "social" },
     },
     (tx) =>
       tx.contentCalendarItem.create({
@@ -173,6 +181,7 @@ export async function createSocialContent(
           title: input.title,
           brief: input.brief,
           campaignId: input.campaignId,
+          pillarId: input.pillarId ?? null,
           ownerId: input.ownerId,
           scheduledFor: input.scheduledFor,
           stage: "DRAFT",
@@ -187,7 +196,7 @@ export async function contentFormOptions(actor: Actor, clientId: string) {
   requirePermission(actor, "social.view");
   const scope = await resolveClientScope(actor, clientId);
 
-  const [projects, campaigns, accounts, staff] = await Promise.all([
+  const [projects, campaigns, accounts, staff, pillars] = await Promise.all([
     db.project.findMany({
       where: { clientId: scope, status: { in: ["PLANNING", "ACTIVE"] } },
       orderBy: { name: "asc" },
@@ -208,7 +217,46 @@ export async function contentFormOptions(actor: Actor, clientId: string) {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    db.contentPillar.findMany({
+      where: { clientId: scope, archivedAt: null },
+      orderBy: [{ position: "asc" }, { name: "asc" }],
+      select: { id: true, name: true },
+    }),
   ]);
 
-  return { projects, campaigns, accounts, staff };
+  return { projects, campaigns, accounts, staff, pillars };
+}
+
+/**
+ * File an idea under a pillar, or take it out of one.
+ *
+ * A pillar is the agency's own filing, not copy the client approved, so
+ * changing it does not reopen approval the way editing a caption does.
+ */
+export async function setContentPillar(actor: Actor, itemId: string, pillarId: string | null) {
+  requirePermission(actor, "social.edit");
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: itemId },
+    select: { id: true, clientId: true, pillarId: true },
+  });
+  if (!item) throw new NotFoundError("That content item does not exist.");
+  await resolveClientScope(actor, item.clientId);
+  await assertPillarForClient(pillarId, item.clientId, item.pillarId);
+
+  return withAudit(
+    {
+      actor,
+      action: "UPDATE",
+      entityType: "ContentCalendarItem",
+      entityId: itemId,
+      before: { pillarId: item.pillarId },
+      after: { pillarId },
+    },
+    (tx) =>
+      tx.contentCalendarItem.update({
+        where: { id: itemId },
+        data: { pillarId },
+        select: { id: true, pillarId: true },
+      }),
+  );
 }

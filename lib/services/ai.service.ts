@@ -21,6 +21,7 @@ import { ai } from "@/lib/ai";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
 import { SYSTEM_PROMPTS, factBlock } from "@/lib/ai/prompts";
+import { brandKitForPrompt } from "@/lib/services/social-brand.service";
 import {
   LEAD_ASSESSMENT_SCHEMA,
   LEAD_SUMMARY_SCHEMA,
@@ -776,7 +777,23 @@ export type SocialCaptionDraft = {
   caption: string;
   headline: string | null;
   hashtags: string[];
+  /**
+   * Words from the client's forbidden list that the draft used anyway. The
+   * prompt asks the model not to; this is the check that does not rely on it
+   * listening. Shown to the operator, never silently edited out.
+   */
+  forbiddenUsed: string[];
 };
+
+/** Which of `words` appear in `text` as whole words or phrases, ignoring case. */
+export function forbiddenWordsIn(text: string, words: readonly string[]): string[] {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return words.filter((word) => {
+    const trimmed = word.trim();
+    if (!trimmed) return false;
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escape(trimmed)}($|[^\\p{L}\\p{N}])`, "iu").test(text);
+  });
+}
 
 /**
  * Draft one platform's version of an idea.
@@ -806,6 +823,7 @@ export async function draftSocialPost(
       title: true,
       brief: true,
       clientId: true,
+      pillarId: true,
       client: { select: { name: true, industry: true } },
       campaign: { select: { name: true } },
     },
@@ -814,6 +832,11 @@ export async function draftSocialPost(
   // Same isolation as every other social read: an actor who may not see the
   // client may not have its content drafted either.
   await resolveClientScope(actor, item.clientId);
+
+  // The client's own brand kit: how they sound, what they avoid, which pillar
+  // this idea serves. All of it written by the agency, none of it invented.
+  const { profile: brand, pillar } = await brandKitForPrompt(item.clientId, item.pillarId);
+  const forbidden = brand?.forbiddenWords ?? [];
 
   const capability = CAPABILITIES[input.provider];
   const wantsHeadline = capability.fields.includes("headline");
@@ -833,13 +856,21 @@ export async function draftSocialPost(
     system: SYSTEM_PROMPTS.draftSocialPost,
     prompt: [
       factBlock({
-        client: item.client.name,
-        industry: item.client.industry,
+        client: brand?.brandName ?? item.client.name,
+        industry: brand?.industry ?? item.client.industry,
         campaign: item.campaign?.name,
+        "content pillar": pillar ? [pillar.name, pillar.description].filter(Boolean).join(" — ") : null,
         platform: PROVIDER_LABEL[input.provider],
         format: input.type.toLowerCase().replace(/_/g, " "),
         "caption limit": limit,
+        tone: brand?.tone,
+        audience: brand?.targetAudience,
+        language: brand?.preferredLanguage,
+        "call-to-action style": brand?.ctaStyle,
+        "emojis the brand uses": brand?.preferredEmojis.length ? brand.preferredEmojis.join(" ") : null,
+        "posting rules": brand?.postingRules,
       }),
+      forbidden.length > 0 ? `Never use these words or phrases: ${forbidden.join(", ")}.` : "",
       "",
       `The idea: ${item.title}`,
       item.brief?.trim() ? `The brief: ${item.brief.trim()}` : "",
@@ -876,16 +907,30 @@ export async function draftSocialPost(
             .slice(0, 30)
         : [];
 
+      // The brand's always-on hashtags, added where the platform takes them
+      // and the model left them out. Deterministic, so it is done here rather
+      // than asked for.
+      const brandTags = wantsHashtags ? (brand?.hashtags ?? []) : [];
+      const merged = [...hashtags];
+      for (const tag of brandTags) {
+        if (!merged.some((existing) => existing.toLowerCase() === tag.toLowerCase())) merged.push(tag);
+      }
+
+      const caption = shape.caption.trim().slice(0, limit);
+      const headline =
+        wantsHeadline && typeof shape.headline === "string" && shape.headline.trim()
+          ? shape.headline.trim()
+          : null;
+      const finalTags = wantsHashtags ? merged.slice(0, 30) : [];
+
       return {
         // Truncation is the platform's rule, not a preference. A caption over
         // the limit is unusable, and silently keeping it would push the failure
         // to 7:30pm.
-        caption: shape.caption.trim().slice(0, limit),
-        headline:
-          wantsHeadline && typeof shape.headline === "string" && shape.headline.trim()
-            ? shape.headline.trim()
-            : null,
-        hashtags: wantsHashtags ? hashtags : [],
+        caption,
+        headline,
+        hashtags: finalTags,
+        forbiddenUsed: forbiddenWordsIn([caption, headline ?? "", finalTags.join(" ")].join("\n"), forbidden),
       };
     },
   });

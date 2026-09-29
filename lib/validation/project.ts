@@ -159,6 +159,8 @@ export const contentItemSchema = z.object({
    * (docs/SOCIAL-MODULE.md 2).
    */
   campaignId: optionalId,
+  /** The client's content pillar this serves. Proven to be the client's in the service. */
+  pillarId: optionalId,
 });
 
 export type ContentItemInput = z.infer<typeof contentItemSchema>;

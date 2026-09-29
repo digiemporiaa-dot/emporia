@@ -59,6 +59,7 @@ export default async function SocialCalendarPage({
     status: state.status,
     stage: state.stage,
     campaignId: state.campaignId,
+    pillarId: state.pillarId,
     projectId: state.projectId,
     ownerId: state.ownerId,
   };
@@ -76,6 +77,7 @@ export default async function SocialCalendarPage({
     providers: uniqueProviders(options.accounts.map((account) => account.provider)),
     types: uniqueTypes(options.accounts.map((account) => account.provider)),
     campaigns: options.campaigns,
+    pillars: options.pillars,
     projects: options.projects,
     staff: options.staff,
   };

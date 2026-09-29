@@ -47,6 +47,7 @@ export type ContentItemRow = {
   title: string;
   stage: ContentStage;
   campaign: string | null;
+  pillar: string | null;
   project: string;
   owner: string | null;
   scheduledFor: string | null;
@@ -78,18 +79,22 @@ export function ContentList({
   clientId,
   items,
   campaigns,
+  pillars,
   projects,
   staff,
   activeCampaign,
+  activePillar,
   search,
   canCreate,
 }: {
   clientId: string;
   items: readonly ContentItemRow[];
   campaigns: readonly { id: string; name: string }[];
+  pillars: readonly { id: string; name: string }[];
   projects: readonly { id: string; name: string; code: string }[];
   staff: readonly { id: string; name: string }[];
   activeCampaign: string | null;
+  activePillar: string | null;
   search: string | null;
   canCreate: boolean;
 }) {
@@ -99,11 +104,13 @@ export function ContentList({
 
   const base = `/admin/clients/${clientId}/social/content`;
 
-  const filter = (next: { campaign?: string | null; q?: string | null }) => {
+  const filter = (next: { campaign?: string | null; pillar?: string | null; q?: string | null }) => {
     const query = new URLSearchParams();
     const campaign = next.campaign === undefined ? activeCampaign : next.campaign;
+    const pillar = next.pillar === undefined ? activePillar : next.pillar;
     const q = next.q === undefined ? search : next.q;
     if (campaign) query.set("campaign", campaign);
+    if (pillar) query.set("pillar", pillar);
     if (q) query.set("q", q);
     const suffix = query.toString();
     router.push((suffix ? `${base}?${suffix}` : base) as Route);
@@ -130,6 +137,26 @@ export function ContentList({
               ))}
             </Select>
           </label>
+
+          {pillars.length > 0 ? (
+            <label className="block">
+              <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
+                Pillar
+              </span>
+              <Select
+                className="w-52"
+                value={activePillar ?? ""}
+                onChange={(event) => filter({ pillar: event.target.value || null })}
+              >
+                <option value="">Every pillar</option>
+                {pillars.map((pillar) => (
+                  <option key={pillar.id} value={pillar.id}>
+                    {pillar.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
 
           <label className="block">
             <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
@@ -177,7 +204,7 @@ export function ContentList({
                         </Link>
                       </CardTitle>
                       <p className="mt-1 text-xs text-ink-subtle">
-                        {[item.campaign, item.project, item.owner, when(item.scheduledFor)]
+                        {[item.campaign, item.pillar, item.project, item.owner, when(item.scheduledFor)]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
@@ -264,6 +291,7 @@ export function ContentList({
           clientId={clientId}
           projects={projects}
           campaigns={campaigns}
+          pillars={pillars}
           staff={staff}
           onClose={() => setCreating(false)}
         />
@@ -276,12 +304,14 @@ function CreateDialog({
   clientId,
   projects,
   campaigns,
+  pillars,
   staff,
   onClose,
 }: {
   clientId: string;
   projects: readonly { id: string; name: string; code: string }[];
   campaigns: readonly { id: string; name: string }[];
+  pillars: readonly { id: string; name: string }[];
   staff: readonly { id: string; name: string }[];
   onClose: () => void;
 }) {
@@ -356,6 +386,21 @@ function CreateDialog({
                 </Select>
               )}
             </Field>
+
+            {pillars.length > 0 ? (
+              <Field id="pillarId" label="Content pillar">
+                {(aria) => (
+                  <Select {...aria} name="pillarId">
+                    <option value="">No pillar</option>
+                    {pillars.map((pillar) => (
+                      <option key={pillar.id} value={pillar.id}>
+                        {pillar.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            ) : null}
 
             <Field id="ownerId" label="Owner">
               {(aria) => (

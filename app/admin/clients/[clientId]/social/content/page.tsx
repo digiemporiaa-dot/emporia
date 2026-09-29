@@ -28,10 +28,11 @@ export default async function SocialContentPage({
   const actor = await requireActorPage(`/admin/clients/${clientId}/social/content`);
 
   const campaignId = typeof query["campaign"] === "string" ? query["campaign"] : null;
+  const pillarId = typeof query["pillar"] === "string" ? query["pillar"] : null;
   const search = typeof query["q"] === "string" ? query["q"] : null;
 
   const [items, options] = await Promise.all([
-    listContentItems(actor, { clientId, campaignId, search }),
+    listContentItems(actor, { clientId, campaignId, pillarId, search }),
     contentFormOptions(actor, clientId),
   ]);
 
@@ -40,6 +41,7 @@ export default async function SocialContentPage({
     title: item.title,
     stage: item.stage,
     campaign: item.campaign?.name ?? null,
+    pillar: item.pillar?.name ?? null,
     project: item.project.name,
     owner: item.owner?.name ?? null,
     scheduledFor: item.scheduledFor?.toISOString() ?? null,
@@ -65,9 +67,11 @@ export default async function SocialContentPage({
       clientId={clientId}
       items={rows}
       campaigns={options.campaigns}
+      pillars={options.pillars}
       projects={options.projects}
       staff={options.staff}
       activeCampaign={campaignId}
+      activePillar={pillarId}
       search={search}
       canCreate={can(actor, "social.create")}
     />

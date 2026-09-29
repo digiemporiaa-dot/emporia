@@ -16,6 +16,7 @@ const TABS = [
   { segment: "content", label: "Content" },
   { segment: "analytics", label: "Analytics" },
   { segment: "accounts", label: "Accounts" },
+  { segment: "brand", label: "Brand & strategy" },
 ] as const;
 
 export function SocialNav({ clientId }: { clientId: string }) {

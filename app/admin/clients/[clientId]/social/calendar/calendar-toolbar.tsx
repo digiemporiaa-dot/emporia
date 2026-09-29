@@ -26,6 +26,7 @@ export type ToolbarOptions = {
   providers: SocialProvider[];
   types: SocialPostType[];
   campaigns: { id: string; name: string }[];
+  pillars: { id: string; name: string }[];
   projects: { id: string; name: string; code: string }[];
   staff: { id: string; name: string }[];
 };
@@ -38,6 +39,7 @@ export type ToolbarState = {
   status: string | null;
   stage: string | null;
   campaignId: string | null;
+  pillarId: string | null;
   projectId: string | null;
   ownerId: string | null;
 };
@@ -95,6 +97,7 @@ export function CalendarToolbar({
         "status",
         "stage",
         "campaignId",
+        "pillarId",
         "projectId",
         "ownerId",
       ] as const) {
@@ -113,6 +116,7 @@ export function CalendarToolbar({
     state.status ||
     state.stage ||
     state.campaignId ||
+    state.pillarId ||
     state.projectId ||
     state.ownerId;
 
@@ -225,6 +229,21 @@ export function CalendarToolbar({
           </Filter>
         ) : null}
 
+        {options.pillars.length > 0 ? (
+          <Filter
+            label="Pillar"
+            value={state.pillarId}
+            onChange={(v) => go({ pillarId: v })}
+            all="Every pillar"
+          >
+            {options.pillars.map((pillar) => (
+              <option key={pillar.id} value={pillar.id}>
+                {pillar.name}
+              </option>
+            ))}
+          </Filter>
+        ) : null}
+
         {options.projects.length > 0 ? (
           <Filter
             label="Project"
@@ -259,6 +278,7 @@ export function CalendarToolbar({
                 status: null,
                 stage: null,
                 campaignId: null,
+                pillarId: null,
                 projectId: null,
                 ownerId: null,
               })
