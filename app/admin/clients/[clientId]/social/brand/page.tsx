@@ -8,6 +8,9 @@ import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { CALENDAR_TIME_ZONE } from "@/lib/social/calendar";
 import type { KpiMetric } from "@/lib/validation/social-brand";
 import { BrandProfilePanel, PillarsPanel, StrategyPanel } from "./brand-panels";
+import { OccasionsPanel } from "./occasions-panel";
+import { clientOccasions, type OccasionRow } from "@/lib/services/social-occasion.service";
+import { zonedDay } from "@/lib/social/calendar";
 
 export const metadata: Metadata = { title: "Brand & strategy" };
 export const dynamic = "force-dynamic";
@@ -35,7 +38,23 @@ export default async function BrandPage({ params }: { params: Promise<{ clientId
   const actor = await requireActorPage(`/admin/clients/${clientId}/social/brand`);
   const canEdit = can(actor, "social.edit");
 
-  const [kit, week] = await Promise.all([getBrandKit(actor, clientId), postingThisWeek(actor, clientId)]);
+  const [kit, week, occasions] = await Promise.all([
+    getBrandKit(actor, clientId),
+    postingThisWeek(actor, clientId),
+    clientOccasions(actor, clientId),
+  ]);
+  const year = zonedDay(new Date(), CALENDAR_TIME_ZONE).year;
+  const view = (o: OccasionRow) => ({
+    id: o.id,
+    clientId: o.clientId,
+    name: o.name,
+    category: o.category,
+    description: o.description,
+    fixedMonth: o.fixedMonth,
+    fixedDay: o.fixedDay,
+    archived: o.archivedAt !== null,
+    dates: o.dates.map((d) => ({ id: d.id, day: d.date.toISOString().slice(0, 10) })),
+  });
 
   const day = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: CALENDAR_TIME_ZONE });
 
@@ -103,6 +122,13 @@ export default async function BrandPage({ params }: { params: Promise<{ clientId
             providers={SOCIAL_PROVIDERS.map((value) => ({ value, label: PROVIDER_LABEL[value] }))}
             metrics={Object.entries(METRIC_LABEL).map(([value, label]) => ({ value, label }))}
             periods={Object.entries(PERIOD_LABEL).map(([value, label]) => ({ value, label }))}
+          />
+          <OccasionsPanel
+            clientId={clientId}
+            canEdit={canEdit}
+            year={year}
+            library={occasions.library.map((o) => ({ ...view(o), optedIn: o.optedIn }))}
+            own={occasions.own.map(view)}
           />
         </div>
       </div>

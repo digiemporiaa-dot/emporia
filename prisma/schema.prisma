@@ -1670,6 +1670,8 @@ model Client {
   socialPosts              SocialPost[]
   socialPublications       SocialPublication[]
   socialMetrics            SocialMetricSnapshot[]
+  contentOccasions         ContentOccasion[]
+  clientOccasions          ClientOccasion[]
 
   @@index([deletedAt])
   @@index([ownerId])
@@ -2896,6 +2898,77 @@ model SocialStrategy {
   updatedAt DateTime @updatedAt
 
   @@index([updatedById])
+}
+
+enum OccasionCategory {
+  FESTIVAL
+  NATIONAL_DAY
+  AWARENESS_DAY
+  INDUSTRY_EVENT
+  BRAND
+}
+
+/// A day content can be planned around: a festival, a national day, an
+/// industry event, a brand's anniversary.
+///
+/// The library is agency-wide (`clientId` null); a client can also have its
+/// own occasions (a brand anniversary). A fixed-date occasion recurs on
+/// `fixedMonth`/`fixedDay` every year. A moving one — Diwali, Holi, Eid —
+/// has a row in `ContentOccasionDate` per year, entered by a person: dates
+/// that depend on a lunar calendar or a moon sighting are never computed or
+/// guessed here, and an occasion without a date for a year simply does not
+/// appear in that year.
+///
+/// Nothing here ever creates or publishes content. It is a planning aid.
+model ContentOccasion {
+  id       String  @id @default(cuid())
+  /// Null for the agency-wide library; set for a client's own occasion.
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  slug        String           @unique
+  name        String
+  category    OccasionCategory
+  description String?
+  fixedMonth  Int?
+  fixedDay    Int?
+  archivedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dates   ContentOccasionDate[]
+  choices ClientOccasion[]
+
+  @@index([clientId, archivedAt])
+}
+
+/// One year's date for a moving occasion.
+model ContentOccasionDate {
+  id         String          @id @default(cuid())
+  occasionId String
+  occasion   ContentOccasion @relation(fields: [occasionId], references: [id], onDelete: Cascade)
+  /// The calendar day, stored at 00:00 UTC; read as a date, never a moment.
+  date       DateTime        @db.Date
+
+  createdAt DateTime @default(now())
+
+  @@unique([occasionId, date])
+  @@index([date])
+}
+
+/// A client opting in to a library occasion. Absent means not opted in:
+/// nothing appears on a client's calendar unless someone chose it.
+model ClientOccasion {
+  clientId   String
+  client     Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  occasionId String
+  occasion   ContentOccasion @relation(fields: [occasionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([clientId, occasionId])
+  @@index([occasionId])
 }
 
 /// One platform's version of one content idea.

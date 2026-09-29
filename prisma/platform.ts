@@ -108,6 +108,77 @@ async function seedRoles(prisma: PrismaClient, permissionIds: Map<string, string
     console.log(`  role ${name}: ${wanted.size} permissions`);
   }
 }
+/**
+ * The occasion library a fresh install starts with.
+ *
+ * Created if absent, never overwritten: an editor may have renamed one or
+ * archived another, and a release must not undo that.
+ *
+ * Only fixed-date days carry a date. Moving festivals — Diwali, Holi, Eid,
+ * Raksha Bandhan and the rest — are seeded **without dates**: many follow a
+ * lunar calendar or a moon sighting, and a wrong date shipped in a release
+ * would put a client's festive post on the wrong day. A person enters each
+ * year's date in the library; until then the occasion does not appear in that
+ * year's calendar.
+ */
+const DEFAULT_OCCASIONS: {
+  slug: string;
+  name: string;
+  category: "FESTIVAL" | "NATIONAL_DAY" | "AWARENESS_DAY" | "INDUSTRY_EVENT" | "BRAND";
+  fixed?: [month: number, day: number];
+}[] = [
+  { slug: "new-years-day", name: "New Year's Day", category: "FESTIVAL", fixed: [1, 1] },
+  { slug: "republic-day-india", name: "Republic Day (India)", category: "NATIONAL_DAY", fixed: [1, 26] },
+  { slug: "valentines-day", name: "Valentine's Day", category: "FESTIVAL", fixed: [2, 14] },
+  { slug: "international-womens-day", name: "International Women's Day", category: "AWARENESS_DAY", fixed: [3, 8] },
+  { slug: "world-health-day", name: "World Health Day", category: "AWARENESS_DAY", fixed: [4, 7] },
+  { slug: "earth-day", name: "Earth Day", category: "AWARENESS_DAY", fixed: [4, 22] },
+  { slug: "world-environment-day", name: "World Environment Day", category: "AWARENESS_DAY", fixed: [6, 5] },
+  { slug: "international-yoga-day", name: "International Yoga Day", category: "AWARENESS_DAY", fixed: [6, 21] },
+  { slug: "independence-day-india", name: "Independence Day (India)", category: "NATIONAL_DAY", fixed: [8, 15] },
+  { slug: "teachers-day-india", name: "Teachers' Day (India)", category: "AWARENESS_DAY", fixed: [9, 5] },
+  { slug: "gandhi-jayanti", name: "Gandhi Jayanti", category: "NATIONAL_DAY", fixed: [10, 2] },
+  { slug: "childrens-day-india", name: "Children's Day (India)", category: "AWARENESS_DAY", fixed: [11, 14] },
+  { slug: "christmas", name: "Christmas", category: "FESTIVAL", fixed: [12, 25] },
+  { slug: "new-years-eve", name: "New Year's Eve", category: "FESTIVAL", fixed: [12, 31] },
+  // Moving: dates entered per year, never guessed.
+  { slug: "makar-sankranti", name: "Makar Sankranti / Pongal", category: "FESTIVAL" },
+  { slug: "holi", name: "Holi", category: "FESTIVAL" },
+  { slug: "eid-al-fitr", name: "Eid al-Fitr", category: "FESTIVAL" },
+  { slug: "eid-al-adha", name: "Eid al-Adha", category: "FESTIVAL" },
+  { slug: "raksha-bandhan", name: "Raksha Bandhan", category: "FESTIVAL" },
+  { slug: "janmashtami", name: "Janmashtami", category: "FESTIVAL" },
+  { slug: "ganesh-chaturthi", name: "Ganesh Chaturthi", category: "FESTIVAL" },
+  { slug: "onam", name: "Onam", category: "FESTIVAL" },
+  { slug: "navratri", name: "Navratri", category: "FESTIVAL" },
+  { slug: "dussehra", name: "Dussehra", category: "FESTIVAL" },
+  { slug: "diwali", name: "Diwali", category: "FESTIVAL" },
+  { slug: "bhai-dooj", name: "Bhai Dooj", category: "FESTIVAL" },
+  { slug: "guru-nanak-jayanti", name: "Guru Nanak Jayanti", category: "FESTIVAL" },
+  { slug: "mothers-day", name: "Mother's Day", category: "AWARENESS_DAY" },
+  { slug: "fathers-day", name: "Father's Day", category: "AWARENESS_DAY" },
+  { slug: "black-friday", name: "Black Friday", category: "INDUSTRY_EVENT" },
+];
+
+async function seedOccasions(prisma: PrismaClient): Promise<void> {
+  let created = 0;
+  for (const occasion of DEFAULT_OCCASIONS) {
+    const existing = await prisma.contentOccasion.findUnique({ where: { slug: occasion.slug }, select: { id: true } });
+    if (existing) continue;
+    await prisma.contentOccasion.create({
+      data: {
+        slug: occasion.slug,
+        name: occasion.name,
+        category: occasion.category,
+        fixedMonth: occasion.fixed?.[0] ?? null,
+        fixedDay: occasion.fixed?.[1] ?? null,
+      },
+    });
+    created += 1;
+  }
+  console.log(`  occasions: ${DEFAULT_OCCASIONS.length} (${created} new; moving dates are entered per year)`);
+}
+
 /** Lead sources are platform configuration, not demo data. */
 async function seedLeadSources(prisma: PrismaClient): Promise<void> {
   const sources = [
@@ -325,6 +396,7 @@ export async function syncPlatform(prisma: PrismaClient): Promise<void> {
   await seedSiteSettings(prisma);
   await seedEmailTemplates(prisma);
   await seedAutomations(prisma);
+  await seedOccasions(prisma);
   console.log(`  ${await ensureHomepage(prisma)}`);
   // Additive and idempotent: it inserts the homepage bands that became section
   // types and touches nothing an editor has arranged (prisma/migrate-homepage).

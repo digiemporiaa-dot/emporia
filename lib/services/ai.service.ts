@@ -22,6 +22,7 @@ import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
 import { SYSTEM_PROMPTS, factBlock } from "@/lib/ai/prompts";
 import { assertPillarForClient, brandKitForPrompt } from "@/lib/services/social-brand.service";
+import { occasionsBetween } from "@/lib/services/social-occasion.service";
 import { textLength } from "@/lib/social/text-length";
 import { parseBody, postBodySchema } from "@/lib/content/entity-body";
 import { inlineToText } from "@/lib/content/inline";
@@ -99,6 +100,8 @@ const BUDGET: Record<AITask, { limit: number; windowMs: number }> = {
   // One call writes several platforms' posts, so fewer are needed.
   repurposeContent: { limit: 10, windowMs: 60_000 },
   generateContentIdeas: { limit: 10, windowMs: 60_000 },
+  // A whole month in one call — the largest reply, so the smallest allowance.
+  planContentMonth: { limit: 5, windowMs: 60_000 },
 };
 
 async function guardBudget(actor: Actor, task: AITask): Promise<void> {
@@ -1596,4 +1599,240 @@ export async function generateMeta(
   );
 
   return { data: result.data, generated: true, model: result.model, task: "generateMeta" };
+}
+
+// ---------------------------------------------------------------------------
+// Social: planning a month
+// ---------------------------------------------------------------------------
+
+/** Most posts one plan may hold: enough for a busy month, bounded for the model. */
+export const PLAN_MAX_POSTS = 90;
+
+export type PlannedItem = {
+  /** `YYYY-MM-DD`, within the month. */
+  day: string;
+  title: string;
+  brief: string;
+  pillarId: string | null;
+  pillarName: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  occasionId: string | null;
+  occasionName: string | null;
+  versions: { provider: SocialProvider; type: string }[];
+};
+
+export type MonthPlanDraft = {
+  month: string;
+  items: PlannedItem[];
+  /** Posts asked for per platform — computed from the weekly frequency, not by the model. */
+  targets: Partial<Record<SocialProvider, number>>;
+  /** Posts the plan actually holds per platform. Short of a target is shown as short. */
+  planned: Partial<Record<SocialProvider, number>>;
+};
+
+/**
+ * Plan a month: which idea goes out when, where, and in what format.
+ *
+ * The **counts are arithmetic, not the model's**: posts per week times the
+ * days in the month over seven, per platform. The model is given those counts,
+ * the client's pillars, the campaigns running that month and the occasions
+ * the client opted in to (with their real dates), and fills the slots. What
+ * comes back is checked item by item — dates inside the month, only the
+ * platforms and formats asked for, never more posts than the target, pillars,
+ * campaigns and occasions only by exact name from what it was given — and a
+ * shortfall is reported, not padded.
+ *
+ * A draft: nothing is created until a person reviews the plan and chooses
+ * which items to keep (`createPlannedContent`).
+ */
+export async function planContentMonth(
+  actor: Actor,
+  input: {
+    clientId: string;
+    month: string;
+    /** Posts per week, per platform. */
+    frequency: Partial<Record<SocialProvider, number>>;
+    pillarIds: string[];
+    campaignIds: string[];
+    occasionIds: string[];
+    instruction: string | null;
+  },
+): Promise<Draft<MonthPlanDraft>> {
+  requirePermission(actor, "ai.use");
+  requirePermission(actor, "social.create");
+  const scope = await resolveClientScope(actor, input.clientId);
+
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month)) throw new ValidationError("Choose a month to plan.");
+  const [year, monthNumber] = input.month.split("-").map(Number) as [number, number];
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const firstDay = `${input.month}-01`;
+  const lastDay = `${input.month}-${String(daysInMonth).padStart(2, "0")}`;
+
+  // The counts: arithmetic, so "16 Instagram posts" means 16, whatever the model thinks.
+  const targets: Partial<Record<SocialProvider, number>> = {};
+  for (const [provider, perWeek] of Object.entries(input.frequency) as [SocialProvider, number][]) {
+    if (!CAPABILITIES[provider] || !Number.isFinite(perWeek) || perWeek <= 0) continue;
+    const count = Math.round((perWeek * daysInMonth) / 7);
+    if (count > 0) targets[provider] = count;
+  }
+  const providers = Object.keys(targets) as SocialProvider[];
+  if (providers.length === 0) throw new ValidationError("Set how often to post on at least one platform.");
+  const total = providers.reduce((sum, p) => sum + targets[p]!, 0);
+  if (total > PLAN_MAX_POSTS) {
+    throw new ValidationError(`That is ${total} posts; plan at most ${PLAN_MAX_POSTS} in one go.`);
+  }
+
+  const monthStart = new Date(`${firstDay}T00:00:00Z`);
+  const [client, pillars, campaigns, strategy, recent, occasionDays] = await Promise.all([
+    db.client.findUniqueOrThrow({ where: { id: scope }, select: { id: true, name: true, industry: true } }),
+    db.contentPillar.findMany({
+      where: { clientId: scope, archivedAt: null, ...(input.pillarIds.length ? { id: { in: input.pillarIds } } : {}) },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true, description: true },
+    }),
+    input.campaignIds.length
+      ? db.campaign.findMany({
+          where: { id: { in: input.campaignIds }, clientId: scope },
+          select: { id: true, name: true, objective: true, startsAt: true, endsAt: true },
+        })
+      : Promise.resolve([]),
+    db.socialStrategy.findUnique({ where: { clientId: scope }, select: { objectives: true, campaignGoals: true } }),
+    db.contentCalendarItem.findMany({
+      where: { clientId: scope, createdAt: { gte: new Date(monthStart.getTime() - 90 * 86_400_000) } },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { title: true },
+    }),
+    occasionsBetween(actor, scope, firstDay, lastDay),
+  ]);
+  if (campaigns.length !== new Set(input.campaignIds).size) {
+    throw new ValidationError("A campaign chosen does not belong to this client.");
+  }
+  // Only occasions this client really has in this month, and only those chosen.
+  const occasions = occasionDays.filter((o) => input.occasionIds.includes(o.occasionId));
+  await guardBudget(actor, "planContentMonth");
+
+  const context = await socialContext(client, null);
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+  const formats = (provider: SocialProvider) => CAPABILITIES[provider].postTypes as readonly string[];
+
+  const result = await (await ai()).completeStructured<{
+    items: { date: string; title: string; brief: string; pillar: string | null; campaign: string | null; occasion: string | null; versions: { provider: string; type: string }[] }[];
+  }>({
+    task: "planContentMonth",
+    system: SYSTEM_PROMPTS.planContentMonth,
+    prompt: [
+      factBlock({ ...context.facts, objectives: strategy?.objectives, "campaign goals": strategy?.campaignGoals }),
+      forbiddenRule(context.forbidden),
+      "",
+      `Plan ${input.month} (${firstDay} to ${lastDay}).`,
+      "Posts per platform, exactly:",
+      ...providers.map((p) => `- ${p} (${PROVIDER_LABEL[p]}): ${targets[p]} posts; formats: ${formats(p).join(", ")}`),
+      pillars.length ? `Content pillars:\n${pillars.map((p) => `- ${p.name}${p.description ? `: ${p.description}` : ""}`).join("\n")}` : "",
+      campaigns.length
+        ? `Campaigns running:\n${campaigns.map((c) => `- ${c.name} (${day(c.startsAt)} to ${c.endsAt ? day(c.endsAt) : "open"})${c.objective ? `: ${c.objective}` : ""}`).join("\n")}`
+        : "",
+      occasions.length
+        ? `Occasions the client marks, on these dates only:\n${occasions.map((o) => `- ${o.name}: ${o.day}`).join("\n")}`
+        : "No occasions this month — do not add any.",
+      recent.length ? `Recent ideas, not to repeat:\n${recent.map((r) => `- ${r.title}`).join("\n")}` : "",
+      input.instruction?.trim() ? `Also: ${input.instruction.trim()}` : "",
+      "",
+      "Each item: a date, a title, a brief, the pillar, campaign and occasion it serves by name (or null), and its platform versions with formats.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    maxTokens: 8_000,
+    schema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string" },
+              title: { type: "string" },
+              brief: { type: "string" },
+              pillar: { type: ["string", "null"] },
+              campaign: { type: ["string", "null"] },
+              occasion: { type: ["string", "null"] },
+              versions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: { provider: { type: "string", enum: providers }, type: { type: "string" } },
+                  required: ["provider", "type"],
+                },
+              },
+            },
+            required: ["date", "title", "brief", "pillar", "campaign", "occasion", "versions"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+    parse: (value) => {
+      const shape = value as { items?: unknown };
+      if (!Array.isArray(shape.items)) throw new Error("No plan came back.");
+      return { items: shape.items as never };
+    },
+  });
+
+  // Checked item by item. Nothing the model says is kept unless it fits what
+  // was asked: the month, the platforms, the formats, the counts, and names
+  // from the lists it was given.
+  const byName = <T extends { name: string }>(list: readonly T[], name: unknown) =>
+    typeof name === "string" ? list.find((entry) => entry.name.toLowerCase() === name.trim().toLowerCase()) : undefined;
+  const used: Partial<Record<SocialProvider, number>> = {};
+  const seen = new Set(recent.map((r) => r.title.trim().toLowerCase()));
+  const items: PlannedItem[] = [];
+
+  for (const raw of result.data.items) {
+    const date = typeof raw.date === "string" ? raw.date.slice(0, 10) : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < firstDay || date > lastDay) continue;
+    const title = typeof raw.title === "string" ? raw.title.trim().slice(0, 200) : "";
+    const brief = typeof raw.brief === "string" ? raw.brief.trim().slice(0, 2_000) : "";
+    if (title.length < 2 || !brief || seen.has(title.toLowerCase())) continue;
+
+    const versions: PlannedItem["versions"] = [];
+    for (const version of Array.isArray(raw.versions) ? raw.versions : []) {
+      const provider = version?.provider as SocialProvider;
+      if (!providers.includes(provider) || versions.some((v) => v.provider === provider)) continue;
+      if (!formats(provider).includes(version.type)) continue;
+      if ((used[provider] ?? 0) >= targets[provider]!) continue;
+      used[provider] = (used[provider] ?? 0) + 1;
+      versions.push({ provider, type: version.type });
+    }
+    if (versions.length === 0) continue;
+
+    // An occasion is kept only on its own date: a Diwali post on the 2nd of
+    // the month is a Diwali post on the wrong day.
+    const occasion = occasions.find((o) => byName([o], raw.occasion) && o.day === date);
+    const pillar = byName(pillars, raw.pillar);
+    const campaign = byName(campaigns, raw.campaign);
+    seen.add(title.toLowerCase());
+    items.push({
+      day: date,
+      title,
+      brief,
+      pillarId: pillar?.id ?? null,
+      pillarName: pillar?.name ?? null,
+      campaignId: campaign?.id ?? null,
+      campaignName: campaign?.name ?? null,
+      occasionId: occasion?.occasionId ?? null,
+      occasionName: occasion?.name ?? null,
+      versions,
+    });
+  }
+  items.sort((a, b) => a.day.localeCompare(b.day));
+
+  await auditCall(actor, "planContentMonth", { type: "Client", id: scope }, result.usage, result.model);
+  return {
+    data: { month: input.month, items, targets, planned: used },
+    generated: true,
+    model: result.model,
+    task: "planContentMonth",
+  };
 }

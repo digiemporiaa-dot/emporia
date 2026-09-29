@@ -86,6 +86,12 @@ export const PERMISSIONS = [
   "social.accounts.manage",
   "social.analytics.view",
   "social.reports.view",
+  /**
+   * The agency-wide occasion library (festivals, national days, industry
+   * events). Separate from `social.edit` because a change here reaches every
+   * client's calendar, not one client's.
+   */
+  "social.occasions.manage",
 
   /**
    * Website page CMS. Deliberately NOT folded into `content.*`: that namespace
@@ -366,6 +372,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.accounts.manage",
     "social.analytics.view",
     "social.reports.view",
+    "social.occasions.manage",
   ],
 
   CONTENT_MANAGER: [
@@ -419,6 +426,8 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.edit",
     "social.analytics.view",
     "social.reports.view",
+    // Keeping the festival and event library current is editorial work.
+    "social.occasions.manage",
   ],
 
   PROJECT_MANAGER: [

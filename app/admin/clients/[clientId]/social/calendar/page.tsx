@@ -8,18 +8,26 @@ import {
   type CalendarCard as Card,
 } from "@/lib/services/social-calendar.service";
 import { contentFormOptions } from "@/lib/services/social-content.service";
+import { occasionsBetween } from "@/lib/services/social-occasion.service";
+import { plannedFrequency } from "@/lib/services/social-brand.service";
+import { can } from "@/lib/auth/rbac";
+import { isAIConfigured } from "@/lib/ai";
+import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { socialCalendarParamsSchema } from "@/lib/validation/social";
 import {
   buildGrid,
   CALENDAR_TIME_ZONE,
   parseAnchor,
+  zonedDay,
   zoneLabel,
 } from "@/lib/social/calendar";
-import { CAPABILITIES } from "@/lib/social/capabilities";
+import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { CalendarBody } from "./calendar-grid";
 import { CalendarToolbar, type ToolbarOptions } from "./calendar-toolbar";
 import { CalendarCard } from "./calendar-card";
+import { MonthPlanner, type MonthPlannerProps } from "./month-planner";
 import type { SocialPostType, SocialProvider } from "@/generated/prisma/enums";
+import type { Actor } from "@/lib/actor/types";
 
 export const metadata: Metadata = { title: "Social calendar" };
 export const dynamic = "force-dynamic";
@@ -64,11 +72,22 @@ export default async function SocialCalendarPage({
     ownerId: state.ownerId,
   };
 
-  const [{ cards, truncated }, unscheduled, options] = await Promise.all([
+  const firstDay = grid.days[0]!.key;
+  const lastDay = grid.days[grid.days.length - 1]!.key;
+  const [{ cards, truncated }, unscheduled, options, occasionDays] = await Promise.all([
     calendarPosts(actor, { ...filters, from: grid.range.from, to: grid.range.to }),
     unscheduledPosts(actor, filters),
     contentFormOptions(actor, clientId),
+    occasionsBetween(actor, clientId, firstDay, lastDay),
   ]);
+  const occasions = new Map<string, string[]>();
+  for (const occasion of occasionDays) {
+    occasions.set(occasion.day, [...(occasions.get(occasion.day) ?? []), occasion.name]);
+  }
+
+  const planner = can(actor, "ai.use") && can(actor, "social.create") && (await isAIConfigured())
+    ? await plannerProps(actor, clientId, anchor, options)
+    : null;
 
   const base = `/admin/clients/${clientId}/social`;
   const toolbarOptions: ToolbarOptions = {
@@ -90,6 +109,11 @@ export default async function SocialCalendarPage({
 
   return (
     <div className="space-y-4">
+      {planner ? (
+        <div className="flex justify-end">
+          <MonthPlanner {...planner} />
+        </div>
+      ) : null}
       <CalendarToolbar
         base={`${base}/calendar`}
         state={state}
@@ -109,7 +133,7 @@ export default async function SocialCalendarPage({
         </p>
       ) : null}
 
-      <CalendarBody grid={grid} cards={cards} base={base} timeZone={CALENDAR_TIME_ZONE} />
+      <CalendarBody grid={grid} cards={cards} base={base} timeZone={CALENDAR_TIME_ZONE} occasions={occasions} />
 
       {unscheduled.length > 0 ? (
         <section aria-labelledby="unscheduled" className="rounded-lg border border-line bg-white p-3">
@@ -158,4 +182,53 @@ function uniqueTypes(providers: SocialProvider[]): SocialPostType[] {
     for (const type of CAPABILITIES[provider].postTypes) types.add(type as SocialPostType);
   }
   return [...types].sort();
+}
+
+/** Months a plan can be drafted for: this one and the next three, in the calendar's zone. */
+const PLANNABLE_MONTHS = 4;
+
+async function plannerProps(
+  actor: Actor,
+  clientId: string,
+  anchor: { year: number; month: number },
+  options: Awaited<ReturnType<typeof contentFormOptions>>,
+): Promise<MonthPlannerProps> {
+  const today = zonedDay(new Date(), CALENDAR_TIME_ZONE);
+  const months = Array.from({ length: PLANNABLE_MONTHS }, (_, i) => {
+    const date = new Date(Date.UTC(today.year, today.month - 1 + i, 1));
+    return {
+      value: date.toISOString().slice(0, 7),
+      label: new Intl.DateTimeFormat("en-IN", { month: "long", year: "numeric", timeZone: "UTC" }).format(date),
+    };
+  });
+  const viewed = `${anchor.year}-${String(anchor.month).padStart(2, "0")}`;
+  const last = months[months.length - 1]!.value;
+  const [lastYear, lastMonth] = last.split("-").map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(lastYear, lastMonth, 0)).toISOString().slice(0, 10);
+
+  const [frequency, occasions] = await Promise.all([
+    plannedFrequency(actor, clientId),
+    occasionsBetween(actor, clientId, `${months[0]!.value}-01`, lastDay),
+  ]);
+  const connected = new Set(options.accounts.map((account) => account.provider));
+
+  return {
+    clientId,
+    months,
+    // The month on screen, when it can be planned; otherwise next month.
+    defaultMonth: months.some((m) => m.value === viewed) ? viewed : months[1]!.value,
+    platforms: [...SOCIAL_PROVIDERS]
+      .sort((a, b) => Number(connected.has(b)) - Number(connected.has(a)))
+      .map((provider) => ({
+        provider,
+        label: PROVIDER_LABEL[provider],
+        connected: connected.has(provider),
+        types: CAPABILITIES[provider].postTypes.map((value) => ({ value, label: POST_TYPE_LABEL[value] })),
+      })),
+    frequency,
+    pillars: options.pillars,
+    campaigns: options.campaigns,
+    projects: options.projects,
+    occasions: occasions.map((o) => ({ occasionId: o.occasionId, name: o.name, day: o.day })),
+  };
 }

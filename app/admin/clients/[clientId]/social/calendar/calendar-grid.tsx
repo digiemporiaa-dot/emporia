@@ -20,16 +20,33 @@ const DAY_LABEL = new Intl.DateTimeFormat("en-IN", {
 /** A month cell shows this many before it collapses into a count. */
 const CELL_LIMIT = 3;
 
+/** Occasions on a day: marked on the calendar, never posted for. */
+function OccasionMarks({ names }: { names: readonly string[] | undefined }) {
+  if (!names?.length) return null;
+  return (
+    <ul className="space-y-0.5" aria-label="Occasions">
+      {names.map((name) => (
+        <li key={name} className="truncate rounded bg-navy-50 px-1 text-[10px] font-medium text-navy-700" title={name}>
+          {name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function CalendarBody({
   grid,
   cards,
   base,
   timeZone,
+  occasions,
 }: {
   grid: CalendarGrid;
   cards: Card[];
   base: string;
   timeZone: string;
+  /** The client's occasions, by `YYYY-MM-DD`. */
+  occasions?: ReadonlyMap<string, string[]>;
 }) {
   const timeFormat = new Intl.DateTimeFormat("en-IN", {
     hour: "numeric",
@@ -49,7 +66,9 @@ export function CalendarBody({
     DAY_LABEL.format(new Date(Date.UTC(day.year, day.month - 1, day.day, 12)));
 
   if (grid.view === "list") {
-    const populated = grid.days.filter((day) => (buckets.get(day.key)?.length ?? 0) > 0);
+    const populated = grid.days.filter(
+      (day) => (buckets.get(day.key)?.length ?? 0) > 0 || (occasions?.get(day.key)?.length ?? 0) > 0,
+    );
 
     if (populated.length === 0) return <Empty />;
 
@@ -68,11 +87,14 @@ export function CalendarBody({
                 {labelFor(day)}
               </p>
               <p className="text-2xs text-ink-subtle">
-                {buckets.get(day.key)!.length} post{buckets.get(day.key)!.length === 1 ? "" : "s"}
+                {buckets.get(day.key)?.length ?? 0} post{(buckets.get(day.key)?.length ?? 0) === 1 ? "" : "s"}
               </p>
+              <div className="mt-1">
+                <OccasionMarks names={occasions?.get(day.key)} />
+              </div>
             </div>
             <ul className="grid flex-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {buckets.get(day.key)!.map((card) => (
+              {(buckets.get(day.key) ?? []).map((card) => (
                 <li key={card.id}>
                   <CalendarCard card={card} density="full" base={base} timeFormat={timeFormat} />
                 </li>
@@ -87,15 +109,23 @@ export function CalendarBody({
   if (grid.view === "day") {
     const day = grid.days[0]!;
     const items = buckets.get(day.key) ?? [];
-    if (items.length === 0) return <Empty />;
+    const marks = occasions?.get(day.key);
+    if (items.length === 0 && !marks?.length) return <Empty />;
     return (
-      <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {items.map((card) => (
-          <li key={card.id}>
-            <CalendarCard card={card} density="full" base={base} timeFormat={timeFormat} />
-          </li>
-        ))}
-      </ul>
+      <div className="space-y-2">
+        {marks?.length ? (
+          <div className="max-w-xs">
+            <OccasionMarks names={marks} />
+          </div>
+        ) : null}
+        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {items.map((card) => (
+            <li key={card.id}>
+              <CalendarCard card={card} density="full" base={base} timeFormat={timeFormat} />
+            </li>
+          ))}
+        </ul>
+      </div>
     );
   }
 
@@ -120,6 +150,7 @@ export function CalendarBody({
             const items = buckets.get(day.key) ?? [];
             return (
               <div key={day.key} className="min-h-40 space-y-1 bg-white p-1.5">
+                <OccasionMarks names={occasions?.get(day.key)} />
                 {items.length === 0 ? (
                   <p className="pt-3 text-center text-2xs text-ink-subtle">—</p>
                 ) : (
@@ -179,6 +210,7 @@ export function CalendarBody({
               >
                 {day.day}
               </p>
+              <OccasionMarks names={occasions?.get(day.key)} />
               {shown.map((card) => (
                 <CalendarCard
                   key={card.id}
