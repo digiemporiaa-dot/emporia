@@ -6,6 +6,7 @@ import { withAudit } from "@/lib/services/audit.service";
 import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
 import { supersedePendingReview } from "@/lib/services/social-review.service";
+import { announceScheduled } from "@/lib/services/social-notify.service";
 import type { Prisma } from "@/generated/prisma/client";
 import type { SocialPostStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
@@ -523,7 +524,7 @@ export async function setPostStatus(actor: Actor, id: string, status: SocialPost
     if (!post.accountId) throw new ValidationError("Choose the account to post from.");
   }
 
-  return withAudit(
+  const updated = await withAudit(
     {
       actor,
       action: "STATUS_CHANGE",
@@ -534,4 +535,6 @@ export async function setPostStatus(actor: Actor, id: string, status: SocialPost
     },
     (tx) => tx.socialPost.update({ where: { id }, data: { status }, select: postSelect }),
   );
+  if (status === "SCHEDULED") await announceScheduled(id, actor.userId);
+  return updated;
 }

@@ -7,6 +7,7 @@ import { resolveClientScope } from "@/lib/social/scope";
 import { periodSummary, type PeriodSummary } from "@/lib/services/social-summary.service";
 import { CALENDAR_TIME_ZONE, startOfZonedDay, zonedDay, ymdKey } from "@/lib/social/calendar";
 import { readReportData, socialReportDataSchema, type SocialReportData } from "@/lib/social/report-doc";
+import { announceReportPublished } from "@/lib/services/social-notify.service";
 import type { SocialProvider } from "@/generated/prisma/enums";
 import type { Actor, PortalActor } from "@/lib/actor/types";
 
@@ -184,7 +185,7 @@ export async function setReportPublished(actor: Actor, reportId: string, publish
   if ((report.status === "PUBLISHED") === published) {
     throw new ConflictError(published ? "This report is already published." : "This report is not published.");
   }
-  return withAudit(
+  const result = await withAudit(
     {
       actor,
       action: "STATUS_CHANGE",
@@ -202,6 +203,8 @@ export async function setReportPublished(actor: Actor, reportId: string, publish
         select: { id: true, status: true },
       }),
   );
+  if (published) await announceReportPublished(reportId);
+  return result;
 }
 
 /** A client's reports, newest month first, for staff. */

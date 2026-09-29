@@ -32,6 +32,10 @@ export const WIRED_TRIGGERS = [
   "SOCIAL_POST_PUBLISHED",
   "SOCIAL_POST_FAILED",
   "SOCIAL_APPROVAL_DECIDED",
+  "SOCIAL_REVIEW_SUBMITTED",
+  "SOCIAL_SENT_FOR_APPROVAL",
+  "SOCIAL_POST_SCHEDULED",
+  "SOCIAL_METRICS_SYNCED",
 ] as const satisfies readonly AutomationTriggerType[];
 
 export type WiredTrigger = (typeof WIRED_TRIGGERS)[number];
@@ -50,6 +54,10 @@ export const TRIGGER_LABEL: Record<WiredTrigger, string> = {
   SOCIAL_POST_PUBLISHED: "A social post goes out",
   SOCIAL_POST_FAILED: "A social post fails to publish",
   SOCIAL_APPROVAL_DECIDED: "A client decides on social content",
+  SOCIAL_REVIEW_SUBMITTED: "Social content is submitted for internal review",
+  SOCIAL_SENT_FOR_APPROVAL: "Social content is sent to the client",
+  SOCIAL_POST_SCHEDULED: "A social post is scheduled",
+  SOCIAL_METRICS_SYNCED: "A social post's figures arrive for the day",
 };
 
 /** What a rule is running about. Ids are the handles actions act through. */
@@ -105,6 +113,13 @@ export const TRIGGER_FACTS: Record<WiredTrigger, readonly FactField[]> = {
     ...socialFacts(),
     { key: "social.decision", label: "The client's decision", kind: "string" },
   ],
+  SOCIAL_REVIEW_SUBMITTED: socialFacts(),
+  SOCIAL_SENT_FOR_APPROVAL: [
+    ...socialFacts(),
+    { key: "social.approvalVersion", label: "Approval version", kind: "number" },
+  ],
+  SOCIAL_POST_SCHEDULED: socialFacts(),
+  SOCIAL_METRICS_SYNCED: socialFacts(),
   PAYMENT_RECEIVED: [
     ...invoiceFacts(),
     { key: "payment.amount", label: "Payment amount", kind: "money" },

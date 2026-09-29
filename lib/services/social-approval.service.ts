@@ -14,6 +14,7 @@ import {
   TYPES_REQUIRING_LINK,
   TYPES_REQUIRING_MEDIA,
 } from "@/lib/social/capabilities";
+import { announceSentToClient } from "@/lib/services/social-notify.service";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -175,7 +176,7 @@ export async function requestSocialApproval(
     throw new ValidationError("This changed after it was approved internally. Submit it for internal review again.");
   }
 
-  return withAudit(
+  const sent = await withAudit(
     {
       actor,
       action: "STATUS_CHANGE",
@@ -241,6 +242,9 @@ export async function requestSocialApproval(
       return { approvalId, version };
     },
   );
+  // After the commit, so a mail problem never takes the approval back.
+  await announceSentToClient(item.id, sent.approvalId, sent.version);
+  return sent;
 }
 
 /**
