@@ -128,6 +128,20 @@ export interface SocialProviderAdapter {
   readonly refreshesWithAccessToken?: boolean;
   /** Read the connected account, and prove the credentials still work. */
   getAccount(credentials: ProviderCredentials): Promise<ProviderAccount>;
+  /**
+   * Present when one sign-in reaches several publishable accounts — a
+   * Facebook user's Pages, a Google login's business locations. The callback
+   * lists them, the operator picks one, and `selectAccount` turns the sign-in
+   * into that account's own credentials.
+   *
+   * Absent for platforms where the sign-in *is* the account (LinkedIn,
+   * Instagram): `getAccount` answers directly.
+   */
+  listAccounts?(credentials: ProviderCredentials): Promise<ProviderAccount[]>;
+  selectAccount?(
+    credentials: ProviderCredentials,
+    externalId: string,
+  ): Promise<{ account: ProviderAccount; credentials: ProviderCredentials }>;
   /** Publish. Returns the provider's own id so we never publish it twice. */
   publish(
     credentials: ProviderCredentials,

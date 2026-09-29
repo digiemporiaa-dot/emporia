@@ -1244,9 +1244,9 @@ say "not reported" rather than zero, AI drafting that cannot invent a number or
 publish anything, notifications and automation triggers, and a client-facing
 report that shares its arithmetic with the agency's.
 
-What deliberately does not exist: adapters for Facebook, YouTube, X and Google
-Business Profile. LinkedIn is implemented end to end, and Instagram since
-section 16; the rest report
+What deliberately does not exist: adapters for YouTube, X and Google Business
+Profile. LinkedIn is implemented end to end, Instagram since section 16 and
+Facebook since section 17; the rest report
 their capabilities honestly and refuse every call, because a half-written
 adapter that silently no-ops is worse than a screen that says *not configured*.
 Each is a phase of its own when someone wants it.
@@ -1484,3 +1484,159 @@ video, as before. The adapter keeps its own check as the last gate.
   that targets Graph API **v24.0**. `INSTAGRAM_API_VERSION` is a single
   constant; confirm it against Meta's changelog before going live. The first
   real connection and post should be watched, not assumed.
+
+---
+
+## 17. Phase A — the Facebook adapter, and choosing which account
+
+`lib/social/facebook.ts`, plus a step no earlier adapter needed.
+
+### One sign-in, many Pages
+
+LinkedIn and Instagram connect *the account that signed in*. Facebook does
+not work that way: a person signs in, and Pages are what get published to. One
+agency operator's login may manage forty Pages. Connecting "the first one"
+would attach the wrong client's Page often enough to matter.
+
+So the adapter interface gained two optional methods: `listAccounts` and
+`selectAccount`. When an adapter has them, the OAuth callback:
+
+- **no publishable Page:** goes back with *"That sign-in does not manage any
+  account that can be connected"*;
+- **exactly one:** connects it directly;
+- **several:** parks the grant in `SocialPendingConnection` and sends the
+  operator to `/admin/clients/[id]/social/accounts/choose/[pendingId]`.
+
+What the pending row holds, and does not:
+
+- The **user-level** token, encrypted, for fifteen minutes. **Not** the Page
+  tokens. The chosen Page's token is fetched at the moment of choosing and
+  written straight onto the `SocialAccount`, so no Page token ever waits
+  anywhere or reaches the browser.
+- The options as displayed: name, handle, profile link. No token.
+
+Who can finish it:
+
+- **Only the person who signed in.** A colleague with identical permissions
+  who opens the link sees "expired or started by someone else", because the
+  grant is somebody else's login.
+- **Only a Page that was offered.** An id typed into the request is refused,
+  even for a Page the sign-in can see but cannot post to.
+- **Once.** The row is deleted when used or cancelled, and deleted when found
+  expired.
+
+A Page already connected to *another* client is shown, disabled, as
+"Connected to another client", without saying which client.
+
+The picker is a Server Component with plain form posts and no client
+JavaScript. Google Business Profile (Phase C) will reuse it for locations.
+
+### The adapter
+
+- **Login:** Facebook Login with `pages_show_list`, `pages_read_engagement`,
+  `pages_manage_posts`, `read_insights`. Nothing broader.
+- **Tokens:** the code is exchanged for a short-lived user token, then a
+  long-lived one. The long-lived step matters even though the user token is
+  not stored: a Page token fetched with a short-lived user token dies an hour
+  later, while one fetched with a long-lived token does not expire. So
+  `tokenExpiresAt` is null and `refresh()` refuses rather than pretending. A
+  revoked role, a password change or a removed app shows up as Graph error
+  190, which marks the account `NEEDS_RECONNECT`.
+- **Which Pages are offered:** only those where the person's role includes
+  `CREATE_CONTENT`. A moderate-only Page would connect fine and fail at the
+  first post.
+- **How the token is sent:** in the JSON body for POSTs and the query for GETs,
+  as Meta's own SDKs do, never in a POST's URL. Every call carries
+  `appsecret_proof`, so turning on *Require App Secret* in the Meta app breaks
+  nothing. URLs are logged without their query string.
+
+| Format | Calls | The one visible call |
+|---|---|---|
+| Text | `POST /{page}/feed {message}` | same |
+| Link | `POST /{page}/feed {message, link}` | same |
+| Single image | `POST /{page}/photos {url, caption}` | same; keeps `post_id`, not the photo id |
+| Multi-photo (2–10, images only) | unpublished `POST /{page}/photos {published:false}` each, then `POST /{page}/feed {attached_media}` | the feed post |
+| Video | `POST graph-video…/{page}/videos {file_url, description}` | same |
+| Reel | `video_reels` start → `rupload…/{video}` with `file_url` header → `video_reels` finish `PUBLISHED` | finish |
+
+Only the last column can raise `AmbiguousPublishError`: a timeout, a 504, or a
+success reply without an id. The unpublished photos and the reel's start and
+upload are invisible and safe to repeat. Tests pin both halves.
+
+Two editor fields came **off** Facebook's capability list:
+
+- `mentions`: a typed @name does not tag anyone through the API.
+- `callToAction`: Facebook's button takes a fixed set of types, not the free
+  text the editor collects.
+
+Both had been listed since Phase 1 and would have been silently dropped at
+publication. The same correction was made for LinkedIn in section 15. No
+Facebook post existed yet, so nothing was invalidated.
+
+**Metrics:**
+
+- Reactions, comments and shares are fields on the post, and are required.
+  Graph omits `shares` entirely when nobody has shared, and that one absence is
+  recorded as 0.
+- Reach (`post_impressions_unique`) and clicks (`post_clicks`) come from
+  insights, each asked for **separately**. Meta has been retiring Page-post
+  metrics, and one retired name in a combined request would refuse all of
+  them. A refused metric is `null`; impressions are always `null`.
+- A video's counts follow it to the post it became, once processed. Until
+  then the video's own reactions and comments are used, and shares stay `null`
+  because video objects have none.
+
+### Setting it up (operator)
+
+1. In the same kind of Meta app as Instagram (it can be the same app), add
+   **Facebook Login for Business**.
+2. Add the redirect URI shown for Facebook on **Settings → Social platforms**:
+   `<NEXTAUTH_URL>/api/social/oauth/facebook/callback`.
+3. Paste the app ID and secret there and tick *Offer Facebook connections to
+   clients*.
+4. Until App Review approves `pages_manage_posts`, `pages_read_engagement` and
+   `read_insights`, only people with a role on the Meta app can connect.
+5. **If a Page owned through a Business Manager does not appear in the
+   picker**, the person may need access to it through Business Settings, or
+   the app may need `business_management`. It was left out deliberately (it
+   is a separate App Review, and not needed to publish), so add it only if a
+   real client hits this.
+6. As with Instagram, creatives must be at publicly reachable URLs.
+
+### What was and was not verified
+
+- **Adapter:** 35 tests against a wire double
+  (`tests/support/facebook-double.ts`): dialog URL, both token exchanges,
+  Page listing across result pages (with every Page token kept inside the
+  adapter), selection, all six formats, every ambiguity case and its
+  non-ambiguous twin, error mapping, and each metrics path. The double was
+  checked by breaking the adapter: removing the Page filter and the ambiguity
+  wrap each failed the tests, as they should.
+- **Database:** 10 tests. The pending grant is encrypted and holds no Page
+  token. A colleague, a viewer and a portal user are all refused. A Page that
+  wasn't offered cannot be chosen. The grant is single-use and expires. A Page
+  taken by another client is flagged without naming the client. Through the
+  engine, a scheduled post publishes to the chosen Page, metrics arrive, and a
+  code-190 rejection marks the account.
+- **Browser:**
+  - The Facebook settings save.
+  - **Connect** hands off to `www.facebook.com/v26.0/dialog/oauth` with the
+    app id, the four scopes, a state and the callback URL, and no secret.
+  - The picker lists three Pages, with the one taken by another client
+    disabled. No token appears in the HTML.
+  - Pressing Connect without a choice says so.
+  - Choosing a Page with the real Graph API unreachable shows "The provider
+    refused that account" and connects nothing.
+  - Cancel removes the grant and returns with "cancelled"; revisiting the link
+    says it has expired.
+  - No horizontal overflow at 390px, and no page errors.
+  - The run also caught a second `<h1>` on the picker (the section layout
+    already has one); it is an `<h2>` now.
+  - All test rows and credentials were removed afterwards.
+- **Not verified:** not run against a real Facebook Page.
+  - Graph **v26.0** and every endpoint and parameter name come from Meta's own
+    generated Business SDKs (26.x), which are built from the Graph API schema.
+  - The reel upload host `rupload.facebook.com` and the two insight metric
+    names are not in the SDK, and come from Meta's published guides as
+    remembered.
+  - Watch the first real reel and the first metrics collection.

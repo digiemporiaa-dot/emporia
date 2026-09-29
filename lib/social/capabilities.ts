@@ -31,7 +31,11 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
   },
   FACEBOOK: {
     postTypes: ["SINGLE_IMAGE", "CAROUSEL", "VIDEO", "REEL", "TEXT", "LINK"],
-    fields: ["caption", "hashtags", "mentions", "callToAction", "linkUrl"],
+    // No `mentions`: a typed @name does not tag a Page or person through the
+    // API. No `callToAction`: Facebook's button takes one of a fixed set of
+    // types, not free text. Both were listed before the adapter existed and
+    // would have been dropped silently at publication.
+    fields: ["caption", "hashtags", "linkUrl"],
     captionLimit: 63_206,
     carouselLimit: 10,
     metrics: true,
