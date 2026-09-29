@@ -210,9 +210,24 @@ export async function setContentStage(actor: Actor, id: string, stage: ContentSt
 
   const item = await db.contentCalendarItem.findFirst({
     where: { AND: [{ id }, contentScope(actor)] },
-    select: { id: true, stage: true, scheduledFor: true, projectId: true },
+    select: {
+      id: true,
+      stage: true,
+      scheduledFor: true,
+      projectId: true,
+      _count: { select: { socialPosts: true, internalReviews: true } },
+    },
   });
   if (!item) throw new NotFoundError("That content item does not exist.");
+
+  // Social content moves only through its own workflow — internal review, then
+  // the client's decision. Moved from here, "approved" could be set without the
+  // client ever seeing the work, and the publisher trusts that stage.
+  if (item._count.socialPosts > 0 || item._count.internalReviews > 0) {
+    throw new ValidationError(
+      "This is social content. Move it through review and client approval on its social page.",
+    );
+  }
 
   const error = contentTransitionError(item.stage, stage);
   if (error) throw new ValidationError(error);

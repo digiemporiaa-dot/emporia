@@ -8,12 +8,14 @@ import { isAIConfigured } from "@/lib/ai";
 import { contentFormOptions, getContentItem } from "@/lib/services/social-content.service";
 import { listPostsForItem } from "@/lib/services/social-post.service";
 import { socialApprovalFor } from "@/lib/services/social-approval.service";
+import { internalReviewsFor } from "@/lib/services/social-review.service";
 import { publicationsFor } from "@/lib/services/social-publish.service";
-import { CAPABILITIES, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { isAppError } from "@/lib/errors";
 import { VersionEditor, type EditorPost, type EditorProvider } from "./version-editor";
 import { ApprovalPanel, type ApprovalSummary } from "./approval-panel";
+import { ReviewPanel, type ReviewRoundRow } from "./review-panel";
 import { PillarPicker } from "./pillar-picker";
 
 export const metadata: Metadata = { title: "Social content" };
@@ -43,11 +45,40 @@ export default async function SocialContentItemPage({
     throw error;
   }
 
-  const [posts, options, approvalRow] = await Promise.all([
+  const [posts, options, approvalRow, review] = await Promise.all([
     listPostsForItem(actor, itemId),
     contentFormOptions(actor, clientId),
     socialApprovalFor(actor, itemId),
+    internalReviewsFor(actor, itemId),
   ]);
+
+  const rounds: ReviewRoundRow[] = review.rounds.map((round) => ({
+    id: round.id,
+    round: round.round,
+    status: round.status,
+    note: round.note,
+    feedback: round.feedback,
+    submittedAt: round.submittedAt.toISOString(),
+    submittedBy: round.submittedBy,
+    decidedAt: round.decidedAt?.toISOString() ?? null,
+    reviewer: round.reviewer,
+    posts: (round.snapshot?.posts ?? []).map((post) => ({
+      key: post.postId,
+      label: `${PROVIDER_LABEL[post.provider]} · ${POST_TYPE_LABEL[post.type]}`,
+      caption: post.caption ?? post.headline ?? "",
+      media: post.media.length,
+    })),
+  }));
+
+  // A reschedule keeps the client's approval (the agency's rule), so the thread
+  // says what moved: approved for one time, now going out at another.
+  const signedOff = approvalRow?.status === "APPROVED" ? approvalRow.versions.find((v) => v.status === "APPROVED")?.snapshot : null;
+  const rescheduled = (signedOff?.posts ?? []).flatMap((approved) => {
+    const live = posts.find((post) => post.id === approved.postId);
+    const now = live?.scheduledFor?.toISOString() ?? null;
+    if (!live || !approved.scheduledFor || now === approved.scheduledFor) return [];
+    return [{ label: PROVIDER_LABEL[approved.provider], from: approved.scheduledFor, to: now }];
+  });
 
   // Only for versions that have actually been tried. Most have not, and asking
   // for an empty history per version would be a query per card for nothing.
@@ -191,13 +222,26 @@ export default async function SocialContentItemPage({
           aiReady={can(actor, "ai.use") && can(actor, "social.edit") && (await isAIConfigured())}
         />
 
-        <ApprovalPanel
-          clientId={clientId}
-          itemId={item.id}
-          stage={item.stage}
-          approval={approval}
-          canApprove={can(actor, "social.approve")}
-        />
+        <div className="space-y-5">
+          <ReviewPanel
+            clientId={clientId}
+            itemId={item.id}
+            stage={item.stage}
+            rounds={rounds}
+            approvedAsItStands={review.approvedAsItStands}
+            canSubmit={can(actor, "social.edit")}
+            canReview={can(actor, "social.review")}
+          />
+          <ApprovalPanel
+            clientId={clientId}
+            itemId={item.id}
+            stage={item.stage}
+            approval={approval}
+            canApprove={can(actor, "social.approve")}
+            approvedInternally={review.approvedAsItStands}
+            rescheduled={rescheduled}
+          />
+        </div>
       </div>
     </div>
   );

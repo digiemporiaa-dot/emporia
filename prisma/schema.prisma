@@ -203,6 +203,16 @@ enum ContentChannel {
   ADS
 }
 
+/// An agency-side review round on social content, before the client sees it.
+enum InternalReviewStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+  /// Pulled back, or superseded because the content was edited while waiting.
+  WITHDRAWN
+}
+
 enum ApprovalStatus {
   PENDING
   CHANGES_REQUESTED
@@ -495,6 +505,8 @@ model User {
   ownedContentItems  ContentCalendarItem[]
   approvalsRequested Approval[]            @relation("ApprovalRequestedBy")
   approvalsDecided   Approval[]            @relation("ApprovalDecidedBy")
+  reviewsSubmitted   SocialInternalReview[] @relation("InternalReviewSubmittedBy")
+  reviewsDecided     SocialInternalReview[] @relation("InternalReviewDecidedBy")
   approvalVersions   ApprovalVersion[]
   ownedCampaigns     Campaign[]
   uploadedMedia      Media[]               @relation("MediaUploader")
@@ -1671,6 +1683,7 @@ model Client {
   socialPublications       SocialPublication[]
   socialMetrics            SocialMetricSnapshot[]
   contentOccasions         ContentOccasion[]
+  internalReviews          SocialInternalReview[]
   clientOccasions          ClientOccasion[]
 
   @@index([deletedAt])
@@ -1930,8 +1943,9 @@ model ContentCalendarItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  approvals   Approval[]
-  socialPosts SocialPost[]
+  approvals       Approval[]
+  socialPosts     SocialPost[]
+  internalReviews SocialInternalReview[]
 
   @@index([clientId, stage])
   @@index([campaignId])
@@ -1972,6 +1986,41 @@ model Approval {
   @@index([projectId])
   @@index([contentItemId])
   @@index([requestedById])
+}
+
+/// One round of internal (agency) review on a social content item.
+///
+/// Kept apart from `Approval` on purpose: approvals are what the client sees
+/// and decides in the portal, and an internal round must never appear there.
+/// Rounds are never overwritten — each carries a frozen snapshot of what was
+/// submitted, so "approved internally" always names exactly what was approved.
+model SocialInternalReview {
+  id            String              @id @default(cuid())
+  contentItemId String
+  contentItem   ContentCalendarItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  round         Int
+
+  status   InternalReviewStatus @default(PENDING)
+  /// What the submitter asked the reviewer to look at.
+  note     String?
+  /// What the reviewer said. Required for changes requested and rejected.
+  feedback String?
+  /// The platform versions as submitted — same shape as an approval snapshot.
+  snapshot Json
+
+  submittedById String
+  submittedBy   User      @relation("InternalReviewSubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
+  submittedAt   DateTime  @default(now())
+  reviewerId    String?
+  reviewer      User?     @relation("InternalReviewDecidedBy", fields: [reviewerId], references: [id], onDelete: SetNull)
+  decidedAt     DateTime?
+
+  @@unique([contentItemId, round])
+  @@index([clientId, status])
+  @@index([submittedById])
+  @@index([reviewerId])
 }
 
 model ApprovalVersion {

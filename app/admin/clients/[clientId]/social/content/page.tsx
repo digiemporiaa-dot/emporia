@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { contentFormOptions, listContentItems } from "@/lib/services/social-content.service";
+import { latestReviewStatuses } from "@/lib/services/social-review.service";
 import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { isAIConfigured } from "@/lib/ai";
@@ -49,9 +50,10 @@ export default async function SocialContentPage({
   const campaignId = typeof query["campaign"] === "string" ? query["campaign"] : null;
   const pillarId = typeof query["pillar"] === "string" ? query["pillar"] : null;
   const search = typeof query["q"] === "string" ? query["q"] : null;
+  const reviewPending = query["review"] === "pending";
 
   const aiReady = can(actor, "ai.use") && can(actor, "social.create") && (await isAIConfigured());
-  const [items, options, blogPosts] = await Promise.all([
+  const [allItems, options, blogPosts, reviews] = await Promise.all([
     listContentItems(actor, { clientId, campaignId, pillarId, search }),
     contentFormOptions(actor, clientId),
     // Published articles only — public already, so nothing is revealed here.
@@ -63,7 +65,9 @@ export default async function SocialContentPage({
           select: { id: true, title: true },
         })
       : [],
+    latestReviewStatuses(actor, clientId),
   ]);
+  const items = reviewPending ? allItems.filter((item) => reviews.get(item.id) === "PENDING") : allItems;
 
   const rows: ContentItemRow[] = items.map((item) => ({
     id: item.id,
@@ -75,6 +79,7 @@ export default async function SocialContentPage({
     owner: item.owner?.name ?? null,
     scheduledFor: item.scheduledFor?.toISOString() ?? null,
     approvalStatus: item.approvals[0]?.status ?? null,
+    reviewStatus: reviews.get(item.id) ?? null,
     versions: item.socialPosts.map((post) => ({
       id: post.id,
       provider: post.provider,
@@ -103,7 +108,14 @@ export default async function SocialContentPage({
       activeCampaign={campaignId}
       activePillar={pillarId}
       search={search}
+      reviewPending={reviewPending}
       canCreate={can(actor, "social.create")}
+      permissions={{
+        review: can(actor, "social.review"),
+        send: can(actor, "social.approve"),
+        edit: can(actor, "social.edit"),
+        delete: can(actor, "social.delete"),
+      }}
       aiTools={
         aiReady ? (
           <AiTools

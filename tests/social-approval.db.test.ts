@@ -7,6 +7,7 @@ import {
   withdrawSocialApproval,
 } from "@/lib/services/social-approval.service";
 import { savePost } from "@/lib/services/social-post.service";
+import { approveInternally } from "./support/internal-review";
 import { decideApproval, getApproval } from "@/lib/services/portal.service";
 import {
   addApprovalVersion,
@@ -64,6 +65,12 @@ describeDb("social client approval", () => {
   let userId = "";
   let portalA: PortalActor;
   let portalB: PortalActor;
+
+  /** Sending to the client, after the internal round the agency now requires. */
+  async function send(actor: Actor, input: { contentItemId: string; note: string | null }) {
+    await approveInternally(input.contentItemId, userId);
+    return requestSocialApproval(actor, input);
+  }
 
   /** A fresh idea with one written Instagram version, ready to send. */
   async function makeItem(title: string, stage: "DRAFT" | "INTERNAL_REVIEW" = "INTERNAL_REVIEW") {
@@ -149,7 +156,7 @@ describeDb("social client approval", () => {
 
   it("sends the item to the client and moves it to client review", async () => {
     const itemId = await makeItem("send");
-    const { approvalId, version } = await requestSocialApproval(staff, {
+    const { approvalId, version } = await send(staff, {
       contentItemId: itemId,
       note: "First round.",
     });
@@ -172,7 +179,7 @@ describeDb("social client approval", () => {
 
   it("freezes the copy that was sent, so a later edit cannot rewrite history", async () => {
     const itemId = await makeItem("freeze");
-    await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await send(staff, { contentItemId: itemId, note: null });
 
     const sent = await socialApprovalFor(staff, itemId);
     expect(sent!.versions[0]!.snapshot!.posts[0]!.caption).toBe(
@@ -215,7 +222,7 @@ describeDb("social client approval", () => {
     });
 
     await expect(
-      requestSocialApproval(staff, { contentItemId: empty.id, note: null }),
+      send(staff, { contentItemId: empty.id, note: null }),
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
@@ -243,13 +250,13 @@ describeDb("social client approval", () => {
       });
       await db.socialPostMedia.create({ data: { postId: post.id, mediaId: video.id, order: 0 } });
 
-      const refusal = requestSocialApproval(staff, { contentItemId: item.id, note: null });
+      const refusal = send(staff, { contentItemId: item.id, note: null });
       await expect(refusal).rejects.toBeInstanceOf(ValidationError);
       await expect(refusal).rejects.toThrow("The YouTube version needs a title.");
 
       // With a title it goes.
       await db.socialPost.update({ where: { id: post.id }, data: { headline: "Planning a festive shoot" } });
-      await expect(requestSocialApproval(staff, { contentItemId: item.id, note: null })).resolves.toBeDefined();
+      await expect(send(staff, { contentItemId: item.id, note: null })).resolves.toBeDefined();
     } finally {
       await db.approval.deleteMany({ where: { contentItemId: item.id } });
       await db.socialPostMedia.deleteMany({ where: { post: { contentItemId: item.id } } });
@@ -268,7 +275,7 @@ describeDb("social client approval", () => {
       await db.socialPost.create({
         data: { contentItemId: item.id, clientId: clientA, provider: "LINKEDIN", type: "LINK", caption: "Read our festive guide." },
       });
-      await expect(requestSocialApproval(staff, { contentItemId: item.id, note: null })).rejects.toThrow(
+      await expect(send(staff, { contentItemId: item.id, note: null })).rejects.toThrow(
         "The LinkedIn link post needs a link.",
       );
     } finally {
@@ -279,10 +286,10 @@ describeDb("social client approval", () => {
 
   it("refuses to send the same item twice while it is still out", async () => {
     const itemId = await makeItem("twice");
-    await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await send(staff, { contentItemId: itemId, note: null });
 
     await expect(
-      requestSocialApproval(staff, { contentItemId: itemId, note: null }),
+      send(staff, { contentItemId: itemId, note: null }),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
@@ -291,7 +298,7 @@ describeDb("social client approval", () => {
     const viewer = staffWith(userId, ["social.view", "social.edit"]);
 
     await expect(
-      requestSocialApproval(viewer, { contentItemId: itemId, note: null }),
+      send(viewer, { contentItemId: itemId, note: null }),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 
@@ -305,7 +312,7 @@ describeDb("social client approval", () => {
       where: { contentItemId: itemId },
       select: { id: true },
     });
-    await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await send(staff, { contentItemId: itemId, note: null });
 
     await expect(
       savePost(
@@ -327,7 +334,7 @@ describeDb("social client approval", () => {
       where: { contentItemId: itemId },
       select: { id: true },
     });
-    await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    await send(staff, { contentItemId: itemId, note: null });
     await withdrawSocialApproval(staff, itemId);
 
     const saved = await savePost(
@@ -345,7 +352,7 @@ describeDb("social client approval", () => {
 
   it("marks a withdrawn approval withdrawn, not pending or rejected", async () => {
     const itemId = await makeItem("withdraw-state");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -370,7 +377,7 @@ describeDb("social client approval", () => {
 
   it("moves the content to approved when the client approves", async () => {
     const itemId = await makeItem("approve");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -386,7 +393,7 @@ describeDb("social client approval", () => {
 
   it("sends the content back to draft when the client asks for changes", async () => {
     const itemId = await makeItem("changes");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -402,7 +409,7 @@ describeDb("social client approval", () => {
 
   it("opens a second round on the same thread rather than a new approval", async () => {
     const itemId = await makeItem("round-two");
-    const first = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    const first = await send(staff, { contentItemId: itemId, note: null });
     await decideApproval(portalA, first.approvalId, "CHANGES_REQUESTED", "Shorter, please.");
 
     const post = await db.socialPost.findFirstOrThrow({
@@ -425,7 +432,7 @@ describeDb("social client approval", () => {
       data: { stage: "INTERNAL_REVIEW" },
     });
 
-    const second = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    const second = await send(staff, { contentItemId: itemId, note: null });
     expect(second.approvalId).toBe(first.approvalId);
     expect(second.version).toBe(2);
 
@@ -442,7 +449,7 @@ describeDb("social client approval", () => {
 
   it("refuses a second decision on a version already decided", async () => {
     const itemId = await makeItem("double-decide");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -455,7 +462,7 @@ describeDb("social client approval", () => {
 
   it("requires a reason when the client asks for changes", async () => {
     const itemId = await makeItem("reason");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -467,7 +474,7 @@ describeDb("social client approval", () => {
 
   it("un-approves the item when the copy is edited after sign-off", async () => {
     const itemId = await makeItem("edit-after-approval");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -504,7 +511,7 @@ describeDb("social client approval", () => {
 
   it("un-approves an idea that was already scheduled when its copy is edited", async () => {
     const itemId = await makeItem("edit-after-scheduling");
-    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    const { approvalId } = await send(staff, { contentItemId: itemId, note: null });
     await decideApproval(portalA, approvalId, "APPROVED", null);
 
     // Approved, then scheduled: APPROVED -> SCHEDULED is a legal move, and the
@@ -539,7 +546,7 @@ describeDb("social client approval", () => {
 
   it("un-approves an idea when a new version is added after sign-off", async () => {
     const itemId = await makeItem("new-version-after-approval");
-    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    const { approvalId } = await send(staff, { contentItemId: itemId, note: null });
     await decideApproval(portalA, approvalId, "APPROVED", null);
 
     await savePost(
@@ -566,7 +573,7 @@ describeDb("social client approval", () => {
 
   it("moves the stage when staff record the client's approval on their behalf", async () => {
     const itemId = await makeItem("staff-decides");
-    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    const { approvalId } = await send(staff, { contentItemId: itemId, note: null });
 
     await staffDecideApproval(staff, approvalId, "APPROVED", null);
 
@@ -581,7 +588,7 @@ describeDb("social client approval", () => {
 
   it("refuses a notes-only new version of social content from the staff screen", async () => {
     const itemId = await makeItem("staff-new-version");
-    const { approvalId } = await requestSocialApproval(staff, { contentItemId: itemId, note: null });
+    const { approvalId } = await send(staff, { contentItemId: itemId, note: null });
     await withdrawSocialApproval(staff, itemId);
 
     // The bypass: a version with no snapshot, leaving the item outside client
@@ -597,7 +604,7 @@ describeDb("social client approval", () => {
 
   it("hides another client's approval from the portal entirely", async () => {
     const itemId = await makeItem("isolation");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: null,
     });
@@ -615,7 +622,7 @@ describeDb("social client approval", () => {
 
   it("gives the portal the frozen copy, with no account or token fields on it", async () => {
     const itemId = await makeItem("portal-read");
-    const { approvalId } = await requestSocialApproval(staff, {
+    const { approvalId } = await send(staff, {
       contentItemId: itemId,
       note: "Have a look.",
     });

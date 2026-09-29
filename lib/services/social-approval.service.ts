@@ -4,7 +4,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
-import { buildSnapshot, readSnapshot, type SnapshotSource } from "@/lib/social/approval-snapshot";
+import { buildSnapshot, contentFingerprint, readSnapshot, type SnapshotSource } from "@/lib/social/approval-snapshot";
 import { canTransitionContent } from "@/lib/projects/lifecycle";
 import {
   CAPABILITIES,
@@ -32,7 +32,7 @@ import type { Prisma } from "@/generated/prisma/client";
  * the two must not be able to disagree about it.
  */
 
-const snapshotSelect = {
+export const snapshotSelect = {
   id: true,
   provider: true,
   type: true,
@@ -61,7 +61,7 @@ const snapshotSelect = {
  * nothing written on it, wastes the one piece of the client's attention the
  * agency gets to spend per round.
  */
-function readinessError(posts: readonly (SnapshotSource & { aiDraftedAt: Date | null })[]): string | null {
+export function readinessError(posts: readonly (SnapshotSource & { aiDraftedAt: Date | null })[]): string | null {
   if (posts.length === 0) {
     return "Write at least one platform version before sending this to the client.";
   }
@@ -99,8 +99,12 @@ function readinessError(posts: readonly (SnapshotSource & { aiDraftedAt: Date | 
   return null;
 }
 
-/** The stages from which work can be sent out for client sign-off. */
-const SENDABLE = ["DRAFT", "INTERNAL_REVIEW"] as const;
+/**
+ * The stage from which work can be sent out for client sign-off. Internal
+ * review is mandatory (the agency's rule, brief §15): nothing reaches the
+ * client from DRAFT.
+ */
+const SENDABLE = ["INTERNAL_REVIEW"] as const;
 
 export async function requestSocialApproval(
   actor: Actor,
@@ -123,6 +127,11 @@ export async function requestSocialApproval(
         take: 1,
         select: { id: true, status: true, currentVersion: true },
       },
+      internalReviews: {
+        orderBy: { round: "desc" },
+        take: 1,
+        select: { status: true, snapshot: true },
+      },
     },
   });
   if (!item) throw new NotFoundError("That content item does not exist.");
@@ -133,6 +142,9 @@ export async function requestSocialApproval(
     throw new ConflictError("This is already with the client. Wait for their decision.");
   }
 
+  if (item.stage === "IDEA" || item.stage === "DRAFT") {
+    throw new ValidationError("This needs internal approval before it goes to the client. Submit it for internal review.");
+  }
   if (!(SENDABLE as readonly string[]).includes(item.stage)) {
     throw new ValidationError(
       `Content at ${item.stage.toLowerCase().replace(/_/g, " ")} cannot be sent for client review.`,
@@ -146,6 +158,22 @@ export async function requestSocialApproval(
   if (problem) throw new ValidationError(problem);
 
   const snapshot = buildSnapshot(item, item.socialPosts);
+
+  // Internal approval of *this* content: the latest round approved, and still
+  // saying what the versions say now. Approving yesterday's caption does not
+  // license today's.
+  const internal = item.internalReviews[0];
+  if (internal?.status !== "APPROVED") {
+    throw new ValidationError(
+      internal?.status === "PENDING"
+        ? "This is waiting for internal review. It can go to the client once a reviewer approves it."
+        : "This needs internal approval before it goes to the client. Submit it for internal review.",
+    );
+  }
+  const approvedSnapshot = readSnapshot(internal.snapshot);
+  if (!approvedSnapshot || contentFingerprint(approvedSnapshot) !== contentFingerprint(snapshot)) {
+    throw new ValidationError("This changed after it was approved internally. Submit it for internal review again.");
+  }
 
   return withAudit(
     {

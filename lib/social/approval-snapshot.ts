@@ -149,3 +149,33 @@ export function readSnapshot(value: unknown): SocialSnapshot | null {
   const parsed = socialSnapshotSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
+
+/**
+ * What a snapshot *says*, without when it was taken or when it goes out.
+ *
+ * Two snapshots with the same fingerprint put the same words, creatives,
+ * accounts and links in front of an audience. Times are left out on purpose:
+ * moving a post's slot does not change what anyone approved (the agency's
+ * rule — a reschedule keeps its approval), and `takenAt` differs by
+ * definition. Posts are compared by id, in order, so deleting or adding a
+ * version changes the fingerprint too.
+ */
+export function contentFingerprint(snapshot: SocialSnapshot): string {
+  return JSON.stringify({
+    title: snapshot.itemTitle,
+    posts: snapshot.posts.map((post) => [
+      post.postId,
+      post.provider,
+      post.type,
+      post.accountName,
+      post.caption ?? "",
+      post.headline ?? "",
+      post.hashtags,
+      post.mentions,
+      post.callToAction ?? "",
+      post.firstComment ?? "",
+      post.linkUrl ?? "",
+      post.media.map((m) => [m.url, m.type, m.alt ?? ""]),
+    ]),
+  });
+}

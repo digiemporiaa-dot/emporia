@@ -51,12 +51,18 @@ export function ApprovalPanel({
   stage,
   approval,
   canApprove,
+  approvedInternally,
+  rescheduled,
 }: {
   clientId: string;
   itemId: string;
   stage: string;
   approval: ApprovalSummary | null;
   canApprove: boolean;
+  /** Internal review approved the content as it stands. */
+  approvedInternally: boolean;
+  /** Versions whose slot moved after the client approved them. */
+  rescheduled: { label: string; from: string; to: string | null }[];
 }) {
   const router = useRouter();
   const ready = useHydrated();
@@ -65,9 +71,10 @@ export function ApprovalPanel({
   const [busy, setBusy] = React.useState(false);
 
   const pending = approval?.status === "PENDING";
-  // The service refuses anything outside these two stages, so the button says
-  // so instead of offering a click that comes back as an error.
-  const sendable = stage === "DRAFT" || stage === "INTERNAL_REVIEW";
+  // Internal review is mandatory: the service refuses anything not approved
+  // internally as it stands, so the button says so instead of offering a click
+  // that comes back as an error.
+  const sendable = stage === "INTERNAL_REVIEW" && approvedInternally;
 
   const run = async (work: () => Promise<{ ok: boolean; message?: string }>) => {
     setBusy(true);
@@ -148,8 +155,9 @@ export function ApprovalPanel({
             </Button>
             {sendable ? null : (
               <p className="text-2xs text-ink-subtle">
-                Content at {stage.toLowerCase().replace(/_/g, " ")} cannot be sent for review. Move
-                it to internal review first.
+                {stage === "IDEA" || stage === "DRAFT" || stage === "INTERNAL_REVIEW"
+                  ? "It goes to the client once internal review has approved it."
+                  : `Content at ${stage.toLowerCase().replace(/_/g, " ")} cannot be sent for review.`}
               </p>
             )}
           </>
@@ -158,6 +166,20 @@ export function ApprovalPanel({
             You do not have permission to send content for client approval.
           </p>
         )}
+
+        {rescheduled.length > 0 ? (
+          <div className="rounded-md border border-line bg-surface-muted px-2.5 py-2 text-2xs text-ink-muted">
+            <p className="font-medium text-navy-800">Rescheduled since the client approved it</p>
+            <ul className="mt-1 space-y-0.5">
+              {rescheduled.map((row) => (
+                <li key={row.label}>
+                  {row.label}: approved for {DATE.format(new Date(row.from))}, now{" "}
+                  {row.to ? DATE.format(new Date(row.to)) : "no time set"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {approval && approval.versions.length > 0 ? (
           <ol className="space-y-2.5 border-t border-line pt-3">
