@@ -219,6 +219,64 @@ describeDb("social client approval", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
+  it("refuses to send a version the platform would refuse: a YouTube upload with no title", async () => {
+    const item = await db.contentCalendarItem.create({
+      data: { clientId: clientA, projectId: projectA, title: `${SUFFIX} untitled`, channel: "YOUTUBE", stage: "INTERNAL_REVIEW" },
+      select: { id: true },
+    });
+    const video = await db.media.create({
+      data: {
+        key: `${SUFFIX}/untitled.mp4`,
+        url: "https://cdn.example.com/untitled.mp4",
+        filename: "untitled.mp4",
+        mimeType: "video/mp4",
+        size: 1_000,
+        type: "VIDEO",
+        uploadedById: staff.userId,
+      },
+      select: { id: true },
+    });
+    try {
+      const post = await db.socialPost.create({
+        data: { contentItemId: item.id, clientId: clientA, provider: "YOUTUBE", type: "YOUTUBE_VIDEO", caption: "No title yet." },
+        select: { id: true },
+      });
+      await db.socialPostMedia.create({ data: { postId: post.id, mediaId: video.id, order: 0 } });
+
+      const refusal = requestSocialApproval(staff, { contentItemId: item.id, note: null });
+      await expect(refusal).rejects.toBeInstanceOf(ValidationError);
+      await expect(refusal).rejects.toThrow("The YouTube version needs a title.");
+
+      // With a title it goes.
+      await db.socialPost.update({ where: { id: post.id }, data: { headline: "Planning a festive shoot" } });
+      await expect(requestSocialApproval(staff, { contentItemId: item.id, note: null })).resolves.toBeDefined();
+    } finally {
+      await db.approval.deleteMany({ where: { contentItemId: item.id } });
+      await db.socialPostMedia.deleteMany({ where: { post: { contentItemId: item.id } } });
+      await db.socialPost.deleteMany({ where: { contentItemId: item.id } });
+      await db.contentCalendarItem.deleteMany({ where: { id: item.id } });
+      await db.media.deleteMany({ where: { id: video.id } });
+    }
+  });
+
+  it("refuses to send a link post with no link", async () => {
+    const item = await db.contentCalendarItem.create({
+      data: { clientId: clientA, projectId: projectA, title: `${SUFFIX} linkless`, channel: "LINKEDIN", stage: "INTERNAL_REVIEW" },
+      select: { id: true },
+    });
+    try {
+      await db.socialPost.create({
+        data: { contentItemId: item.id, clientId: clientA, provider: "LINKEDIN", type: "LINK", caption: "Read our festive guide." },
+      });
+      await expect(requestSocialApproval(staff, { contentItemId: item.id, note: null })).rejects.toThrow(
+        "The LinkedIn link post needs a link.",
+      );
+    } finally {
+      await db.socialPost.deleteMany({ where: { contentItemId: item.id } });
+      await db.contentCalendarItem.deleteMany({ where: { id: item.id } });
+    }
+  });
+
   it("refuses to send the same item twice while it is still out", async () => {
     const itemId = await makeItem("twice");
     await requestSocialApproval(staff, { contentItemId: itemId, note: null });

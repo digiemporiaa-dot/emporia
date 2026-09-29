@@ -6,6 +6,7 @@ import { FacebookProvider } from "@/lib/social/facebook";
 import { InstagramProvider } from "@/lib/social/instagram";
 import { LinkedInProvider } from "@/lib/social/linkedin";
 import { UnconfiguredSocialProvider } from "@/lib/social/unconfigured";
+import { YouTubeProvider } from "@/lib/social/youtube";
 import type { SocialProvider } from "@/generated/prisma/enums";
 import type { SocialProviderAdapter } from "@/lib/social/types";
 
@@ -18,8 +19,8 @@ import type { SocialProviderAdapter } from "@/lib/social/types";
  * The secret half is encrypted at rest with `lib/security/secret`.
  *
  * Adapters arrive one platform at a time, because each platform's API is a
- * piece of work in its own right. LinkedIn, Instagram and Facebook are
- * implemented; the rest resolve to
+ * piece of work in its own right. LinkedIn, Instagram, Facebook and YouTube
+ * are implemented; the rest resolve to
  * `UnconfiguredSocialProvider`, which reports its capabilities and refuses
  * every call with a typed error. That is deliberate — a half-written adapter
  * that silently no-ops is worse than an honest "Not configured" on the screen.
@@ -76,6 +77,7 @@ const IMPLEMENTED: ReadonlySet<SocialProvider> = new Set<SocialProvider>([
   "LINKEDIN",
   "INSTAGRAM",
   "FACEBOOK",
+  "YOUTUBE",
 ]);
 
 /**
@@ -100,6 +102,8 @@ export async function socialProvider(
       return new InstagramProvider(config);
     case "FACEBOOK":
       return new FacebookProvider(config);
+    case "YOUTUBE":
+      return new YouTubeProvider(config);
     default:
       return new UnconfiguredSocialProvider(provider);
   }

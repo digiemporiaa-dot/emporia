@@ -60,11 +60,23 @@ export async function listAccounts(actor: Actor, clientId: string | null) {
   requirePermission(actor, "social.view");
   const scope = await resolveClientScope(actor, clientId);
 
-  return db.socialAccount.findMany({
+  const accounts = await db.socialAccount.findMany({
     where: { clientId: scope },
     orderBy: [{ provider: "asc" }, { name: "asc" }],
     select: accountSelect,
   });
+
+  // Whether each account holds a refresh token — asked as a yes/no of its own
+  // so the token column never enters a select a screen can see.
+  const renewable = new Set(
+    (
+      await db.socialAccount.findMany({
+        where: { id: { in: accounts.map((a) => a.id) }, refreshToken: { not: null } },
+        select: { id: true },
+      })
+    ).map((a) => a.id),
+  );
+  return accounts.map((account) => ({ ...account, renewsItself: renewable.has(account.id) }));
 }
 
 export async function getAccount(actor: Actor, id: string) {
@@ -380,11 +392,18 @@ export function accountHealth(account: {
   status: SocialAccountStatus;
   tokenExpiresAt: Date | null;
   failureCount: number;
+  /**
+   * Holds a refresh token, so the access token's expiry is routine rather
+   * than a warning. Google's access tokens last an hour; without this every
+   * YouTube account would read "expiring soon" for ever.
+   */
+  renewsItself?: boolean;
 }): AccountHealth {
   if (account.status === "DISCONNECTED") return "DISCONNECTED";
   if (account.status === "NEEDS_RECONNECT") return "ATTENTION";
   if (account.failureCount > 0) return "ATTENTION";
   if (
+    !account.renewsItself &&
     account.tokenExpiresAt &&
     account.tokenExpiresAt.getTime() - Date.now() < EXPIRY_WARNING_MS
   ) {
@@ -423,13 +442,14 @@ export async function usableCredentials(
   id: string,
   adapter: Pick<SocialProviderAdapter, "refresh" | "refreshesWithAccessToken">,
   now = new Date(),
+  windowMs = REFRESH_BEFORE_MS,
 ): Promise<ProviderCredentials | null> {
   const credentials = await credentialsFor(id);
   if (!credentials) return null;
 
   const expiring =
     credentials.expiresAt !== null &&
-    credentials.expiresAt.getTime() - now.getTime() < REFRESH_BEFORE_MS;
+    credentials.expiresAt.getTime() - now.getTime() < windowMs;
   if (!expiring) return credentials;
 
   const canRefresh = Boolean(credentials.refreshToken) || adapter.refreshesWithAccessToken === true;
@@ -472,4 +492,49 @@ export async function usableCredentials(
     });
     return null;
   }
+}
+
+/** How far ahead the keep-alive renews a token that renews itself. */
+const KEEP_ALIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Renew tokens that would otherwise lapse while nobody is posting.
+ *
+ * Credentials are refreshed when they are *used* — publishing, reading
+ * metrics. An account that sits idle is never used, so an Instagram token,
+ * which is extended by presenting it and has no refresh token behind it,
+ * would quietly reach its sixty-day end and the next scheduled post would
+ * find the account dead. This runs from the cron and renews such a token in
+ * its last week.
+ *
+ * Accounts with a refresh token are left alone: their access token is
+ * renewed on demand and the refresh token itself is long-lived, so renewing
+ * an hour-long Google token every few minutes would be busywork. A failed
+ * renewal marks the account through `usableCredentials`, as any refresh does.
+ */
+export async function renewIdleCredentials(
+  resolve: (provider: SocialProvider) => Promise<Pick<SocialProviderAdapter, "configured" | "refresh" | "refreshesWithAccessToken">>,
+  now = new Date(),
+): Promise<{ renewed: number; failed: number }> {
+  const due = await db.socialAccount.findMany({
+    where: {
+      status: "CONNECTED",
+      accessToken: { not: null },
+      refreshToken: null,
+      tokenExpiresAt: { not: null, lt: new Date(now.getTime() + KEEP_ALIVE_WINDOW_MS) },
+    },
+    select: { id: true, provider: true },
+    take: 200,
+  });
+
+  let renewed = 0;
+  let failed = 0;
+  for (const account of due) {
+    const adapter = await resolve(account.provider);
+    if (!adapter.configured || adapter.refreshesWithAccessToken !== true) continue;
+    const fresh = await usableCredentials(account.id, adapter, now, KEEP_ALIVE_WINDOW_MS);
+    if (fresh) renewed += 1;
+    else failed += 1;
+  }
+  return { renewed, failed };
 }

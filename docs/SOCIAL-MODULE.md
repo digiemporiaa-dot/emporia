@@ -1244,9 +1244,9 @@ say "not reported" rather than zero, AI drafting that cannot invent a number or
 publish anything, notifications and automation triggers, and a client-facing
 report that shares its arithmetic with the agency's.
 
-What deliberately does not exist: adapters for YouTube, X and Google Business
-Profile. LinkedIn is implemented end to end, Instagram since section 16 and
-Facebook since section 17; the rest report
+What deliberately does not exist: adapters for X and Google Business Profile.
+LinkedIn is implemented end to end, Instagram since section 16, Facebook since
+section 17 and YouTube since section 18; the rest report
 their capabilities honestly and refuse every call, because a half-written
 adapter that silently no-ops is worse than a screen that says *not configured*.
 Each is a phase of its own when someone wants it.
@@ -1640,3 +1640,173 @@ Facebook post existed yet, so nothing was invalidated.
     names are not in the SDK, and come from Meta's published guides as
     remembered.
   - Watch the first real reel and the first metrics collection.
+
+---
+
+## 18. Phase B — the YouTube adapter, and keeping accounts alive
+
+`lib/social/youtube.ts`, on a new `lib/social/google-oauth.ts` that Phase C
+(Google Business Profile) will reuse.
+
+### Google's OAuth, and the box someone unticks
+
+Google issues a real refresh token, but only when asked for offline access,
+and reliably only when consent is shown. Every authorisation therefore asks
+for `access_type=offline` and `prompt=consent`. Without the second, a
+reconnect comes back without a refresh token and the account dies an hour
+later. An exchange that returns no refresh token is refused at connection,
+with the fix spelled out.
+
+Google's consent screen lets a person **untick individual permissions**. A
+YouTube connection without `youtube.upload` would look connected and fail at
+the first upload, so the exchange checks the scopes actually granted and
+refuses to connect without it. `invalid_grant` on refresh (revoked, password
+changed, or seven days passing for an app in Google's *testing* status) marks
+the account `NEEDS_RECONNECT`.
+
+A Google account may own several channels. Google's own consent screen makes
+the person choose the channel when YouTube scopes are requested, so
+`channels?mine=true` returns the chosen one and no picker is needed. A Google
+account with no channel is refused at connection.
+
+### Uploading: the stream is the dangerous call
+
+YouTube does not fetch from a URL the way Meta does. The adapter reads the
+file from storage and streams it into a **resumable upload session**:
+
+1. Read the file from its public URL. Storage must say how large it is. If
+   not, the upload is refused before YouTube is contacted.
+2. Open the session with the metadata. Nothing exists yet.
+3. Stream the bytes. The video comes into being when the last byte lands.
+
+A resumable session can be *asked* whether it finished (an empty PUT with
+`Content-Range: bytes */size`). After a timeout or a 5xx on the stream, the
+adapter asks once:
+
+| The session says | Meaning | Outcome |
+|---|---|---|
+| 200/201 with the video | it finished | **success**, with the id |
+| 308 | incomplete, and YouTube makes nothing from a partial file | ordinary retry |
+| anything else, or nothing | unknown | `AmbiguousPublishError` → *Needs checking* |
+
+So a lost reply is mostly an answer rather than a *maybe*. Tests pin all
+three rows. A mutation run that broke each branch failed the tests, as it
+should.
+
+What is sent:
+
+- **Title:** the version's headline, required, up to 100 characters.
+- **Description:** caption plus hashtags, at most 5,000 bytes.
+- **Tags:** the hashtags.
+- **Category and privacy:** category 22 (People & Blogs, present in every
+  region; change it in Studio), privacy `public`.
+- **Shorts:** the API has no Shorts flag. YouTube recognises a Short by its
+  shape and length, so a `YOUTUBE_SHORT` version gets `#Shorts` added and is
+  linked as `/shorts/{id}`.
+- **Refusals:** angle brackets, which YouTube refuses, are caught before
+  upload.
+
+**If YouTube keeps the video private**, the post still counts as published
+(the video exists; failing it would invite a duplicate upload) and carries a
+warning. That is what happens to uploads from a Google project that has not
+passed **YouTube's API audit**. See the setup notes.
+
+**Metrics:** views, likes and comments from `videos?part=statistics`, which
+YouTube returns as strings. A like count the channel hides is `null`, not 0.
+Watch time needs the separate YouTube Analytics API and its own consent, so
+it stays `null`.
+
+### Two things YouTube exposed in what already existed
+
+**The accounts screen would have called every YouTube account "expiring".**
+
+- A Google access token lasts an hour, and the health rule warned about any
+  token expiring within the warning window.
+- It now knows whether an account **renews itself**, meaning it holds a
+  refresh token. That is asked as a separate yes/no query, so the token
+  column never enters a select a screen can see.
+- For such accounts, access-token expiry is routine rather than a warning.
+- Instagram, which has no refresh token, still warns, because for it the
+  expiry is real.
+
+**Nothing renewed an account nobody was posting from.**
+
+- Credentials were refreshed only when used: publishing, or reading metrics.
+- An Instagram token is extended only by being presented. An account left
+  idle for sixty days would therefore expire quietly, and the next scheduled
+  post would find it dead.
+- The cron now runs `renewIdleCredentials` last, where it can't fail the run.
+  It renews such tokens in their final week.
+- Accounts with a refresh token are left alone: renewing an hour-long Google
+  token every few minutes would be busywork.
+- A refused renewal marks the account, like any refresh.
+
+**A post the platform refuses can no longer be sent for sign-off.**
+
+- The capability table gained `requiredFields`; YouTube requires its title.
+- A link post must have a link, on any platform.
+- Both are checked where versions go to the client for approval. An untitled
+  upload used to be approvable and then fail at publication.
+
+### Setting it up (operator)
+
+1. In Google Cloud, create or choose a project and enable **YouTube Data API
+   v3**.
+2. Configure the OAuth consent screen and create an **OAuth client ID** of
+   type *Web application*.
+3. Add the redirect URI shown for YouTube on **Settings → Social platforms**:
+   `<NEXTAUTH_URL>/api/social/oauth/youtube/callback`.
+4. Paste the client ID and secret there and tick *Offer YouTube connections to
+   clients*.
+5. **Publish the consent screen** (leave *testing*). In testing, refresh
+   tokens expire after seven days, and every channel would need reconnecting
+   weekly.
+6. **Apply for YouTube's API audit.** Until the project passes, Google locks
+   API uploads to *private*. They arrive with the warning above and must be
+   made public by hand.
+7. **Request a quota increase.** The default is 10,000 units a day per
+   project, and an upload costs about 1,600, so roughly **six uploads a day
+   across all clients**. Past that, uploads fail with *"YouTube's daily API
+   quota is used up"* until midnight Pacific.
+8. Videos must be in storage with a known size. R2 always provides one.
+
+### What was and was not verified
+
+- **Adapter:** 29 tests against a double (`tests/support/youtube-double.ts`)
+  that also plays storage, so the real stream runs and the double counts
+  every byte.
+  - Connecting: consent parameters, the secret staying out of URLs, a refused
+    unticked scope, a refused grant with no refresh token, refresh keeping the
+    refresh token, a revoked grant, and a missing channel.
+  - Uploading: the three-call upload, Shorts, the private-video warning, six
+    refusals made before any request, and a file with no size.
+  - A lost reply: all three session answers, a 5xx on the stream, and a failed
+    session start staying non-ambiguous.
+  - Errors and metrics: quota, 401, a missing permission, parsed counts,
+    hidden likes, and a deleted video.
+- **Database:** 5 tests.
+  - The engine renews an hour-old token before uploading, uploads on the
+    renewed one and keeps it (encrypted, refresh token unchanged).
+  - Metrics arrive with watch time `null`, and a revoked grant marks the
+    channel.
+  - The health rule, with no token in what the screen receives.
+  - The keep-alive renews only the idle token in its last week, and marks a
+    refused renewal.
+- **Approval:** 2 tests. An untitled YouTube upload and a linkless link post
+  are refused for sign-off; with a title, the upload goes.
+- **Browser:**
+  - YouTube settings save.
+  - **Connect** hands off to `accounts.google.com/o/oauth2/v2/auth` with both
+    scopes, `access_type=offline`, `prompt=consent`, a state and the callback
+    URL. No secret is in the URL.
+  - On the accounts screen, a YouTube account with twenty minutes left on its
+    access token reads **Connected**, while an idle Instagram account three
+    days from expiry reads **Expiring soon**. No token appears in the page.
+  - One practical note: Playwright's route interception does not apply to
+    `accounts.google.com`, so the hand-off was read from the request event
+    instead.
+  - Test rows and credentials were removed afterwards.
+- **Not verified:** not run against a real channel. Endpoints, parts and field
+  names come from Google's published discovery document for YouTube Data API
+  v3 (revision 20260924); the OAuth endpoints are Google's documented ones.
+  The first real upload should be watched, especially privacy and quota.
