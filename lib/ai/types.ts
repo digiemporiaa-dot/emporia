@@ -37,7 +37,10 @@ export type AITask =
   | "repurposeContent"
   // Suggested ideas for a client's calendar. Nothing is created until a
   // person picks one.
-  | "generateContentIdeas";
+  | "generateContentIdeas"
+  // A month's draft calendar. The per-platform counts are computed, not
+  // asked for; the model fills them with ideas, dates and formats.
+  | "planContentMonth";
 
 export type CompletionRequest = {
   /** Which product feature is asking. Recorded, and used for logging. */

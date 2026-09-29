@@ -143,6 +143,17 @@ export async function getBrandKit(actor: Actor, clientId: string) {
   return { profile, pillars, strategy: strategy ? readStrategy(strategy) : null };
 }
 
+/** The strategy's planned posts per week, per platform — empty when there is no strategy. */
+export async function plannedFrequency(actor: Actor, clientId: string): Promise<Partial<Record<SocialProvider, number>>> {
+  requirePermission(actor, "social.view");
+  const scope = await resolveClientScope(actor, clientId);
+  const strategy = await db.socialStrategy.findUnique({
+    where: { clientId: scope },
+    select: { platforms: true, postingFrequency: true, objectives: true, campaignGoals: true, kpiTargets: true, updatedAt: true },
+  });
+  return strategy ? readStrategy(strategy).postingFrequency : {};
+}
+
 /** Pillars a new or edited content item may be filed under. */
 export async function activePillars(actor: Actor, clientId: string) {
   requirePermission(actor, "social.view");

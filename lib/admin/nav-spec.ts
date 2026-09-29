@@ -136,6 +136,7 @@ export const NAV: readonly NavSpec[] = [
     permission: "social.view",
     children: [
       { href: "/admin/social/queue", label: "Publishing queue", permission: "social.view" },
+      { href: "/admin/social/occasions", label: "Occasion library", permission: "social.view" },
     ],
   },
   {

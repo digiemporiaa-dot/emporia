@@ -2380,3 +2380,142 @@ marked:
   - No page errors. Test rows were removed and the AI setting restored.
 - **Gate:** lint, typecheck, **1920 tests across 116 files**, production build.
   All clean.
+
+## 23. Gap phase 3 — the occasion library and the monthly planner
+
+Brief sections 30–31. This phase builds an agency-wide library of festivals and
+events, lets each client choose which of them it marks, puts them on the
+calendar, and adds an AI-assisted *Plan a month* that lays out the month's
+ideas for a person to prune.
+
+### Occasions
+
+- **Tables:**
+  - `ContentOccasion`: a `null` client means the library; a set client means
+    that client's own. It holds a name, a category (`FESTIVAL`,
+    `NATIONAL_DAY`, `AWARENESS_DAY`, `INDUSTRY_EVENT`, `BRAND`), an optional
+    fixed month and day, and archiving.
+  - `ContentOccasionDate`: one row per year for a moving occasion.
+  - `ClientOccasion`: a client's opt-ins to library occasions.
+- **Moving festivals are never guessed.** Diwali, Holi, the Eids and
+  similar change date every year, and computing lunar and solar calendars is
+  exactly where a wrong date would slip in quietly.
+  - They are seeded without dates.
+  - The library screen lists *Needs a date for {year}* first.
+  - A person enters each year's date after checking it.
+  - Until then the occasion appears on no calendar.
+  - A second date in the same year is refused as a probable typo.
+  - Fixed occasions (Republic Day, 26 January) recur by themselves. A
+    29 February one appears only in leap years.
+- **Seed:** 30 occasions, 14 fixed and 16 moving, created if absent by
+  `npm run db:sync`. They are India-first, because that is where the agency
+  works, plus a few global dates.
+- **Nothing is on by default.** A client sees a library occasion only after
+  someone ticks it on the client's brand page. The client's own occasions (an
+  anniversary, a store opening) are always on for that client, and for no
+  other.
+- **Permissions:**
+  - The library needs the new `social.occasions.manage` (Marketing and
+    Content managers, Admin), and staff only.
+  - A client's own occasions and opt-ins need `social.edit` within
+    `resolveClientScope`, so a portal user is pinned to their own client.
+  - Opting in accepts only library occasions: another client's own occasion
+    reads as not found.
+  - Every write is audited.
+- **Calendar:** occasions are marked in all four views (a small navy label
+  under the day number, at the top of the week column, above the day view,
+  and in the list, which now also lists days that have only an occasion).
+  They are markers only; **no post is ever created or published for an
+  occasion by itself.**
+
+### Plan a month
+
+On the calendar, for staff with `ai.use` and `social.create`, only when an AI
+provider is configured.
+
+1. **The person sets:**
+   - the month (this one or the next three);
+   - posts per week per platform (defaulting to the strategy's frequency);
+   - which pillars and campaigns to use;
+   - which of the month's occasions to include (all ticked, each with its
+     date).
+2. **The counts are arithmetic.** Per platform: round(per week × days in
+   month ÷ 7), worked out in the dialog and again on the server. The model is
+   told those exact numbers. More than 90 posts is refused before any call.
+3. **The plan comes back checked item by item, and anything that does not fit
+   is dropped:**
+   - a date outside the month;
+   - a platform not asked for, or a format that platform lacks;
+   - a platform already at its count;
+   - a repeated title, or one used in the last 90 days;
+   - a pillar, campaign or occasion not offered (matched by exact name);
+   - an occasion on any day but its own — a "Diwali" post on the 2nd keeps
+     its idea and loses the tag.
+
+   The preview shows *planned of asked* per platform, and a shortfall is
+   shown as short, never padded.
+4. **The person unticks what they don't want** and picks a project. Only
+   what is still ticked is created (`createPlannedContent`):
+   - each item becomes an ordinary DRAFT idea, dated 10:00 in the calendar's
+     time zone, with the occasion noted in its brief;
+   - it gets one empty version per planned platform, **marked as an AI
+     draft**, so none can go for client approval until a person has written
+     and saved it.
+5. **Safety checks on create:**
+   - Everything is validated before anything is written: each occasion id
+     must be one this client really has on that item's day, and project,
+     campaign and pillar are proven to be the client's.
+   - A failure part-way deletes what the call created. Half a month is worse
+     than none.
+
+### Found and fixed on the way
+
+- **Renaming an occasion** could create a second one with the same name. The
+  duplicate check ran on create only. It now runs on rename too.
+- **Changing a moving occasion to a fixed day** left its entered dates behind,
+  so it would have been marked twice. They are removed in the same
+  transaction.
+- **The opt-in checkbox** only changed state once the server answered, so a
+  click looked ignored. It now ticks at once and rolls back if the save fails.
+
+### Verified
+
+- **Tests:** 21 new, in `tests/social-occasions-planner.db.test.ts`.
+  - Occurrences: fixed days every year, 29 February only in leap years,
+    moving occasions only on entered dates.
+  - Schema: both month and day or neither; impossible days refused.
+  - Library: only managers change it; name clashes are refused on create
+    and on rename; one date per year for moving occasions and none for fixed
+    ones; dates are dropped when an occasion becomes fixed; it is shown to
+    staff only.
+  - Isolation: a client gets its chosen and its own occasions, never an
+    unchosen one or another client's. Opting in to another client's occasion
+    is refused, a portal user cannot edit another client's occasion, and
+    archived occasions leave the calendar.
+  - Planner: counts come from arithmetic; every kind of invented or
+    misplaced item is dropped; nothing is written by drafting; too-big,
+    empty and bad-month plans are refused before any call; another client's
+    campaign is refused.
+  - Creating: DRAFT ideas at 04:30 UTC (10:00 IST) with empty AI-marked
+    versions that approval refuses; bad occasions, days and formats refused
+    with nothing written; a mid-way failure rolls everything back; another
+    client's project and a portal user are refused.
+  - Mutation-checked: removing any of the following fails a test — the
+    opt-in filter, the leap-day check, the occasion-on-its-day rule, the
+    AI-draft mark, the create-time occasion check, or the rollback.
+- **Browser (against a local AI stub):**
+  - Library: a Diwali date was added, and a second 2026 date was refused
+    with its message.
+  - Brand page: three occasions were opted in and a client anniversary was
+    added.
+  - Calendar: the November markers showed exactly the chosen and own
+    occasions.
+  - Planner: it read *13 posts: 9 Instagram, 4 LinkedIn* and listed the three
+    occasions with dates. The preview showed *Instagram 9 of 9, LinkedIn 3 of
+    4 — 1 short* and dropped an out-of-month item. Unticking one and adding
+    created 8 DRAFT ideas (11 empty, AI-marked versions) at 10:00 beside
+    their markers.
+  - Mobile at 390px: no horizontal overflow, and no page errors.
+  - Test rows were removed and the AI setting restored exactly.
+- **Gate:** lint, typecheck, **1941 tests across 117 files**, production build.
+  All clean.

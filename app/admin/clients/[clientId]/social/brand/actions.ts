@@ -11,6 +11,7 @@ import {
   setPillarArchived,
   updatePillar,
 } from "@/lib/services/social-brand.service";
+import { setClientOccasion } from "@/lib/services/social-occasion.service";
 import { brandProfileSchema, pillarSchema, strategySchema } from "@/lib/validation/social-brand";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
@@ -126,6 +127,24 @@ export async function movePillarAction(input: {
     return { ok: true, data: { id: parsed.data.id } };
   } catch (error) {
     actionLog.error({ err: error }, "reordering a content pillar failed");
+    return toActionFailure(error);
+  }
+}
+
+export async function setClientOccasionAction(input: {
+  clientId: string;
+  occasionId: string;
+  optedIn: boolean;
+}): Promise<ActionResult<{ optedIn: boolean }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = z.object({ clientId: clientRef, occasionId: clientRef, optedIn: z.boolean() }).safeParse(input);
+    if (!parsed.success) return invalid(parsed.error);
+    await setClientOccasion(actor, parsed.data.clientId, parsed.data.occasionId, parsed.data.optedIn);
+    refresh(parsed.data.clientId);
+    return { ok: true, data: { optedIn: parsed.data.optedIn } };
+  } catch (error) {
+    actionLog.error({ err: error }, "choosing a client occasion failed");
     return toActionFailure(error);
   }
 }
