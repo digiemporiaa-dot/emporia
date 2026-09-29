@@ -102,7 +102,7 @@ export async function collectMetrics(
       clientId: true,
       provider: true,
       externalPostId: true,
-      account: { select: { id: true, externalId: true, status: true } },
+      account: { select: { id: true, externalId: true, externalParentId: true, status: true } },
     },
   });
 
@@ -137,7 +137,7 @@ export async function collectMetrics(
 
       const metrics = await adapter.getMetrics(
         credentials,
-        { externalId: post.account.externalId },
+        { externalId: post.account.externalId, externalParentId: post.account.externalParentId },
         post.externalPostId!,
       );
 

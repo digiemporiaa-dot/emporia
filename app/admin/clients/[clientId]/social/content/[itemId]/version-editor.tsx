@@ -93,6 +93,8 @@ export type EditorProvider = {
   fields: string[];
   captionLimit: number | null;
   carouselLimit: number | null;
+  /** A fixed set of buttons, where the platform has one. Empty means free text. */
+  callToActionOptions: { value: string; label: string }[];
   accounts: { id: string; name: string; status: string }[];
 };
 
@@ -640,14 +642,31 @@ function VersionCard({
 
         {has("callToAction") ? (
           <Field id={`${post.id}-cta`} label="Call to action">
-            {(aria) => (
-              <Input
-                {...aria}
-                value={callToAction}
-                disabled={!editable}
-                onChange={(event) => setCallToAction(event.target.value)}
-              />
-            )}
+            {(aria) =>
+              provider.callToActionOptions.length > 0 ? (
+                // The platform's own buttons, not free text it would refuse.
+                <Select
+                  {...aria}
+                  value={callToAction}
+                  disabled={!editable}
+                  onChange={(event) => setCallToAction(event.target.value)}
+                >
+                  <option value="">No button</option>
+                  {provider.callToActionOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Input
+                  {...aria}
+                  value={callToAction}
+                  disabled={!editable}
+                  onChange={(event) => setCallToAction(event.target.value)}
+                />
+              )
+            }
           </Field>
         ) : null}
 

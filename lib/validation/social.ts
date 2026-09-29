@@ -117,6 +117,25 @@ export const socialPostSchema = z
       });
     }
 
+    // A fixed set of buttons takes one of its own values, and most of them
+    // open the post's link — a "Book" button with nowhere to go is refused.
+    if (capabilities.callToActionOptions && value.callToAction) {
+      const option = capabilities.callToActionOptions.find((o) => o.value === value.callToAction);
+      if (!option) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["callToAction"],
+          message: "Choose one of the listed buttons.",
+        });
+      } else if (option.needsLink && !value.linkUrl) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["linkUrl"],
+          message: `The "${option.label}" button needs a link to open.`,
+        });
+      }
+    }
+
     // A field the provider does not accept is refused rather than silently
     // dropped: an editor who wrote a call to action should be told it will not
     // appear, not discover it missing after publication.

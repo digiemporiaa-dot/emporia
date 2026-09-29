@@ -139,6 +139,7 @@ export async function connectAccount(
     clientId: scope,
     provider: input.provider,
     externalId: input.account.externalId,
+    externalParentId: input.account.externalParentId ?? null,
     name: input.account.name,
     username: input.account.username,
     profileUrl: input.account.profileUrl,
@@ -323,12 +324,21 @@ export async function credentialsFor(id: string): Promise<ProviderCredentials | 
 export async function syncAccount(
   actor: Actor,
   id: string,
+  /** Which adapter serves a provider. Injected by tests; the registry otherwise. */
+  resolve?: (provider: SocialProvider) => Promise<SocialProviderAdapter>,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   requirePermission(actor, "social.accounts.manage");
 
   const account = await db.socialAccount.findUnique({
     where: { id },
-    select: { id: true, clientId: true, provider: true, status: true },
+    select: {
+      id: true,
+      clientId: true,
+      provider: true,
+      status: true,
+      externalId: true,
+      externalParentId: true,
+    },
   });
   if (!account) throw new NotFoundError("That account does not exist.");
   await resolveClientScope(actor, account.clientId);
@@ -337,16 +347,9 @@ export async function syncAccount(
     return { ok: false, message: "This account is disconnected. Connect it again to use it." };
   }
 
-  const credentials = await credentialsFor(id);
-  if (!credentials) {
-    return {
-      ok: false,
-      message: "The stored credentials could not be read. Reconnect the account.",
-    };
-  }
-
-  const { socialProvider } = await import("@/lib/social");
-  const adapter = await socialProvider(account.provider);
+  const adapter = resolve
+    ? await resolve(account.provider)
+    : await (await import("@/lib/social")).socialProvider(account.provider);
   if (!adapter.configured) {
     return {
       ok: false,
@@ -354,8 +357,23 @@ export async function syncAccount(
     };
   }
 
+  // Renewed first, like every other use. Checking with the stored token as-is
+  // meant an hour-long Google token, idle past its hour, came back 401 and a
+  // healthy channel was marked for reconnection by the button meant to
+  // confirm it was fine.
+  const credentials = await usableCredentials(id, adapter);
+  if (!credentials) {
+    return {
+      ok: false,
+      message: "The stored credentials could not be used. Reconnect the account.",
+    };
+  }
+
   try {
-    const fresh = await adapter.getAccount(credentials);
+    const fresh = await adapter.getAccount(credentials, {
+      externalId: account.externalId,
+      externalParentId: account.externalParentId,
+    });
     await db.socialAccount.update({
       where: { id },
       data: {

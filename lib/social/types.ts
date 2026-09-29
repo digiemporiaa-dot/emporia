@@ -51,11 +51,20 @@ export type SocialCapabilities = {
    * platform refuses at publication.
    */
   readonly requiredFields?: readonly SocialField[];
+  /**
+   * Where the platform's call to action is a fixed set of buttons rather than
+   * free text: the values it accepts, with how the editor labels them. The
+   * editor offers a list instead of a text box, and anything else is refused
+   * on save.
+   */
+  readonly callToActionOptions?: readonly { value: string; label: string; needsLink: boolean }[];
 };
 
 /** What a connected account looks like to us, whatever the provider calls it. */
 export type ProviderAccount = {
   externalId: string;
+  /** See `SocialAccount.externalParentId`. Absent for most providers. */
+  externalParentId?: string | null;
   name: string;
   username: string | null;
   profileUrl: string | null;
@@ -110,6 +119,9 @@ export type ProviderMetrics = {
   followersGained?: number | null;
 };
 
+/** How the engine names a connected account to its adapter. */
+export type AccountRef = { externalId: string; externalParentId?: string | null };
+
 export interface SocialProviderAdapter {
   readonly provider: SocialProvider;
   /** Human name, for the screen. */
@@ -132,8 +144,14 @@ export interface SocialProviderAdapter {
    * "no refresh token" and let the account quietly expire at sixty days.
    */
   readonly refreshesWithAccessToken?: boolean;
-  /** Read the connected account, and prove the credentials still work. */
-  getAccount(credentials: ProviderCredentials): Promise<ProviderAccount>;
+  /**
+   * Read the connected account, and prove the credentials still work.
+   *
+   * `account` is passed when re-checking one already connected. Adapters whose
+   * sign-in *is* the account ignore it; one where a sign-in reaches many
+   * (Business Profile locations) needs it to know which to read.
+   */
+  getAccount(credentials: ProviderCredentials, account?: AccountRef): Promise<ProviderAccount>;
   /**
    * Present when one sign-in reaches several publishable accounts — a
    * Facebook user's Pages, a Google login's business locations. The callback
@@ -151,13 +169,13 @@ export interface SocialProviderAdapter {
   /** Publish. Returns the provider's own id so we never publish it twice. */
   publish(
     credentials: ProviderCredentials,
-    account: { externalId: string },
+    account: AccountRef,
     input: PublishInput,
   ): Promise<PublishResult>;
   /** Metrics for one published post. */
   getMetrics(
     credentials: ProviderCredentials,
-    account: { externalId: string },
+    account: AccountRef,
     externalPostId: string,
   ): Promise<ProviderMetrics>;
 }

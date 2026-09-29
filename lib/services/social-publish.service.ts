@@ -97,7 +97,7 @@ const publishSelect = {
   ambiguous: true,
   accountId: true,
   account: {
-    select: { id: true, externalId: true, name: true, status: true, provider: true },
+    select: { id: true, externalId: true, externalParentId: true, name: true, status: true, provider: true },
   },
   media: {
     orderBy: { order: "asc" },
@@ -300,7 +300,7 @@ async function runPublication(
   try {
     const result = await adapter.publish(
       credentials,
-      { externalId: account.externalId },
+      { externalId: account.externalId, externalParentId: account.externalParentId },
       toPublishInput(post),
     );
 
