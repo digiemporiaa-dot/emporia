@@ -12,9 +12,13 @@ import { usePathname } from "next/navigation";
  * tab when they add their own page.
  */
 const TABS = [
+  { segment: "", label: "Overview" },
   { segment: "calendar", label: "Calendar" },
   { segment: "content", label: "Content" },
+  { segment: "approvals", label: "Approvals" },
+  { segment: "published", label: "Published" },
   { segment: "analytics", label: "Analytics" },
+  { segment: "reports", label: "Reports" },
   { segment: "accounts", label: "Accounts" },
   { segment: "brand", label: "Brand & strategy" },
 ] as const;
@@ -27,8 +31,9 @@ export function SocialNav({ clientId }: { clientId: string }) {
     <nav aria-label="Social media sections" className="border-b border-line">
       <ul className="-mb-px flex flex-wrap gap-1">
         {TABS.map((tab) => {
-          const href = `${base}/${tab.segment}`;
-          const active = pathname === href || pathname.startsWith(`${href}/`);
+          const href = tab.segment ? `${base}/${tab.segment}` : base;
+          // Overview is the section's root, so only an exact match is it.
+          const active = tab.segment ? pathname === href || pathname.startsWith(`${href}/`) : pathname === base;
           return (
             <li key={tab.segment}>
               <Link

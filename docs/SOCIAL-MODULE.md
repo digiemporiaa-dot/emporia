@@ -2817,3 +2817,163 @@ report's rules: an unmeasured post counts as a post, never as zero.
   - No page errors.
 - **Gate:** lint, typecheck, **1982 tests across 120 files**, production build.
   All clean.
+
+## 26. Gap phase 6 — Overview, Approvals, Published, Reports, and the Board
+
+Brief sections 6, 7, 13, 32, 33 and 44. The client's social section now has
+the brief's full set of tabs: **Overview, Calendar, Content, Approvals,
+Published, Analytics, Reports, Accounts** and **Brand & strategy**.
+
+### One summary behind two screens
+
+`periodSummary` (`lib/services/social-summary.service.ts`) is the single
+function behind the Overview's "this month" and the monthly report, so the
+two can never disagree about the same month. It takes a client id that has
+**already** been authorised and scoped; it is not an entry point.
+
+- **Months** are India-time months: a post at 20:00 UTC on 30 September is
+  October's.
+- **Totals** are summed over the posts that reported them, with the count
+  shown. Engagement is its own total (likes, comments, shares and saves).
+- **Engagement rate across many posts** is total engagement over total reach
+  (`aggregateRate`), not the average of per-post rates. Averaging would let a
+  post ten people saw weigh as much as one ten thousand saw.
+- **Top post, platform and campaign** are chosen by engagement rate, which
+  compares fairly across platforms. Nothing without reach can be top, and if
+  nothing reported reach there is no top.
+
+### Overview (brief §7)
+
+The section's landing page, replacing the old redirect to Content.
+
+- **This month:** posts published, reach, impressions, engagement rate,
+  followers gained and engagement, each "from N of M posts" or "Not
+  reported". Shown only to someone with `social.analytics.view`.
+- **Work in progress:** waiting for internal review, with the client (social
+  approvals only; a blog approval for the same client is not counted),
+  scheduled posts, and failed posts. Each links to where it is handled.
+- **Connected accounts:** every platform with its accounts and their health,
+  or "Not connected", "Not configured" or "Not available yet".
+
+### Approvals
+
+The queue, in workflow order:
+
+- rounds waiting for internal review, oldest first;
+- what is with the client;
+- what the client decided in the last 30 days, with their feedback.
+
+Decisions are still made on each idea's page, where the content is.
+
+### Published
+
+- **The list:** published versions, newest first, 25 per page (server-side
+  paging, never the whole table). Platform and campaign filters are links.
+- **Each row:** thumbnail, platform, format, account, campaign and caption
+  line. With analytics permission it also shows reach, engagement and
+  engagement rate ("—" means not reported), plus the live link.
+
+### Board (brief §13)
+
+`?view=board` on the calendar covers the same month as the list view, with
+the month's versions in one column per workflow stage (Idea → Published).
+The board is **read-only on purpose**: a stage moves through internal review
+and the client's decision, which dragging between columns would skip.
+
+### Monthly reports (brief §32–33)
+
+- **The record:** `SocialReport`, one per client per month, unique.
+  - `data` is frozen JSON validated by `socialReportDataSchema` both when
+    written and when read.
+  - `notes` is the one human-written part.
+  - There is no AI anywhere in it.
+- **Contents:**
+  - the month's posts, reach, impressions, engagement, followers gained and
+    engagement rate;
+  - the previous month's figures, for month-over-month change, shown only
+    where both months have a figure;
+  - the posts per platform;
+  - the top post, platform and campaign;
+  - a content summary: counts by platform, format, campaign and pillar;
+  - the next month as planned when the report was generated.
+- **Generating:** only for completed months from the last 24, which excludes
+  the current month. A draft can be regenerated. A published report is
+  frozen: regeneration and note changes are refused until it is unpublished.
+  So a report a client has read does not change when a late snapshot
+  arrives.
+- **Permissions:** the new `social.reports.manage` (Marketing manager,
+  Project manager, Admin) generates, edits notes and publishes; viewing stays
+  under `social.reports.view`. Staff-only for every staff function. Publish
+  and unpublish are audited.
+- **In the portal:** `/portal/social/reports` lists the client's *published*
+  reports, and `/portal/social/reports/[id]` shows one. The session decides
+  whose; another client's report, or a draft, is not found. The portal's
+  Social page links to it.
+- **Downloads** (brief §33, "where supported"):
+  - **CSV** at `/api/social/reports/[id]/csv`, written with the shared CSV
+    writer, which defuses formula-looking cells.
+  - **Print / save as PDF** at `/print/social-reports/[id]`, a page outside
+    the admin and portal chrome. It uses the browser's own print-to-PDF: no
+    PDF library is installed, and a headless-browser dependency would be
+    heavy for this.
+
+  Both authorise through `getReport` (staff within their scope, or the
+  client's own published report). `/print` is in the middleware's protected
+  list, as `/preview-frame` already was, is `noindex`, and is disallowed in
+  `robots.txt`.
+- **One document component:** `SocialReportDocument` renders the report in
+  the admin preview, the portal and the print view, so the three cannot
+  diverge.
+
+### Verified
+
+- **Tests:** 10 new.
+  - `tests/social-reports.db.test.ts` (9):
+    - period summary: India-time month boundary, totals with reporting
+      counts, aggregate rate (2.8%, not the 6% mean), top by rate;
+    - Overview: work counts exclude non-social approvals; figures only with
+      analytics permission; `social.view` required;
+    - Published: paging order, the platform filter, figures hidden without
+      permission, another client's campaign returning nothing;
+    - reports: only completed months; figures, previous month and next
+      month's plan frozen and unchanged by a late snapshot until
+      regenerated; drafts hidden from the client; published only to its own
+      client; published reports frozen; publish and unpublish audited;
+      permissions required; a portal user can never generate or list;
+    - CSV figures, with formula-looking titles defused;
+    - the board covers the list's month.
+  - `tests/social-insights.test.ts` (+1): `aggregateRate`.
+  - Mutation-checked, 11 of 11 caught:
+    - drafts hidden from the portal;
+    - the portal's own-client check;
+    - the portal listing published reports only;
+    - completed months only;
+    - published reports frozen;
+    - staff-only report functions;
+    - social-only approval counts;
+    - the Overview's analytics gate;
+    - Published's figures gate;
+    - top chosen by rate;
+    - rate as an aggregate, not a mean.
+- **Browser (seeded, then removed):**
+  - All nine tabs.
+  - The Overview counted 1 waiting for internal review.
+  - Approvals listed that round.
+  - Published showed 4 posts, and 1 with the LinkedIn filter.
+  - The August board put 3 cards under Published.
+  - The August 2026 report was generated from stored figures: 3 posts,
+    18K reach from 2 of 3, a 7.44% rate, top post the Monsoon reel at 9.00%,
+    and month-over-month changes against July. Notes were saved and the
+    report published.
+  - The print view has no admin chrome and prints to PDF.
+  - CSV downloads worked for staff and for the client (with its filename).
+  - Unauthenticated requests are refused: CSV returns 401, and print
+    redirects to sign-in.
+  - The client sees the report in the portal. A portal user sent to the
+    admin reports URL lands back on `/portal`.
+  - **Bug found and fixed:** the Published table's screen-reader labels are
+    absolutely positioned and escaped its scroll box, widening the page by
+    341px on a phone. The scroll box is now `relative`.
+  - No page errors.
+- **Gate:** lint, typecheck, **1992 tests across 121 files**, production build.
+  All clean.

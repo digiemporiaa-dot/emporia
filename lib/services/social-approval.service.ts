@@ -363,3 +363,38 @@ export async function withdrawSocialApproval(actor: Actor, contentItemId: string
     },
   );
 }
+
+/**
+ * The client's side of the approval queue, for the admin Approvals screen:
+ * what is with the client now, and what they decided recently.
+ */
+export async function clientApprovalQueue(actor: Actor, clientId: string, now = new Date()) {
+  requirePermission(actor, "social.view");
+  const scope = await resolveClientScope(actor, clientId);
+  const select = {
+    id: true,
+    status: true,
+    currentVersion: true,
+    createdAt: true,
+    decidedAt: true,
+    decidedBy: { select: { name: true } },
+    contentItem: { select: { id: true, title: true, socialPosts: { select: { provider: true } } } },
+    versions: { orderBy: { version: "desc" }, take: 1, select: { createdAt: true, feedback: true } },
+  } satisfies Prisma.ApprovalSelect;
+  const social = { clientId: scope, contentItem: { socialPosts: { some: {} } } } satisfies Prisma.ApprovalWhereInput;
+
+  const [pending, decided] = await Promise.all([
+    db.approval.findMany({ where: { ...social, status: "PENDING" }, orderBy: { updatedAt: "asc" }, take: 100, select }),
+    db.approval.findMany({
+      where: {
+        ...social,
+        status: { in: ["APPROVED", "CHANGES_REQUESTED", "REJECTED"] },
+        decidedAt: { gte: new Date(now.getTime() - 30 * 86_400_000) },
+      },
+      orderBy: { decidedAt: "desc" },
+      take: 100,
+      select,
+    }),
+  ]);
+  return { pending, decided };
+}

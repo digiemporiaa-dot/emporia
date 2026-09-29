@@ -49,6 +49,7 @@ const VIEWS: { value: CalendarView; label: string }[] = [
   { value: "week", label: "Week" },
   { value: "day", label: "Day" },
   { value: "list", label: "List" },
+  { value: "board", label: "Board" },
 ];
 
 const STATUSES: SocialPostStatus[] = [
@@ -135,7 +136,7 @@ export function CalendarToolbar({
             </button>
             <button
               type="button"
-              onClick={() => go({ date: state.view === "month" || state.view === "list" ? null : today })}
+              onClick={() => go({ date: state.view === "month" || state.view === "list" || state.view === "board" ? null : today })}
               className="h-8 border-x border-line px-3 text-xs font-medium text-ink-muted hover:bg-surface-muted hover:text-navy-800"
             >
               Today

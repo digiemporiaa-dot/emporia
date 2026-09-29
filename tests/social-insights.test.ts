@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateRate,
   best,
   byCampaign,
   byHour,
@@ -148,6 +149,19 @@ describe("dailyTrend", () => {
     );
     expect(points.map((p) => p.reach)).toEqual([null, null]);
     expect(reportedTrendKeys(points)).toEqual(["engagement"]);
+  });
+});
+
+describe("aggregateRate", () => {
+  it("is total engagement over total reach, from posts that reported both", () => {
+    const rate = aggregateRate([
+      { ...blank, reach: 1_000, likes: 100 },
+      { ...blank, reach: 9_000, likes: 180 },
+      { ...blank, likes: 5_000 }, // no reach: left out, not a distortion
+    ]);
+    expect(rate.reporting).toBe(2);
+    expect(rate.value).toBeCloseTo(2.8, 5); // not (10% + 2%) / 2
+    expect(aggregateRate([{ ...blank, likes: 3 }])).toEqual({ value: null, reporting: 0 });
   });
 });
 

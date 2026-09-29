@@ -507,6 +507,8 @@ model User {
   approvalsDecided   Approval[]            @relation("ApprovalDecidedBy")
   reviewsSubmitted   SocialInternalReview[] @relation("InternalReviewSubmittedBy")
   reviewsDecided     SocialInternalReview[] @relation("InternalReviewDecidedBy")
+  socialReportsMade  SocialReport[]         @relation("SocialReportGeneratedBy")
+  socialReportsSent  SocialReport[]         @relation("SocialReportPublishedBy")
   approvalVersions   ApprovalVersion[]
   ownedCampaigns     Campaign[]
   uploadedMedia      Media[]               @relation("MediaUploader")
@@ -1684,6 +1686,7 @@ model Client {
   socialMetrics            SocialMetricSnapshot[]
   contentOccasions         ContentOccasion[]
   internalReviews          SocialInternalReview[]
+  socialReports            SocialReport[]
   clientOccasions          ClientOccasion[]
 
   @@index([deletedAt])
@@ -1986,6 +1989,43 @@ model Approval {
   @@index([projectId])
   @@index([contentItemId])
   @@index([requestedById])
+}
+
+enum SocialReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// A client's monthly social report, frozen when generated.
+///
+/// `data` is a snapshot of stored metrics at generation time (shape:
+/// `socialReportDataSchema`), so a report the client has read does not change
+/// under them when a late snapshot arrives. Figures come only from stored
+/// rows; `notes` is the one human-written part.
+model SocialReport {
+  id       String             @id @default(cuid())
+  clientId String
+  client   Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// `YYYY-MM`, in the calendar's time zone.
+  month    String
+  status   SocialReportStatus @default(DRAFT)
+  data     Json
+  notes    String?
+
+  generatedById String
+  generatedBy   User      @relation("SocialReportGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  generatedAt   DateTime  @default(now())
+  publishedById String?
+  publishedBy   User?     @relation("SocialReportPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, month])
+  @@index([clientId, status])
+  @@index([generatedById])
+  @@index([publishedById])
 }
 
 /// One round of internal (agency) review on a social content item.

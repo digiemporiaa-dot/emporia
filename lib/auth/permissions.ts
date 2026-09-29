@@ -98,6 +98,12 @@ export const PERMISSIONS = [
    * client) so the person who reviews need not be the person who sends.
    */
   "social.review",
+  /**
+   * Generating, editing and publishing a client's monthly social report.
+   * Viewing stays under `social.reports.view`; publishing puts a report in
+   * front of the client, so it is its own power.
+   */
+  "social.reports.manage",
 
   /**
    * Website page CMS. Deliberately NOT folded into `content.*`: that namespace
@@ -378,6 +384,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.accounts.manage",
     "social.analytics.view",
     "social.reports.view",
+    "social.reports.manage",
     "social.occasions.manage",
     "social.review",
   ],
@@ -469,6 +476,7 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
     "social.review",
     "social.analytics.view",
     "social.reports.view",
+    "social.reports.manage",
   ],
 
   STAFF: READ_ONLY_BASELINE,
