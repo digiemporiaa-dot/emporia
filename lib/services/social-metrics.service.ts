@@ -21,6 +21,7 @@ import {
 import { engagementRate } from "@/lib/social/insights";
 import { log } from "@/lib/logger";
 import { record } from "@/lib/services/audit.service";
+import { announceMetricsSynced } from "@/lib/services/social-notify.service";
 import { systemActor } from "@/lib/actor/types";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -170,6 +171,7 @@ export async function collectMetrics(
           entityId: post.id,
           after: { capturedOn: capturedOn.toISOString().slice(0, 10), reported: METRIC_KEYS.filter((key) => columns[key] !== null) },
         });
+        await announceMetricsSynced(post.id);
       }
       run.captured += 1;
     } catch (error) {

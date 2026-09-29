@@ -6,6 +6,7 @@ import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
 import { buildSnapshot, contentFingerprint, readSnapshot, type SocialSnapshot } from "@/lib/social/approval-snapshot";
 import { readinessError, snapshotSelect } from "@/lib/services/social-approval.service";
+import { announceReviewDecided, announceReviewSubmitted } from "@/lib/services/social-notify.service";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
 import type { InternalReviewStatus } from "@/generated/prisma/enums";
@@ -53,7 +54,7 @@ async function itemForReview(contentItemId: string) {
       internalReviews: {
         orderBy: { round: "desc" },
         take: 1,
-        select: { id: true, round: true, status: true, snapshot: true },
+        select: { id: true, round: true, status: true, snapshot: true, submittedById: true },
       },
     },
   });
@@ -82,7 +83,7 @@ export async function submitForInternalReview(actor: Actor, input: { contentItem
   const round = (latest?.round ?? 0) + 1;
   const note = input.note?.trim() ? input.note.trim().slice(0, 2_000) : null;
 
-  return withAudit(
+  const review = await withAudit(
     {
       actor,
       action: "STATUS_CHANGE",
@@ -94,7 +95,7 @@ export async function submitForInternalReview(actor: Actor, input: { contentItem
     async (tx) => {
       // The unique (item, round) key turns a double submit into an error
       // instead of two rounds with the same number.
-      const review = await tx.socialInternalReview.create({
+      const created = await tx.socialInternalReview.create({
         data: {
           contentItemId: item.id,
           clientId: item.clientId,
@@ -108,9 +109,12 @@ export async function submitForInternalReview(actor: Actor, input: { contentItem
       if (item.stage !== "INTERNAL_REVIEW") {
         await tx.contentCalendarItem.update({ where: { id: item.id }, data: { stage: "INTERNAL_REVIEW" } });
       }
-      return review;
+      return created;
     },
   );
+  // After the commit: a failed notification must not undo the submission.
+  await announceReviewSubmitted(item.id, actor.userId);
+  return review;
 }
 
 /** Approve, send back, or reject the round waiting on an idea. */
@@ -150,7 +154,7 @@ export async function decideInternalReview(
   }
 
   const nextStage = input.decision === "APPROVED" ? "INTERNAL_REVIEW" : "DRAFT";
-  return withAudit(
+  const decided = await withAudit(
     {
       actor,
       action: "STATUS_CHANGE",
@@ -173,6 +177,8 @@ export async function decideInternalReview(
       return { id: round.id, round: round.round, status: input.decision };
     },
   );
+  await announceReviewDecided(item.id, round.submittedById, actor.userId, input.decision, feedback);
+  return decided;
 }
 
 /** Pull a waiting round back, to change something before anyone reviews it. */

@@ -3072,3 +3072,75 @@ session's `clientId`. No client id is ever read from the browser.
   - No overflow at 390px, and no page errors.
 - **Gate:** lint, typecheck, **1998 tests across 123 files**, production build.
   All clean.
+
+---
+
+## 29. Workflow notifications and automation triggers (brief §34, §35)
+
+These use the existing systems: `notify` for in-app notifications,
+`sendTemplate("CLIENT_NOTIFICATION")` for client email, and `runAutomations`
+for rules. There is no new notification system. Each announcement lives in
+`lib/services/social-notify.service.ts`.
+
+Every announcement runs **after** its transaction commits and swallows its
+own errors. A failed message never undoes a submission, a send, a schedule or
+a publication.
+
+### Who hears what
+
+| Step | Who hears | How |
+|------|-----------|-----|
+| Submitted for internal review | The idea's owner and the project manager, never the submitter | In-app: *"Review pending: {client}"*, linking to the social item |
+| Internal review decided | The submitter, with the reviewer's feedback. Nobody when they reviewed it themselves | In-app |
+| Sent to the client | The client's **active** portal users only. Suspended users and other clients' users get nothing | Email: *"{n} posts are waiting for your approval"*, linking to `/portal/approvals/{id}`. A second version says it was updated after their feedback |
+| Monthly report published | The client's active portal users. Nothing while the report is a draft | Email: *"Your {Month Year} social media report"*, linking to `/portal/social/reports/{id}` |
+
+These go by email because the portal has no notification inbox. Without SMTP
+configured, the send is logged in `EmailLog` as FAILED with *"Email is not
+configured"*. It is never shown as sent.
+
+### New automation triggers
+
+Four triggers were added to `AutomationTriggerType`, in migration
+`social_workflow_triggers`, and to `WIRED_TRIGGERS`. The automation editor
+and its validation read that list, so the new triggers appear there with no
+further changes.
+
+| Trigger | Fires when | Extra fact |
+|---------|-----------|-----------|
+| `SOCIAL_REVIEW_SUBMITTED` | Content is submitted for internal review | — |
+| `SOCIAL_SENT_FOR_APPROVAL` | Content is sent to the client | `social.approvalVersion` |
+| `SOCIAL_POST_SCHEDULED` | A post moves to Scheduled, and not on any other status change | — |
+| `SOCIAL_METRICS_SYNCED` | A post's figures arrive, **once per post per day** (the same guard as the SYNC audit entry) | — |
+
+Each trigger carries the usual social facts: platform, format, title,
+campaign, account, attempts and client name.
+
+The social triggers that already existed are unchanged: published, failed,
+and client decision.
+
+### Not wired
+
+- **Account token expiring.** Nothing notices a token nearing expiry ahead of
+  time. Revoked or expired credentials are found at publish or sync time and
+  already mark the account.
+- **Content created.** There is no trigger for this yet.
+
+Both need an event source first. They are left unimplemented rather than
+faked.
+
+### Verified
+
+- **Tests:** 10 new, in `tests/social-workflow-notify.db.test.ts`. They run the
+  real services: submit, decide, send, schedule, the collector against the
+  LinkedIn double, and report publish.
+- **Mutation checks:** 16 of 16 caught.
+  - Who gets notified: submitter exclusion, the manager, and self-review.
+  - Who gets email: active users only, and this client only.
+  - Draft reports send nothing.
+  - The approval-version fact, and the second-version wording.
+  - The wiring of each of the six call sites.
+  - Scheduled status only.
+  - Once per day for metrics sync.
+- **Gate:** lint, typecheck, **2008 tests across 124 files**, and the
+  production build. All clean.
