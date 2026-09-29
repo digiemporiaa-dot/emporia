@@ -8,7 +8,7 @@ import { recordSyncResult, usableCredentials } from "@/lib/services/social-accou
 import { socialProvider } from "@/lib/social";
 import { AmbiguousPublishError, CredentialsRejectedError } from "@/lib/social/errors";
 import { MAX_ATTEMPTS, publicationKey } from "@/lib/social/idempotency";
-import { tagLink } from "@/lib/social/utm";
+import { contentTag, tagLink } from "@/lib/social/utm";
 import { announceFailure, announcePublished } from "@/lib/services/social-notify.service";
 import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { log } from "@/lib/logger";
@@ -219,6 +219,10 @@ async function runPublication(
     };
   }
 
+  // The post's `utm_content`, fixed at the first claim and kept for retries, so
+  // a lead arriving through this link can be traced back to this post.
+  const tag = post.utmContent ?? contentTag(post.type, post.id);
+
   // ---- The claim. Everything above is a read; this is the mutex. ----------
   const claimed = await db.socialPost.updateMany({
     // `ambiguous: false` is part of the mutex, not just a check above it: a
@@ -233,7 +237,7 @@ async function runPublication(
     // rather than computed from the row read earlier. That read can be stale —
     // a person's retry may have failed and bumped the count in between — and a
     // stale count collides on the idempotency key and strands the post.
-    data: { status: "PUBLISHING", lastAttemptAt: new Date(), attemptCount: { increment: 1 } },
+    data: { status: "PUBLISHING", lastAttemptAt: new Date(), attemptCount: { increment: 1 }, utmContent: tag },
   });
   if (claimed.count === 0) {
     // Somebody else has it, or it already went out. Either way, not ours.
@@ -301,7 +305,7 @@ async function runPublication(
     const result = await adapter.publish(
       credentials,
       { externalId: account.externalId, externalParentId: account.externalParentId },
-      toPublishInput(post),
+      toPublishInput({ ...post, utmContent: tag }),
     );
 
     const publishedAt = new Date();

@@ -782,6 +782,11 @@ describeDb("social publishing engine", () => {
     expect(source).toContain("utm_source=linkedin");
     expect(source).toContain("utm_medium=social");
     expect(source).toContain("utm_campaign=festive-season");
+    // A per-post content tag, stored, so a lead arriving through this link can
+    // be traced back to this post.
+    const stored = await db.socialPost.findUniqueOrThrow({ where: { id: post.id }, select: { utmContent: true } });
+    expect(stored.utmContent).toBe(`link-${post.id.slice(-8)}`);
+    expect(source).toContain(`utm_content=${stored.utmContent}`);
   });
 
   it("rate limits a person publishing over and over", async () => {

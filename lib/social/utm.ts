@@ -91,3 +91,19 @@ export function tagLink(url: string | null, input: UtmInput): string | null {
 export function utmSource(provider: SocialProvider): string {
   return SOURCE[provider];
 }
+
+/**
+ * The `utm_content` a post goes out with when nobody set one: its format and
+ * the tail of its id, e.g. `carousel-k3j9x2ab`.
+ *
+ * Stored on the post when it is claimed for publishing, so the link that went
+ * out and the value a lead's touch carries back can be joined exactly — which
+ * is what lets a lead be traced to the post, not only the campaign. The format
+ * keeps it readable in any analytics tool; the id keeps it unique.
+ */
+export function contentTag(type: string, postId: string): string {
+  return utmValue(`${type}-${postId.slice(-8)}`);
+}
+
+/** Every `utm_source` a social post can carry, for recognising a social touch. */
+export const SOCIAL_SOURCES: readonly string[] = Object.values(SOURCE);

@@ -10,6 +10,8 @@ import { listPostsForItem } from "@/lib/services/social-post.service";
 import { socialApprovalFor } from "@/lib/services/social-approval.service";
 import { internalReviewsFor } from "@/lib/services/social-review.service";
 import { publicationsFor } from "@/lib/services/social-publish.service";
+import { metricsForPost } from "@/lib/services/social-metrics.service";
+import { engagementRate } from "@/lib/social/insights";
 import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { isAppError } from "@/lib/errors";
@@ -91,6 +93,15 @@ export default async function SocialContentItemPage({
     ),
   );
 
+  // The latest figures for each published version, for those who may see
+  // analytics. One small query per published version of one idea.
+  const published = can(actor, "social.analytics.view") ? posts.filter((post) => post.status === "PUBLISHED") : [];
+  const latest = new Map(
+    await Promise.all(
+      published.map(async (post) => [post.id, (await metricsForPost(actor, post.id))[0] ?? null] as const),
+    ),
+  );
+
   // Flattened for the client component: the snapshot itself stays on the
   // server, since the agency side only needs to know how many versions went
   // out, not to re-render them.
@@ -141,6 +152,22 @@ export default async function SocialContentItemPage({
       at: (attempt.completedAt ?? attempt.attemptedAt).toISOString(),
       by: attempt.triggeredBy?.name ?? null,
     })),
+    performance: (() => {
+      const snapshot = latest.get(post.id);
+      if (!snapshot) return null;
+      return {
+        capturedOn: snapshot.capturedOn.toISOString(),
+        reach: snapshot.reach,
+        impressions: snapshot.impressions,
+        likes: snapshot.likes,
+        comments: snapshot.comments,
+        shares: snapshot.shares,
+        saves: snapshot.saves,
+        clicks: snapshot.clicks,
+        videoViews: snapshot.videoViews,
+        rate: engagementRate(snapshot),
+      };
+    })(),
     media: post.media.map((row) => ({
       id: row.media.id,
       url: row.media.url,
