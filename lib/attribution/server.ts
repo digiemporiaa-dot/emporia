@@ -8,6 +8,7 @@ import {
   type DeviceClass,
   type TouchData,
 } from "@/lib/attribution/cookies";
+import { utmValue } from "@/lib/social/utm";
 
 /**
  * Server-side attribution.
@@ -99,19 +100,59 @@ export async function persistTouches(
     write(context.lastTouch, "LAST"),
   ]);
 
-  // Match the campaign by name when the UTM names one we track. Last touch
-  // wins, which is the convention for campaign attribution on a single lead.
-  const campaignName = context.lastTouch?.campaign ?? context.firstTouch?.campaign ?? null;
-  let campaignId: string | null = null;
-  if (campaignName) {
-    const campaign = await tx.campaign.findFirst({
-      where: { name: { equals: campaignName, mode: "insensitive" } },
-      select: { id: true },
-    });
-    campaignId = campaign?.id ?? null;
-  }
+  // Last touch wins, which is the convention for campaign attribution on a
+  // single lead; the first touch is the fallback when the last named nothing.
+  const touch = context.lastTouch?.campaign || context.lastTouch?.content ? context.lastTouch : context.firstTouch;
+  const campaignId = touch ? await campaignForTouch(tx, touch) : null;
 
   return { firstTouchId, lastTouchId, campaignId };
+}
+
+/**
+ * The campaign a touch's UTM tags point to, or null when they do not point to
+ * exactly one.
+ *
+ * In order of certainty:
+ *  1. `utm_content` naming one of our social posts — the tag the publisher
+ *     stamps on every post — gives that post's campaign.
+ *  2. `utm_campaign` equal to a campaign's name, ignoring case.
+ *  3. `utm_campaign` equal to a campaign's name in the form the publisher
+ *     writes it (`Diwali 2026` goes out as `diwali-2026`). Before this step a
+ *     lead from a social link never matched its campaign at all.
+ *
+ * Steps 2 and 3 attribute only when exactly one campaign matches: two
+ * clients' "Diwali 2026" is a guess, and a guess is not attribution.
+ */
+export async function campaignForTouch(tx: DbClient, touch: Pick<TouchData, "campaign" | "content">): Promise<string | null> {
+  if (touch.content) {
+    const post = await tx.socialPost.findFirst({
+      where: { utmContent: touch.content.trim().toLowerCase() },
+      select: { contentItem: { select: { campaignId: true } } },
+    });
+    if (post?.contentItem.campaignId) return post.contentItem.campaignId;
+  }
+
+  const name = touch.campaign?.trim();
+  if (!name) return null;
+
+  const exact = await tx.campaign.findMany({
+    where: { name: { equals: name, mode: "insensitive" } },
+    select: { id: true },
+    take: 2,
+  });
+  if (exact.length === 1) return exact[0]!.id;
+  if (exact.length > 1) return null;
+
+  const slug = utmValue(name);
+  const tokens = slug.split("-").filter(Boolean);
+  if (tokens.length === 0) return null;
+  const candidates = await tx.campaign.findMany({
+    where: { AND: tokens.map((token) => ({ name: { contains: token, mode: "insensitive" as const } })) },
+    select: { id: true, name: true },
+    take: 50,
+  });
+  const matches = candidates.filter((campaign) => utmValue(campaign.name) === slug);
+  return matches.length === 1 ? matches[0]!.id : null;
 }
 
 /** Resolve a public path to the service and city it represents, if any. */

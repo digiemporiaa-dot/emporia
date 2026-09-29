@@ -114,6 +114,11 @@ function zonedFields(instant: Date, timeZone: string) {
   };
 }
 
+/** The hour of the day (0–23) an instant falls in, in a given zone. */
+export function zonedHour(instant: Date, timeZone: string): number {
+  return zonedFields(instant, timeZone).hour;
+}
+
 /** Which calendar day an instant falls on, in a given zone. */
 export function zonedDay(instant: Date, timeZone: string): YMD {
   const { year, month, day } = zonedFields(instant, timeZone);

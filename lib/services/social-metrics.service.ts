@@ -18,6 +18,7 @@ import {
   toReportRow,
   type ReportRow,
 } from "@/lib/social/report";
+import { engagementRate } from "@/lib/social/insights";
 import { log } from "@/lib/logger";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
@@ -219,6 +220,8 @@ export type SocialReport = {
     publishedAt: string;
     externalUrl: string | null;
     engagement: number;
+    /** Engagement over reach, as a percentage; null without reach. */
+    rate: number | null;
   }[];
   /** True when the period held more posts than a report aggregates. */
   truncated: boolean;
@@ -286,6 +289,7 @@ export async function socialReport(
         publishedAt: (post.publishedAt ?? new Date()).toISOString(),
         externalUrl: post.externalUrl,
         engagement: engagementOf(row),
+        rate: engagementRate(row),
       };
     })
     .filter((entry) => entry.engagement > 0)

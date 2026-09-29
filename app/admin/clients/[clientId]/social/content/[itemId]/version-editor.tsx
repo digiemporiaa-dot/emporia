@@ -88,7 +88,69 @@ export type EditorPost = {
   media: EditorMedia[];
   /** Publication attempts, newest first. Empty until something is tried. */
   attempts: EditorAttempt[];
+  /** The latest figures the platform reported, once published. Null when none, or not permitted. */
+  performance: EditorPerformance | null;
 };
+
+export type EditorPerformance = {
+  capturedOn: string;
+  reach: number | null;
+  impressions: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  clicks: number | null;
+  videoViews: number | null;
+  /** Engagement over reach, as a percentage; null when reach was not reported. */
+  rate: number | null;
+};
+
+const PERFORMANCE_FIELDS = [
+  ["reach", "Reach"],
+  ["impressions", "Impressions"],
+  ["likes", "Likes"],
+  ["comments", "Comments"],
+  ["shares", "Shares"],
+  ["saves", "Saves"],
+  ["clicks", "Clicks"],
+  ["videoViews", "Video views"],
+] as const;
+
+const COUNT = new Intl.NumberFormat("en-IN");
+
+/** Brief §24: what a published post did, with "not reported" where the platform is silent. */
+function PerformanceBlock({ performance }: { performance: EditorPerformance }) {
+  return (
+    <section aria-label="Performance" className="rounded-md border border-line px-3 py-2.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-2xs font-medium uppercase tracking-wide text-ink-subtle">Performance</p>
+        <p className="text-2xs text-ink-subtle">
+          As reported on{" "}
+          {new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(
+            new Date(performance.capturedOn),
+          )}
+        </p>
+      </div>
+      <dl className="mt-2 grid grid-cols-3 gap-x-3 gap-y-2 sm:grid-cols-5">
+        {PERFORMANCE_FIELDS.map(([key, label]) => (
+          <div key={key}>
+            <dt className="text-2xs text-ink-subtle">{label}</dt>
+            <dd className="text-sm tabular-nums text-navy-800">
+              {performance[key] === null ? <span className="text-2xs text-ink-subtle">Not reported</span> : COUNT.format(performance[key])}
+            </dd>
+          </div>
+        ))}
+        <div>
+          <dt className="text-2xs text-ink-subtle">Engagement rate</dt>
+          <dd className="text-sm tabular-nums text-navy-800">
+            {performance.rate === null ? <span className="text-2xs text-ink-subtle">Needs reach</span> : `${performance.rate.toFixed(2)}%`}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
 
 export type EditorAttempt = {
   id: string;
@@ -266,6 +328,7 @@ function emptyPost(provider: EditorProvider, type: string): EditorPost {
     aiDraft: false,
     media: [],
     attempts: [],
+    performance: null,
   };
 }
 
@@ -511,6 +574,8 @@ function VersionCard({
             longer be edited.
           </p>
         ) : null}
+
+        {post.status === "PUBLISHED" && post.performance ? <PerformanceBlock performance={post.performance} /> : null}
 
         {editable && aiReady ? (
           <div className="rounded-md border border-line bg-surface-muted px-3 py-2.5">

@@ -3090,6 +3090,8 @@ model SocialPost {
   publications SocialPublication[]
   metrics      SocialMetricSnapshot[]
 
+  /// Joined against a lead's `utm_content` to trace the lead to this post.
+  @@index([utmContent])
   @@index([clientId, status])
   @@index([contentItemId])
   @@index([accountId])

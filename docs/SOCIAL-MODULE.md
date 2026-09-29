@@ -2683,3 +2683,137 @@ for internal review* filter lists the review queue.
   - No page errors. The seeded rows were removed.
 - **Gate:** lint, typecheck, **1963 tests across 118 files**, production build.
   All clean.
+
+## 25. Gap phase 5 — attribution to revenue, and the analytics beyond totals
+
+Brief sections 21–24, 41 and 42. The analytics page had totals, a
+per-platform table and top posts. It now also has trends, when to post,
+format and campaign performance, the weakest posts, engagement rate, and the
+chain from social to leads to revenue. Each published version also shows its
+own performance.
+
+### Found and fixed: social leads never matched their campaign
+
+The publisher tags links `utm_campaign=diwali-2026`, the campaign name
+lowercased and hyphenated. Lead capture matched campaigns by *exact name*
+("Diwali 2026"), so a lead that arrived through a social link never got its
+campaign. `persistTouches` now resolves a touch through `campaignForTouch`,
+in order of certainty:
+
+1. **A post's own `utm_content`.** The publisher now stamps one on every post
+   when it is first claimed (`carousel-k3j9x2ab`: the format plus the tail of
+   the post id). It is stored on the post, so retries reuse it and the join is
+   exact. This gives the post's campaign, and traces the lead to the post.
+2. **Exact campaign name**, ignoring case.
+3. **The campaign name in the publisher's form.**
+
+Steps 2 and 3 attribute only when exactly one campaign matches. Before this,
+an exact-name tie quietly took whichever campaign came first.
+`SocialPost.utmContent` is indexed.
+
+### Social → leads → opportunities → clients → revenue
+
+`socialAttribution` (staff only):
+
+- **What counts:** a lead counts when its **last touch** carries this client's
+  tags. Last touch is the convention lead capture already uses. The tags are
+  either one of the client's post `utm_content` values, or a social touch
+  (`utm_medium=social`, or a social `utm_source`) whose campaign resolves to
+  one of the client's campaigns.
+- **What doesn't:** paid traffic naming the same campaign, another client's
+  campaign, deleted leads, and ambiguous names.
+- **Which leads can appear at all:** only leads captured on this website.
+  Traffic sent to a client's own website never reaches this CRM, so for most
+  clients the section honestly says there is nothing to show. The screen
+  explains why.
+- **What each lead is followed to:** its opportunities (open pipeline and won
+  value, `Decimal`), whether it became a client, and revenue.
+- **Revenue reuses the CRM's existing rule** (`revenueByClient` +
+  `convertingLeads`, now exported, and `convertingLeads` returns the lead id).
+  It is money received in the period, credited once per client to the lead
+  that converted it first. A client who converted years ago through a social
+  lead and paid this month counts in revenue but not as a lead this period.
+- **Permissions:** the section needs `leads.view`, and lead counts follow the
+  viewer's lead visibility (own leads only without `leads.view.team`). Deal
+  values need `opportunities.view` and revenue needs `invoices.view`; without
+  them the screen shows "Hidden", never zero. A portal user gets not-found.
+
+### The analytics beyond totals
+
+The rules live in `lib/social/insights.ts` (pure, shared). They are the
+report's rules: an unmeasured post counts as a post, never as zero.
+
+- **Engagement rate:** likes + comments + shares + saves over reach, as a
+  percentage. The brief's example (reach 18,492, 1,554 engagements) gives
+  8.40%. It is null without reach. It now appears on top posts, the weakest
+  posts, formats, campaigns, and each published version.
+- **Trends:** impressions, reach, engagement and followers gained, per day,
+  from the daily snapshots. Platforms report running totals per post, so a
+  day is the rise since that post's previous snapshot, and the first snapshot
+  counts in full. A value that follows a gap is not counted as one day's rise.
+  A day nothing reported is a gap in the line, not a zero. Reach is summed per
+  post, as the report's total is, and the screen says so.
+- **When to post:** average engagement per measured post by weekday and hour
+  in India time, **one platform at a time**. Engagement is only comparable
+  within a platform, so there is a platform switch. A slot is called best only
+  with at least three measured posts; otherwise the screen says there is not
+  enough data yet.
+- **By format:** per platform and format.
+- **Campaigns:** ranked by engagement **rate**, because a campaign spans
+  platforms and raw engagement does not compare across them. Reach is summed
+  over the posts that reported it, with the count shown.
+- **Least engagement:** measured posts only. A post nobody reported on is
+  unknown, not weak.
+- **Per post (brief §24):** each published version on its idea's page shows
+  reach, impressions, likes, comments, shares, saves, clicks, video views and
+  engagement rate, with "Not reported" where the platform was silent and the
+  date the figures were taken. The live post link was already there.
+
+### Charts
+
+- **Design:** `components/admin/charts.tsx` (`TrendChart`: client component,
+  crosshair and readout on hover and on arrow keys, a gap for missing days, a
+  table view) and `components/admin/bar-list.tsx` (a server component: every
+  bar carries its value and sample size in text).
+- **Colours:** charts are single-series because the brand allows navy and red
+  only. Marks are navy-500. The one "best" bar is red *and* labelled "Best".
+  The validator passes colour-blind separation (ΔE 11.3) and contrast for that
+  pair. It flags the brand navy's low chroma, which only matters for telling
+  several series apart — and there are never several series here.
+
+### Verified
+
+- **Tests:** 19 new, and one extended.
+  - `tests/social-insights.test.ts` (11): engagement rate (the brief's
+    example, and null cases); India-time weekday and hour; unmeasured posts
+    not averaged as zero; best slot needing a sample; formats grouped per
+    platform; campaigns ranked by rate with reach sums; unmeasured posts left
+    out of the weakest list; daily deltas; nulls and gaps; the content tag.
+  - `tests/social-attribution.db.test.ts` (8): touch resolution by tag, exact
+    name and slug; ties refused; the full chain (2 leads, 3 deals, pipeline
+    20,000.50, won 50,000.00, 1 client, revenue 31,000.25 including an old
+    converter's payment this period); money hidden without permission; own
+    leads only; lead access required; portal refused; per-client separation;
+    the insights service end to end.
+  - `tests/social-publish.db.test.ts`: the stored `utm_content` is on the
+    link that went out.
+  - Mutation-checked, 12 mutations, 11 caught: the client-campaign scope,
+    deleted leads, revenue beyond the period's leads, hidden deal money, the
+    portal refusal, the slug step, the exact-name tie, the trend's first
+    snapshot, the minimum sample, unmeasured-as-zero, and the publish-time
+    stamp. The survivor is the in-loop "social touch" check, which the query
+    already enforces; it is kept deliberately and commented.
+- **Browser (seeded, then removed):**
+  - Four trend charts with gaps on unreported days. The hover and arrow-key
+    readouts work.
+  - *"On Instagram, posts did best on Tue and around 18:00"* (3 of 3
+    measured). LinkedIn: not enough data.
+  - The formats, campaigns and weakest-post tables are as seeded.
+  - Attribution: 2 leads, ₹35,000.00 pipeline, ₹1,20,000.00 won, 1 client,
+    ₹40,000.00 received, traced to the campaign and the reel.
+  - A published version shows its performance with a 9.32% engagement rate.
+  - Two layout bugs were found and fixed: tables stretching their grid card
+    (120px overflow at 390px), and money overflowing the attribution tiles.
+  - No page errors.
+- **Gate:** lint, typecheck, **1982 tests across 120 files**, production build.
+  All clean.

@@ -46,6 +46,7 @@ export type ReportData = {
     publishedAt: string;
     externalUrl: string | null;
     engagement: number;
+    rate: number | null;
   }[];
 };
 
@@ -234,8 +235,11 @@ export function ReportView({
                           ) : null}
                         </p>
                       </div>
-                      <span className="shrink-0 text-sm tabular-nums text-navy-800">
+                      <span className="shrink-0 text-right text-sm tabular-nums text-navy-800">
                         {NUMBER.format(entry.engagement)}
+                        <span className="block text-2xs text-ink-subtle">
+                          {entry.rate === null ? "rate needs reach" : `${entry.rate.toFixed(2)}% of reach`}
+                        </span>
                       </span>
                     </li>
                   ))}

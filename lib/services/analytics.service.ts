@@ -38,7 +38,7 @@ import type { Prisma } from "@/generated/prisma/client";
  * every one of them would count the same money repeatedly, so each client is
  * attributed once, to the lead that converted it first.
  */
-async function revenueByClient(
+export async function revenueByClient(
   range: DateRange,
 ): Promise<{ received: Map<string, Decimal>; total: Decimal }> {
   const rows = await db.payment.groupBy({
@@ -60,6 +60,7 @@ async function revenueByClient(
 }
 
 type ConvertingLead = {
+  leadId: string;
   clientId: string;
   landingPath: string | null;
   sourceId: string;
@@ -71,11 +72,12 @@ type ConvertingLead = {
 };
 
 /** One lead per converted client — the earliest conversion wins. */
-async function convertingLeads(where: Prisma.LeadWhereInput): Promise<ConvertingLead[]> {
+export async function convertingLeads(where: Prisma.LeadWhereInput): Promise<ConvertingLead[]> {
   const rows = await db.lead.findMany({
     where: { ...where, deletedAt: null, convertedClientId: { not: null } },
     orderBy: [{ convertedAt: "asc" }, { createdAt: "asc" }],
     select: {
+      id: true,
       convertedClientId: true,
       landingPath: true,
       sourceId: true,
@@ -94,7 +96,8 @@ async function convertingLeads(where: Prisma.LeadWhereInput): Promise<Converting
     const clientId = row.convertedClientId;
     if (!clientId || seen.has(clientId)) continue;
     seen.add(clientId);
-    first.push({ ...row, clientId });
+    const { id, ...rest } = row;
+    first.push({ ...rest, leadId: id, clientId });
   }
 
   return first;
