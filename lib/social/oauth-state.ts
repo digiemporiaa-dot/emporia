@@ -135,3 +135,22 @@ export function callbackUrl(provider: SocialProvider): string {
   const origin = env().SITE_URL.replace(/\/+$/, "");
   return `${origin}/api/social/oauth/${provider.toLowerCase()}/callback`;
 }
+
+/**
+ * The PKCE code verifier for a flow, derived from its nonce.
+ *
+ * PKCE (X requires it) needs a secret the server remembers between sending
+ * the browser away and the browser coming back. Rather than a new cookie or
+ * table, it is an HMAC of the flow's nonce under a key from `AUTH_SECRET`:
+ * the callback recomputes it from the verified state, and someone who reads
+ * the state in a URL still cannot, without the key. 43 base64url characters,
+ * the shortest a verifier may be and more than enough entropy.
+ */
+export function pkceVerifier(nonce: string): string {
+  return createHmac("sha256", key()).update(`pkce:${nonce}`).digest("base64url");
+}
+
+/** The S256 challenge sent in place of the verifier. */
+export function pkceChallenge(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
+}

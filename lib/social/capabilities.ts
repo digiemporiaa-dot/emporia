@@ -67,11 +67,18 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
   },
   X: {
     postTypes: ["TEXT", "SINGLE_IMAGE", "VIDEO"],
+    // Mentions are kept here, unlike LinkedIn and Facebook: on X a typed
+    // @handle is a real mention.
     fields: ["caption", "hashtags", "mentions", "linkUrl"],
     captionLimit: 280,
     carouselLimit: null,
+    // Reading a post's numbers back needs a paid X API tier; posting does not.
+    // Off until a deployment has one, rather than failing every collection.
     metrics: false,
     nativeScheduling: false,
+    acceptedMediaTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4"],
+    lengthRule: "x-weighted",
+    linkInText: true,
   },
   GOOGLE_BUSINESS_PROFILE: {
     postTypes: ["GBP_POST"],

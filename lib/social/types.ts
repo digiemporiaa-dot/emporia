@@ -1,4 +1,5 @@
 import type { SocialPostType, SocialProvider } from "@/generated/prisma/enums";
+import type { LengthRule } from "@/lib/social/text-length";
 
 /**
  * The social provider abstraction.
@@ -58,6 +59,13 @@ export type SocialCapabilities = {
    * on save.
    */
   readonly callToActionOptions?: readonly { value: string; label: string; needsLink: boolean }[];
+  /**
+   * How the caption limit is counted, where it is not plain characters, and
+   * what rides in the text alongside the caption. X counts links as 23 and
+   * emoji as two, and puts mentions and the link in the post itself.
+   */
+  readonly lengthRule?: LengthRule;
+  readonly linkInText?: boolean;
 };
 
 /** What a connected account looks like to us, whatever the provider calls it. */
@@ -119,6 +127,9 @@ export type ProviderMetrics = {
   followersGained?: number | null;
 };
 
+/** A flow's PKCE code verifier, derived server-side and never sent to the browser. */
+export type Pkce = { verifier: string };
+
 /** How the engine names a connected account to its adapter. */
 export type AccountRef = { externalId: string; externalParentId?: string | null };
 
@@ -130,10 +141,15 @@ export interface SocialProviderAdapter {
   readonly configured: boolean;
   readonly capabilities: SocialCapabilities;
 
-  /** Where to send the browser to begin OAuth. */
-  authorizationUrl(state: string, redirectUri: string): string;
+  /**
+   * Where to send the browser to begin OAuth.
+   *
+   * `pkce` carries the flow's code verifier (see `pkceVerifier`). Every flow
+   * has one; adapters whose platform does not use PKCE ignore it.
+   */
+  authorizationUrl(state: string, redirectUri: string, pkce?: Pkce): string;
   /** Exchange the callback code for credentials. */
-  exchangeCode(code: string, redirectUri: string): Promise<ProviderCredentials>;
+  exchangeCode(code: string, redirectUri: string, pkce?: Pkce): Promise<ProviderCredentials>;
   /** Refresh before expiry, where the provider supports it. */
   refresh(credentials: ProviderCredentials): Promise<ProviderCredentials>;
   /**

@@ -598,11 +598,13 @@ describeDb("social publishing engine", () => {
   });
 
   it("refreshes a token that is about to expire before publishing with it", async () => {
+    // Ten minutes left. An account with a refresh token renews in its last
+    // quarter hour; see the next test for why not sooner.
     await db.socialAccount.update({
       where: { id: accountA },
       data: {
         refreshToken: encryptSecret("li-refresh-token"),
-        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        tokenExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
     double.token({ access_token: "li-fresh-token", expires_in: 5_184_000 });
@@ -626,6 +628,31 @@ describeDb("social publishing engine", () => {
       data: { accessToken: encryptSecret("li-access-token"), refreshToken: null, tokenExpiresAt: null },
     });
     double.token({ access_token: "li-access-token", refresh_token: "li-refresh-token", expires_in: 5_184_000 });
+  });
+
+  it("does not renew a refreshable token with time to spare — short-lived tokens would renew on every use", async () => {
+    // An hour left. It used to be renewed (anything inside a day was), which
+    // for one-hour Google and two-hour X tokens meant renewing on every call —
+    // and, with X's single-use refresh tokens, racing itself.
+    await db.socialAccount.update({
+      where: { id: accountA },
+      data: {
+        refreshToken: encryptSecret("li-refresh-token"),
+        tokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+    });
+
+    await scheduledPost();
+    const before = double.requests.length;
+    await publishDuePosts(new Date(), resolve);
+    const sent = double.requests.slice(before);
+    expect(sent.some((r) => r.path.endsWith("/accessToken"))).toBe(false);
+    expect(sent.find((r) => r.path.endsWith("/posts"))?.authorization).toBe("Bearer li-access-token");
+
+    await db.socialAccount.update({
+      where: { id: accountA },
+      data: { refreshToken: null, tokenExpiresAt: null },
+    });
   });
 
   it("does not call the platform with a token that has already expired and cannot refresh", async () => {

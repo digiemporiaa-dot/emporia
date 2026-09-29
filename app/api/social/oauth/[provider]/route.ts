@@ -3,7 +3,7 @@ import { currentActor } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { socialProvider } from "@/lib/social";
-import { OAUTH_STATE_COOKIE, callbackUrl, issueState } from "@/lib/social/oauth-state";
+import { OAUTH_STATE_COOKIE, callbackUrl, issueState, pkceVerifier } from "@/lib/social/oauth-state";
 import { isAppError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import type { SocialProvider } from "@/generated/prisma/enums";
@@ -81,7 +81,9 @@ export async function GET(
 
   let authorizeUrl: string;
   try {
-    authorizeUrl = adapter.authorizationUrl(state, callbackUrl(provider));
+    authorizeUrl = adapter.authorizationUrl(state, callbackUrl(provider), {
+      verifier: pkceVerifier(nonce),
+    });
   } catch (error) {
     if (isAppError(error)) {
       return NextResponse.json({ error: error.publicMessage }, { status: error.status });
