@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
 import { periodSummary, type PeriodSummary } from "@/lib/services/social-summary.service";
+import { directPostsSummary } from "@/lib/services/social-external.service";
 import { CALENDAR_TIME_ZONE, startOfZonedDay, zonedDay, ymdKey } from "@/lib/social/calendar";
 import { readReportData, socialReportDataSchema, type SocialReportData } from "@/lib/social/report-doc";
 import { announceReportPublished } from "@/lib/services/social-notify.service";
@@ -59,9 +60,11 @@ function figures(summary: PeriodSummary): SocialReportData["current"] {
 
 async function buildData(clientId: string, clientName: string, month: string, now: Date): Promise<SocialReportData> {
   const m = ym(month);
-  const [current, previous] = await Promise.all([
+  const [current, previous, direct] = await Promise.all([
     periodSummary(clientId, start(m), start(shift(m, 1))),
     periodSummary(clientId, start(shift(m, -1)), start(m)),
+    // Posts made outside Emporia: their own line, apart from the figures above.
+    directPostsSummary(clientId, start(m), start(shift(m, 1))),
   ]);
 
   // The following month, as it is planned right now.
@@ -114,6 +117,7 @@ async function buildData(clientId: string, clientName: string, month: string, no
       })),
     },
     truncated: current.truncated || previous.truncated,
+    direct,
   });
 }
 

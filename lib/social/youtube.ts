@@ -1,4 +1,5 @@
 import "server-only";
+import { parsePlatformTime, RECENT_PAGES, RECENT_POSTS_LIMIT, text } from "@/lib/social/recent";
 import { ValidationError } from "@/lib/errors";
 import {
   AmbiguousPublishError,
@@ -20,6 +21,7 @@ import type {
   ProviderMetrics,
   PublishInput,
   PublishResult,
+  ProviderRecentPost,
   SocialProviderAdapter,
 } from "@/lib/social/types";
 
@@ -373,6 +375,69 @@ export class YouTubeProvider implements SocialProviderAdapter {
    * count the channel has hidden — which is absent, not zero. Watch time
    * needs the separate Analytics API and its own consent, so it stays null.
    */
+  /**
+   * The channel's recent public uploads, newest first (brief §48). Private
+   * and unlisted videos are skipped: they are not published posts.
+   */
+  async listRecentPosts(
+    credentials: ProviderCredentials,
+    _account: { externalId: string },
+    since: Date,
+  ): Promise<ProviderRecentPost[]> {
+    const channelUrl = new URL(`${this.api}/youtube/v3/channels`);
+    channelUrl.searchParams.set("part", "contentDetails");
+    channelUrl.searchParams.set("mine", "true");
+    const channel = await this.fetch(channelUrl.toString(), { headers: this.auth(credentials) });
+    if (!channel.ok) throw await this.error(channel, "read the channel's uploads");
+    const channelJson = (await channel.json()) as {
+      items?: { contentDetails?: { relatedPlaylists?: { uploads?: unknown } } }[];
+    };
+    const uploads = text(channelJson.items?.[0]?.contentDetails?.relatedPlaylists?.uploads);
+    if (!uploads) return [];
+
+    const posts: ProviderRecentPost[] = [];
+    let pageToken: string | null = null;
+    for (let page = 0; page < RECENT_PAGES; page += 1) {
+      const url = new URL(`${this.api}/youtube/v3/playlistItems`);
+      url.searchParams.set("part", "snippet,contentDetails,status");
+      url.searchParams.set("playlistId", uploads);
+      url.searchParams.set("maxResults", "50");
+      if (pageToken) url.searchParams.set("pageToken", pageToken);
+      const response = await this.fetch(url.toString(), { headers: this.auth(credentials) });
+      if (!response.ok) throw await this.error(response, "list recent uploads");
+      const json = (await response.json()) as {
+        items?: {
+          snippet?: { title?: unknown; thumbnails?: { default?: { url?: unknown } } };
+          contentDetails?: { videoId?: unknown; videoPublishedAt?: unknown };
+          status?: { privacyStatus?: unknown };
+        }[];
+        nextPageToken?: unknown;
+      };
+      let reachedOlder = false;
+      for (const item of json.items ?? []) {
+        const id = text(item.contentDetails?.videoId);
+        const publishedAt = parsePlatformTime(item.contentDetails?.videoPublishedAt);
+        if (!id || !publishedAt) continue;
+        if (publishedAt < since) {
+          reachedOlder = true;
+          continue;
+        }
+        if (item.status?.privacyStatus !== "public") continue;
+        posts.push({
+          externalPostId: id,
+          externalUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
+          caption: text(item.snippet?.title),
+          format: "VIDEO",
+          thumbnailUrl: text(item.snippet?.thumbnails?.default?.url),
+          publishedAt,
+        });
+      }
+      pageToken = !reachedOlder && typeof json.nextPageToken === "string" ? json.nextPageToken : null;
+      if (!pageToken) break;
+    }
+    return posts.slice(0, RECENT_POSTS_LIMIT);
+  }
+
   async getMetrics(
     credentials: ProviderCredentials,
     _account: { externalId: string },

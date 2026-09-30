@@ -1695,6 +1695,7 @@ model Client {
   socialPosts              SocialPost[]
   socialPublications       SocialPublication[]
   socialMetrics            SocialMetricSnapshot[]
+  socialExternalPosts      SocialExternalPost[]
   contentOccasions         ContentOccasion[]
   internalReviews          SocialInternalReview[]
   socialReports            SocialReport[]
@@ -2883,7 +2884,8 @@ model SocialAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  posts SocialPost[]
+  posts         SocialPost[]
+  externalPosts SocialExternalPost[]
 
   @@unique([provider, externalId])
   @@index([clientId, status])
@@ -3266,4 +3268,53 @@ model SocialMetricSnapshot {
 
   @@unique([postId, capturedOn])
   @@index([clientId, capturedOn])
+}
+
+/// A post made directly on the platform, outside Emporia (brief §48, "fetch
+/// recent posts").
+///
+/// Deliberately not a `SocialPost`: it had no idea, no review, no approval and
+/// no campaign, and must never appear in the calendar, the approval queues or
+/// the publisher. It exists so the account's whole activity is visible — and
+/// reported as its own line, apart from the agency's work.
+///
+/// Holds the **latest** figures rather than daily snapshots: engagement is
+/// cumulative, and these only ever appear as a period's separate line, never
+/// in trend charts. Absent is not zero, as everywhere else.
+model SocialExternalPost {
+  id        String         @id @default(cuid())
+  clientId  String
+  client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  accountId String
+  account   SocialAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  provider  SocialProvider
+
+  externalPostId String
+  externalUrl    String?
+  /// The platform's own words, trimmed. Shown to recognise the post; never edited.
+  caption        String?
+  format         String?
+  thumbnailUrl   String?
+  publishedAt    DateTime
+
+  reach            Int?
+  impressions      Int?
+  likes            Int?
+  comments         Int?
+  shares           Int?
+  saves            Int?
+  clicks           Int?
+  videoViews       Int?
+  watchTimeSeconds Int?
+  profileVisits    Int?
+  followersGained  Int?
+  /// When the figures above were read. Null: never read, or the platform keeps none.
+  metricsAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, externalPostId])
+  @@index([clientId, publishedAt])
+  @@index([accountId, publishedAt])
 }

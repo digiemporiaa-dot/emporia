@@ -1,4 +1,5 @@
 import "server-only";
+import { parsePlatformTime, RECENT_PAGES, RECENT_POSTS_LIMIT, text } from "@/lib/social/recent";
 import { parseGrantedScopes } from "@/lib/social/scopes";
 import { createHmac } from "node:crypto";
 import { ValidationError } from "@/lib/errors";
@@ -16,6 +17,7 @@ import type {
   ProviderMetrics,
   PublishInput,
   PublishResult,
+  ProviderRecentPost,
   SocialProviderAdapter,
 } from "@/lib/social/types";
 
@@ -546,6 +548,65 @@ export class FacebookProvider implements SocialProviderAdapter {
    * Page-post metrics, and one retired name in a combined request would
    * refuse the lot. A refused metric is left absent, never zero.
    */
+  /**
+   * The Page's recent published posts, newest first (brief §48). Only what
+   * the Page itself published — not visitors' posts on it.
+   */
+  async listRecentPosts(
+    credentials: ProviderCredentials,
+    account: { externalId: string },
+    since: Date,
+  ): Promise<ProviderRecentPost[]> {
+    if (!/^\d+$/.test(account.externalId)) throw new ValidationError("That is not a Facebook Page id.");
+    const posts: ProviderRecentPost[] = [];
+    let after: string | null = null;
+    for (let page = 0; page < RECENT_PAGES; page += 1) {
+      const url = new URL(`${this.graph}/${account.externalId}/published_posts`);
+      url.searchParams.set(
+        "fields",
+        "id,message,permalink_url,created_time,full_picture,status_type,attachments{media_type,target{id}}",
+      );
+      url.searchParams.set("since", String(Math.floor(since.getTime() / 1000)));
+      url.searchParams.set("limit", "25");
+      if (after) url.searchParams.set("after", after);
+      const json = (await this.get(url, credentials, "list the Page's recent posts")) as {
+        data?: {
+          id?: unknown;
+          message?: unknown;
+          permalink_url?: unknown;
+          created_time?: unknown;
+          full_picture?: unknown;
+          status_type?: unknown;
+          attachments?: { data?: { media_type?: unknown; target?: { id?: unknown } }[] };
+        }[];
+        paging?: { cursors?: { after?: unknown }; next?: unknown };
+      };
+      for (const row of json.data ?? []) {
+        const publishedAt = parsePlatformTime(row.created_time);
+        if (typeof row.id !== "string" || !publishedAt || publishedAt < since) continue;
+        // A video or reel is stored by its video id at publication; the
+        // attachment's target is that id.
+        const videoIds = (row.attachments?.data ?? [])
+          .filter((attachment) => attachment.media_type === "video")
+          .map((attachment) => text(attachment.target?.id))
+          .filter((id): id is string => id !== null);
+        posts.push({
+          externalPostId: row.id,
+          aliases: videoIds,
+          externalUrl: text(row.permalink_url),
+          caption: text(row.message),
+          format: text(row.status_type),
+          thumbnailUrl: text(row.full_picture),
+          publishedAt,
+        });
+      }
+      const cursor = json.paging?.cursors?.after;
+      if (typeof json.paging?.next !== "string" || typeof cursor !== "string") break;
+      after = cursor;
+    }
+    return posts.slice(0, RECENT_POSTS_LIMIT);
+  }
+
   async getMetrics(
     credentials: ProviderCredentials,
     _account: { externalId: string },

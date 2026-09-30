@@ -75,6 +75,20 @@ export const socialReportDataSchema = z.object({
       .max(40),
   }),
   truncated: z.boolean(),
+  /**
+   * Posts made directly on the platforms that month, outside Emporia (brief
+   * §48) — a line of their own, never part of the figures above. Optional:
+   * reports frozen before this existed simply do not have it.
+   */
+  direct: z
+    .object({
+      posts: z.number().int(),
+      measured: z.number().int(),
+      reach: total,
+      impressions: total,
+      engagement: total,
+    })
+    .optional(),
 });
 
 export type SocialReportData = z.infer<typeof socialReportDataSchema>;
@@ -113,6 +127,13 @@ export function reportCsv(data: SocialReportData): string {
   for (const c of data.content.campaigns) add("Campaigns", c.name, c.posts);
   for (const p of data.content.pillars) add("Pillars", p.name, p.posts);
   for (const i of data.nextMonth.items) add(`Plan for ${monthLabel(data.nextMonth.month)}`, i.title, i.day ?? "No date");
+  if (data.direct) {
+    const section = "Posted directly on the platform";
+    add(section, "Posts", data.direct.posts);
+    add(section, "Reach", data.direct.reach.value, data.direct.reach.reporting, data.direct.reach.total);
+    add(section, "Impressions", data.direct.impressions.value, data.direct.impressions.reporting, data.direct.impressions.total);
+    add(section, "Engagement", data.direct.engagement.value, data.direct.engagement.reporting, data.direct.engagement.total);
+  }
 
   // The shared writer quotes as needed and defuses anything a spreadsheet
   // would run as a formula — titles are free text.

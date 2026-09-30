@@ -5,10 +5,12 @@ import { can } from "@/lib/auth/rbac";
 import { socialReport } from "@/lib/services/social-metrics.service";
 import { socialInsights } from "@/lib/services/social-insights.service";
 import { socialAttribution } from "@/lib/services/social-attribution.service";
+import { directPostsForPeriod } from "@/lib/services/social-external.service";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { RANGE_PRESETS, resolveRange } from "@/lib/analytics/range";
 import { Card, CardBody } from "@/components/ui";
 import { ReportView } from "./report-view";
+import { DirectPostsCard } from "./direct-posts-card";
 import { InsightsView } from "./insights-view";
 import { AttributionView } from "./attribution-view";
 
@@ -54,10 +56,11 @@ export default async function SocialAnalyticsPage({
 
   const { range, platform } = paramsSchema.parse(raw);
   const window = resolveRange(range);
-  const [report, insights, attribution] = await Promise.all([
+  const [report, insights, attribution, direct] = await Promise.all([
     socialReport(actor, { clientId, from: window.from, to: window.to }),
     socialInsights(actor, { clientId, range: window, provider: platform }),
     socialAttribution(actor, { clientId, range: window }),
+    directPostsForPeriod(actor, { clientId, from: window.from, to: window.to }),
   ]);
 
   return (
@@ -74,6 +77,7 @@ export default async function SocialAnalyticsPage({
           top: report.top,
         }}
       />
+      <DirectPostsCard clientId={clientId} data={direct} />
       <InsightsView clientId={clientId} range={range} data={insights} />
       <AttributionView clientId={clientId} data={attribution} />
     </div>

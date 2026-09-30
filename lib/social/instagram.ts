@@ -1,4 +1,5 @@
 import "server-only";
+import { parsePlatformTime, RECENT_PAGES, RECENT_POSTS_LIMIT, sameOriginNext, text } from "@/lib/social/recent";
 import { parseGrantedScopes } from "@/lib/social/scopes";
 import { ValidationError } from "@/lib/errors";
 import {
@@ -15,6 +16,7 @@ import type {
   ProviderMetrics,
   PublishInput,
   PublishResult,
+  ProviderRecentPost,
   SocialProviderAdapter,
 } from "@/lib/social/types";
 
@@ -520,6 +522,63 @@ export class InstagramProvider implements SocialProviderAdapter {
    * Impressions stay null. Meta retired them for new media in favour of views,
    * and reporting a retired number as zero would be inventing it.
    */
+  /**
+   * The account's recent feed posts and reels, newest first (brief §48).
+   * Stories are skipped: they vanish within a day and carry no lasting post.
+   */
+  async listRecentPosts(
+    credentials: ProviderCredentials,
+    _account: { externalId: string },
+    since: Date,
+  ): Promise<ProviderRecentPost[]> {
+    const first = new URL(`${this.graph}/me/media`);
+    first.searchParams.set(
+      "fields",
+      "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp",
+    );
+    first.searchParams.set("limit", "25");
+
+    const posts: ProviderRecentPost[] = [];
+    let next: string | null = first.toString();
+    for (let page = 0; next && page < RECENT_PAGES; page += 1) {
+      const response = await this.fetch(next, { headers: this.auth(credentials) });
+      if (!response.ok) throw await this.error(response, "list recent posts");
+      const json = (await response.json()) as {
+        data?: {
+          id?: unknown;
+          caption?: unknown;
+          media_type?: unknown;
+          media_product_type?: unknown;
+          permalink?: unknown;
+          thumbnail_url?: unknown;
+          media_url?: unknown;
+          timestamp?: unknown;
+        }[];
+        paging?: { next?: unknown };
+      };
+      let reachedOlder = false;
+      for (const media of json.data ?? []) {
+        const publishedAt = parsePlatformTime(media.timestamp);
+        if (typeof media.id !== "string" || !publishedAt) continue;
+        if (publishedAt < since) {
+          reachedOlder = true;
+          continue;
+        }
+        if (media.media_product_type === "STORY") continue;
+        posts.push({
+          externalPostId: media.id,
+          externalUrl: text(media.permalink),
+          caption: text(media.caption),
+          format: media.media_product_type === "REELS" ? "REELS" : text(media.media_type),
+          thumbnailUrl: text(media.thumbnail_url) ?? (media.media_type === "IMAGE" ? text(media.media_url) : null),
+          publishedAt,
+        });
+      }
+      next = reachedOlder ? null : sameOriginNext(json.paging?.next, this.graph);
+    }
+    return posts.slice(0, RECENT_POSTS_LIMIT);
+  }
+
   async getMetrics(
     credentials: ProviderCredentials,
     _account: { externalId: string },

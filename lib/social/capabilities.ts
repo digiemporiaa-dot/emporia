@@ -25,6 +25,7 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     captionLimit: 2_200,
     carouselLimit: 10,
     metrics: true,
+    recentPosts: true,
     nativeScheduling: false,
     // JPEG is the only image format Instagram's publishing API accepts.
     acceptedMediaTypes: ["image/jpeg", "video/mp4", "video/quicktime"],
@@ -39,6 +40,7 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     captionLimit: 63_206,
     carouselLimit: 10,
     metrics: true,
+    recentPosts: true,
     nativeScheduling: true,
   },
   LINKEDIN: {
@@ -52,6 +54,9 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     captionLimit: 3_000,
     carouselLimit: 20,
     metrics: true,
+    // Reading a member's own posts needs `r_member_social`, which LinkedIn
+    // grants only to approved partners. Not claimed.
+    recentPosts: false,
     nativeScheduling: false,
   },
   YOUTUBE: {
@@ -63,6 +68,7 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     captionLimit: 5_000,
     carouselLimit: null,
     metrics: true,
+    recentPosts: true,
     nativeScheduling: true,
   },
   X: {
@@ -75,6 +81,8 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     // Reading a post's numbers back needs a paid X API tier; posting does not.
     // Off until a deployment has one, rather than failing every collection.
     metrics: false,
+    // Reading a timeline is on X's paid tiers too.
+    recentPosts: false,
     nativeScheduling: false,
     acceptedMediaTypes: ["image/jpeg", "image/png", "image/gif", "image/webp", "video/mp4"],
     lengthRule: "x-weighted",
@@ -88,6 +96,8 @@ export const CAPABILITIES: Record<SocialProvider, SocialCapabilities> = {
     // Google reports performance per location, not per post, so there is no
     // honest per-post number to collect. Declared off rather than faked.
     metrics: false,
+    // The location's posts can be listed, even though they carry no figures.
+    recentPosts: true,
     nativeScheduling: false,
     acceptedMediaTypes: ["image/jpeg", "image/png"],
     // Google's button is one of a fixed set. "Call now" dials the number on the
