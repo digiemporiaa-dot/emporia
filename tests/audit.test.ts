@@ -32,6 +32,24 @@ describe("audit snapshot sanitisation", () => {
     expect(out["payment"]?.["amount"]).toBe("100.00");
   });
 
+  it("redacts OAuth credentials, whatever row they arrive on", () => {
+    const out = sanitizeSnapshot({
+      account: { name: "Northwind on LinkedIn", accessToken: "AQV-live", refreshToken: "AQX-live", tokenExpiresAt: "2026-11-01" },
+      settings: { clientId: "li-app", clientSecret: "shh" },
+      pending: { credentials: "{\"accessToken\":\"AQV\"}" },
+    }) as Record<string, Record<string, unknown>>;
+
+    expect(out["account"]?.["name"]).toBe("Northwind on LinkedIn");
+    expect(out["account"]?.["accessToken"]).toBe("[redacted]");
+    expect(out["account"]?.["refreshToken"]).toBe("[redacted]");
+    // When it expires is not a secret, and is what the trail is for.
+    expect(out["account"]?.["tokenExpiresAt"]).toBe("2026-11-01");
+    expect(out["settings"]?.["clientId"]).toBe("li-app");
+    expect(out["settings"]?.["clientSecret"]).toBe("[redacted]");
+    expect(out["pending"]?.["credentials"]).toBe("[redacted]");
+    expect(JSON.stringify(out)).not.toContain("live");
+  });
+
   it("redacts inside arrays", () => {
     const out = sanitizeSnapshot([{ password: "hunter2" }, { password: "hunter3" }]) as Record<
       string,

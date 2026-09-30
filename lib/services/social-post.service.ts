@@ -168,7 +168,7 @@ export async function savePost(
     );
   }
 
-  let before: { status: SocialPostStatus; clientId: string } | null = null;
+  let before: { status: SocialPostStatus; clientId: string; scheduledFor: string | null; accountId: string | null } | null = null;
   // Whether this save changes what the post *says*. A new version always does;
   // an edit that only moves the date does not, and keeps its approvals (the
   // agency's rule: a reschedule is not a new piece of content).
@@ -183,6 +183,7 @@ export async function savePost(
         provider: true,
         type: true,
         accountId: true,
+        scheduledFor: true,
         caption: true,
         headline: true,
         hashtags: true,
@@ -200,7 +201,15 @@ export async function savePost(
         "This post has already gone out. Its copy is the record of what was published.",
       );
     }
-    before = { status: existing.status, clientId: existing.clientId };
+    // The time and the account are in the trail (brief §37, "scheduled time
+    // changed"): an edit that moves a post is as much a reschedule as the
+    // Reschedule button, and was invisible here before.
+    before = {
+      status: existing.status,
+      clientId: existing.clientId,
+      scheduledFor: existing.scheduledFor?.toISOString() ?? null,
+      accountId: existing.accountId,
+    };
     contentChanged = !sameContent(existing, input);
     if (existing.status === "SCHEDULED" && input.scheduledFor && input.scheduledFor.getTime() < Date.now()) {
       throw new ValidationError("A scheduled post cannot be moved into the past. Pick a time ahead, or publish it now.");
@@ -250,7 +259,14 @@ export async function savePost(
       entityType: "SocialPost",
       entityId: id ?? item.id,
       before,
-      after: { provider: input.provider, type: input.type, contentItemId: item.id },
+      after: {
+        provider: input.provider,
+        type: input.type,
+        contentItemId: item.id,
+        scheduledFor: input.scheduledFor?.toISOString() ?? null,
+        accountId: input.accountId,
+        contentChanged,
+      },
     },
     async (tx) => {
       const post = id

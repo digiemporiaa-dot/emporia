@@ -33,6 +33,14 @@ const SENSITIVE_KEYS = new Set([
   "gatewaySignature",
   "secret",
   "apiKey",
+  // OAuth credentials (brief: "never expose OAuth tokens to … audit
+  // payloads"). Social audits build their payloads by hand, but `withAudit`
+  // stores the mutation's result when no `after` is given — this is the net
+  // under that.
+  "accessToken",
+  "refreshToken",
+  "clientSecret",
+  "credentials",
 ]);
 
 /**
