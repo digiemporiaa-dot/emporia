@@ -418,6 +418,7 @@ enum AutomationActionType {
   CREATE_PROJECT_TASKS
   SET_LEAD_STATUS
   ADD_TAG
+  CREATE_PROJECT_TASK
 }
 
 enum RedirectType {

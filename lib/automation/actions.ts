@@ -86,6 +86,8 @@ export async function runAction(
       return createProject(config, subject, facts, actor);
     case "CREATE_PROJECT_TASKS":
       return createProjectTasks(config, subject, actor);
+    case "CREATE_PROJECT_TASK":
+      return createProjectTask(config, subject, facts, actor);
     case "SET_LEAD_STATUS":
       return setLeadStatus(config, subject, actor);
     case "ADD_TAG":
@@ -329,24 +331,25 @@ async function resolveRecipients(
 
 function hrefFor(subject: Subject): string | null {
   if (subject.leadId) return `/admin/leads/${subject.leadId}`;
-  if (subject.projectId) return `/admin/projects/${subject.projectId}`;
-  if (subject.invoiceId) return `/admin/finance/invoices/${subject.invoiceId}`;
-  if (subject.proposalId) return `/admin/sales/proposals/${subject.proposalId}`;
-  // Social subjects always carry their client: every social page lives under it.
+  // Social subjects now carry their project too; the social page is still
+  // where the thing happened, so it wins.
   if (subject.socialAccountId && subject.clientId) return `/admin/clients/${subject.clientId}/social/accounts`;
   if (subject.contentItemId && subject.clientId) {
     return `/admin/clients/${subject.clientId}/social/content/${subject.contentItemId}`;
   }
+  if (subject.projectId) return `/admin/projects/${subject.projectId}`;
+  if (subject.invoiceId) return `/admin/finance/invoices/${subject.invoiceId}`;
+  if (subject.proposalId) return `/admin/sales/proposals/${subject.proposalId}`;
   return null;
 }
 
 function entityFor(subject: Subject): { type: string; id: string } | null {
   if (subject.leadId) return { type: "Lead", id: subject.leadId };
+  if (subject.socialAccountId) return { type: "SocialAccount", id: subject.socialAccountId };
+  if (subject.contentItemId) return { type: "ContentCalendarItem", id: subject.contentItemId };
   if (subject.projectId) return { type: "Project", id: subject.projectId };
   if (subject.invoiceId) return { type: "Invoice", id: subject.invoiceId };
   if (subject.proposalId) return { type: "Proposal", id: subject.proposalId };
-  if (subject.socialAccountId) return { type: "SocialAccount", id: subject.socialAccountId };
-  if (subject.contentItemId) return { type: "ContentCalendarItem", id: subject.contentItemId };
   return null;
 }
 
@@ -475,6 +478,79 @@ async function createProjectTasks(
   });
 
   return { type, changed: true, detail: `Added ${config.titles.length} task(s).` };
+}
+
+/**
+ * One task on the record's project (brief §53: "a rejected post should be able
+ * to create a task"). The assignee is the project's manager, the content's
+ * owner, or a named member of staff — never a portal user, and never a guess:
+ * content with no owner goes to the manager, and says so.
+ */
+async function createProjectTask(
+  config: Extract<ActionConfig, { type: "CREATE_PROJECT_TASK" }>,
+  subject: Subject,
+  facts: Facts,
+  actor: Actor,
+): Promise<ActionOutcome> {
+  const type = "CREATE_PROJECT_TASK" as const;
+  if (!subject.projectId) return { type, changed: false, detail: "No project to add the task to." };
+
+  const project = await db.project.findUnique({
+    where: { id: subject.projectId },
+    select: { id: true, managerId: true, _count: { select: { tasks: true } } },
+  });
+  if (!project) return { type, changed: false, detail: "That project no longer exists." };
+
+  let assigneeId: string | null = project.managerId;
+  let note = "";
+  if (config.assignTo === "SPECIFIC") {
+    const staff = config.userId
+      ? await db.user.findFirst({ where: { id: config.userId, type: "STAFF", status: "ACTIVE" }, select: { id: true } })
+      : null;
+    if (!staff) return { type, changed: false, detail: "The chosen person is not active staff, so no task was created." };
+    assigneeId = staff.id;
+  } else if (config.assignTo === "CONTENT_OWNER") {
+    const item = subject.contentItemId
+      ? await db.contentCalendarItem.findUnique({ where: { id: subject.contentItemId }, select: { ownerId: true } })
+      : null;
+    if (item?.ownerId) assigneeId = item.ownerId;
+    else note = " The content has no owner, so it went to the project manager.";
+  }
+
+  // The content's own page, so whoever picks the task up lands on the work.
+  const link =
+    subject.contentItemId && subject.clientId
+      ? `/admin/clients/${subject.clientId}/social/content/${subject.contentItemId}`
+      : null;
+  const detail = [config.detail ? fill(config.detail, facts) : null, link].filter(Boolean).join("\n\n") || null;
+
+  const task = await db.$transaction(async (tx) => {
+    const created = await tx.projectTask.create({
+      data: {
+        projectId: project.id,
+        title: fill(config.title, facts).slice(0, 200),
+        description: detail,
+        assigneeId,
+        priority: config.priority,
+        dueAt: inDays(config.dueInDays),
+        order: project._count.tasks,
+      },
+      select: { id: true, title: true },
+    });
+    await record(
+      {
+        actor,
+        action: "CREATE",
+        entityType: "ProjectTask",
+        entityId: created.id,
+        after: { automated: true, projectId: project.id, contentItemId: subject.contentItemId ?? null },
+      },
+      tx,
+    );
+    return created;
+  });
+
+  return { type, changed: true, detail: `Created "${task.title}".${note}` };
 }
 
 async function setLeadStatus(

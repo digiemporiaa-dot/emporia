@@ -52,6 +52,13 @@ const DEFAULT_ACTION: Record<string, Action> = {
   CREATE_CLIENT: { type: "CREATE_CLIENT" },
   CREATE_PROJECT: { type: "CREATE_PROJECT", nameTemplate: "{{client.name}} onboarding", startInDays: 0 },
   CREATE_PROJECT_TASKS: { type: "CREATE_PROJECT_TASKS", titles: ["Kick-off call"], dueInDays: 7 },
+  CREATE_PROJECT_TASK: {
+    type: "CREATE_PROJECT_TASK",
+    title: "Rework: {{social.title}}",
+    dueInDays: 2,
+    assignTo: "CONTENT_OWNER",
+    priority: "HIGH",
+  },
   SET_LEAD_STATUS: { type: "SET_LEAD_STATUS", status: "CONTACTED" },
   ADD_TAG: { type: "ADD_TAG", tagName: "Tag" },
 };
@@ -694,6 +701,72 @@ function ActionSettings({
                 })
               }
             />
+          </Labelled>
+        </div>
+      );
+
+    case "CREATE_PROJECT_TASK":
+      return (
+        <div className={box}>
+          <Labelled id={id("title")} label="Task" wide>
+            <input
+              id={id("title")}
+              className={cell}
+              value={value("title")}
+              onChange={(event) => onChange({ title: event.target.value })}
+            />
+          </Labelled>
+          <Labelled id={id("assignTo")} label="For">
+            <select
+              id={id("assignTo")}
+              className={cell}
+              value={value("assignTo", "PROJECT_MANAGER")}
+              onChange={(event) => onChange({ assignTo: event.target.value })}
+            >
+              <option value="PROJECT_MANAGER">The project manager</option>
+              <option value="CONTENT_OWNER">The content&apos;s owner</option>
+              <option value="SPECIFIC">A specific person</option>
+            </select>
+          </Labelled>
+          {value("assignTo") === "SPECIFIC" ? (
+            <Labelled id={id("userId")} label="Person">
+              <select
+                id={id("userId")}
+                className={cell}
+                value={value("userId")}
+                onChange={(event) => onChange({ userId: event.target.value })}
+              >
+                <option value="">Choose someone</option>
+                {staff.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </select>
+            </Labelled>
+          ) : null}
+          <Labelled id={id("dueInDays")} label="Due in (days)">
+            <input
+              id={id("dueInDays")}
+              className={cell}
+              inputMode="numeric"
+              value={value("dueInDays", "2")}
+              onChange={(event) => onChange({ dueInDays: event.target.value })}
+            />
+          </Labelled>
+          <Labelled id={id("priority")} label="Priority">
+            <select
+              id={id("priority")}
+              className={cell}
+              value={value("priority", "MEDIUM")}
+              onChange={(event) => onChange({ priority: event.target.value })}
+            >
+              {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => (
+                <option key={p} value={p}>
+                  {p.toLowerCase()}
+                </option>
+              ))}
+            </select>
           </Labelled>
         </div>
       );

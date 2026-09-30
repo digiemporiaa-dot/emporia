@@ -83,6 +83,21 @@ export const createProjectTasksConfig = z.object({
   dueInDays: z.coerce.number().int().min(0).max(365).default(7),
 });
 
+/**
+ * One task on the project a record belongs to — a rejected post's rework, a
+ * failed publication to chase (brief §53). Unlike the onboarding checklist it
+ * does not care whether the project already has tasks: it is one more.
+ */
+export const createProjectTaskConfig = z.object({
+  type: z.literal("CREATE_PROJECT_TASK"),
+  title: shortText,
+  detail: z.string().trim().max(1000).nullable().optional(),
+  dueInDays: z.coerce.number().int().min(0).max(365).default(2),
+  assignTo: z.enum(["PROJECT_MANAGER", "CONTENT_OWNER", "SPECIFIC"]).default("PROJECT_MANAGER"),
+  userId: id.nullable().optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
+});
+
 export const setLeadStatusConfig = z.object({
   type: z.literal("SET_LEAD_STATUS"),
   status: z.enum([
@@ -110,6 +125,7 @@ export const actionConfigSchema = z.discriminatedUnion("type", [
   createClientConfig,
   createProjectConfig,
   createProjectTasksConfig,
+  createProjectTaskConfig,
   setLeadStatusConfig,
   addTagConfig,
 ]);

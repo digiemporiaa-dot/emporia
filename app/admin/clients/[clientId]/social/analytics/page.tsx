@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { z } from "zod";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
@@ -9,6 +10,8 @@ import { directPostsForPeriod } from "@/lib/services/social-external.service";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { RANGE_PRESETS, resolveRange } from "@/lib/analytics/range";
 import { Card, CardBody } from "@/components/ui";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
+import { PeriodSelect } from "./period-select";
 import { ReportView } from "./report-view";
 import { DirectPostsCard } from "./direct-posts-card";
 import { InsightsView } from "./insights-view";
@@ -55,6 +58,31 @@ export default async function SocialAnalyticsPage({
   }
 
   const { range, platform } = paramsSchema.parse(raw);
+
+  // The period stays usable while its figures load: they stream in under a
+  // Suspense boundary (not a `loading.tsx` — see components/admin/table-skeleton.tsx).
+  return (
+    <div className="space-y-5">
+      <PeriodSelect clientId={clientId} range={range} />
+      <Suspense key={`${range}:${platform ?? ""}`} fallback={<TableSkeleton rows={8} />}>
+        <AnalyticsData actor={actor} clientId={clientId} range={range} platform={platform} />
+      </Suspense>
+    </div>
+  );
+}
+
+/** Everything that waits on the period's queries. */
+async function AnalyticsData({
+  actor,
+  clientId,
+  range,
+  platform,
+}: {
+  actor: Parameters<typeof socialReport>[0];
+  clientId: string;
+  range: z.infer<typeof paramsSchema>["range"];
+  platform: z.infer<typeof paramsSchema>["platform"];
+}) {
   const window = resolveRange(range);
   const [report, insights, attribution, direct] = await Promise.all([
     socialReport(actor, { clientId, from: window.from, to: window.to }),
@@ -67,7 +95,6 @@ export default async function SocialAnalyticsPage({
     <div className="space-y-5">
       <ReportView
         clientId={clientId}
-        range={range}
         data={{
           posts: report.posts,
           measured: report.measured,
