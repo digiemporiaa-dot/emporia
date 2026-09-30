@@ -42,6 +42,7 @@ async function audienceFor(postId: string): Promise<{
   userIds: string[];
   clientId: string;
   itemId: string;
+  projectId: string;
   title: string;
   provider: SocialProvider;
 }> {
@@ -55,6 +56,7 @@ async function audienceFor(postId: string): Promise<{
           id: true,
           title: true,
           ownerId: true,
+          projectId: true,
           project: { select: { managerId: true } },
           approvals: {
             orderBy: { createdAt: "desc" },
@@ -78,6 +80,7 @@ async function audienceFor(postId: string): Promise<{
     userIds: [...new Set(candidates)],
     clientId: post.clientId,
     itemId: post.contentItem.id,
+    projectId: post.contentItem.projectId,
     title: post.contentItem.title,
     provider: post.provider,
   };
@@ -91,6 +94,7 @@ export async function announcePublished(postId: string) {
       socialPostId: postId,
       clientId: audience.clientId,
       contentItemId: audience.itemId,
+      projectId: audience.projectId,
     });
   } catch (error) {
     notifyLog.error({ err: error, postId }, "announcing a publication failed");
@@ -125,6 +129,7 @@ export async function announceFailure(postId: string, reason: string, willRetry:
       socialPostId: postId,
       clientId: audience.clientId,
       contentItemId: audience.itemId,
+      projectId: audience.projectId,
     });
   } catch (error) {
     notifyLog.error({ err: error, postId }, "announcing a failure failed");
@@ -149,6 +154,7 @@ export async function announceClientDecision(
       select: {
         title: true,
         clientId: true,
+        projectId: true,
         ownerId: true,
         client: { select: { name: true } },
         approvals: {
@@ -189,6 +195,9 @@ export async function announceClientDecision(
       {
         clientId: item.clientId,
         contentItemId,
+        // So a rule can act on the project — "a rejected post should be able
+        // to create a task" (brief §53).
+        projectId: item.projectId,
         socialPostId: item.socialPosts[0]?.id ?? null,
       },
       { "social.decision": decision },
@@ -210,6 +219,7 @@ async function itemContext(contentItemId: string) {
       id: true,
       title: true,
       clientId: true,
+      projectId: true,
       ownerId: true,
       client: { select: { name: true } },
       project: { select: { managerId: true } },
@@ -251,6 +261,7 @@ export async function announceReviewSubmitted(contentItemId: string, submittedBy
     await runAutomations("SOCIAL_REVIEW_SUBMITTED", {
       clientId: item.clientId,
       contentItemId: item.id,
+      projectId: item.projectId,
       socialPostId: item.socialPosts[0]?.id ?? null,
       actorUserId: submittedById,
     });
@@ -316,7 +327,7 @@ export async function announceSentToClient(contentItemId: string, approvalId: st
     }
     await runAutomations(
       "SOCIAL_SENT_FOR_APPROVAL",
-      { clientId: item.clientId, contentItemId: item.id, socialPostId: item.socialPosts[0]?.id ?? null },
+      { clientId: item.clientId, contentItemId: item.id, projectId: item.projectId, socialPostId: item.socialPosts[0]?.id ?? null },
       { "social.approvalVersion": version },
     );
   } catch (error) {
@@ -332,6 +343,7 @@ export async function announceScheduled(postId: string, actorUserId: string | nu
       socialPostId: postId,
       clientId: audience.clientId,
       contentItemId: audience.itemId,
+      projectId: audience.projectId,
       actorUserId,
     });
   } catch (error) {
@@ -347,6 +359,7 @@ export async function announceMetricsSynced(postId: string) {
       socialPostId: postId,
       clientId: audience.clientId,
       contentItemId: audience.itemId,
+      projectId: audience.projectId,
     });
   } catch (error) {
     notifyLog.error({ err: error, postId }, "announcing a metrics sync failed");
@@ -477,6 +490,7 @@ export async function announceContentCreated(contentItemId: string, actorUserId:
     await runAutomations("SOCIAL_CONTENT_CREATED", {
       clientId: item.clientId,
       contentItemId: item.id,
+      projectId: item.projectId,
       actorUserId,
     });
   } catch (error) {

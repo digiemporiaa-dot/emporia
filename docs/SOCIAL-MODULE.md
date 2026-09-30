@@ -3501,3 +3501,104 @@ secret.
     can't see the new social entries. The database dropped repeatedly during
     this session.
   - The first run's error detail wasn't kept, so the cause isn't proven.
+
+---
+
+## 34. A rejected post can create a task (brief §53), and streamed loading (§51)
+
+### The gap
+
+§53 names a concrete example: *"A rejected post should be able to create a
+task."* The automation engine couldn't do it:
+
+- Social events didn't pass the content's project to the rules.
+- The only project task action is the onboarding checklist, which
+  deliberately refuses a project that already has tasks. Any project with
+  social work in progress has tasks.
+- The follow-up task action works only for leads.
+
+### Create a task on the project
+
+`CREATE_PROJECT_TASK` is a new rule action. It adds one more task to the
+record's project, however many the project already has.
+
+- **Title and detail** are filled from the event's facts, e.g. `Rework:
+  {{social.title}}`. The content's page is appended to the detail, so whoever
+  picks the task up lands on the work.
+- **Assignee** is one of:
+  - the project manager;
+  - the content's owner, falling back to the manager when nobody owns it, and
+    the rule's outcome says so;
+  - a named person, who must be active staff. A portal user is refused.
+- **Also set:** priority and due-in days.
+- **Audited** as a CREATE on `ProjectTask`, marked `automated`, with the
+  project and content IDs.
+- **Without a project it does nothing**, and says "No project to add the task
+  to."
+
+Every content-level social event now passes `projectId`: published, failed,
+client decision, internal review submitted, sent to the client, scheduled,
+figures synced, content created. Account events have no project. As a side
+effect, the existing "notify the project manager" option now works on social
+rules too.
+
+The notification-link logic checked the project *before* social subjects.
+Passing the project would have quietly pointed every social rule notification
+at the project page. Social account and content links now come first; a
+project-only trigger still links to its project.
+
+The editor offers the action with sensible defaults: *Rework:
+{{social.title}}*, for the content's owner, high priority, due in 2 days.
+
+### Streamed loading, not `loading.tsx`
+
+§51 asks for skeleton and loading states. This project deliberately has no
+`loading.tsx` (see `components/admin/table-skeleton.tsx` and ARCHITECTURE
+17.2). A segment-level boundary streams the shell before the page runs, so a
+detail page's `notFound()` would answer a dead URL with a 200. The social
+section has such pages.
+
+So the two heaviest social pages follow the codebase's established pattern:
+an explicit `<Suspense>` with `TableSkeleton` around the data.
+
+- **Published:** the source switch and the platform and campaign filters
+  render at once; the list, its count and its pages stream in.
+- **Analytics:** the period selector moved out of `ReportView` into its own
+  `PeriodSelect`, so it stays usable while the four queries run under the
+  boundary.
+
+Portal pages were left alone, because their queries are light.
+
+### Verified
+
+- **Tests:** 6 new, in `tests/social-project-task.db.test.ts`.
+  - A client asking for changes, through the real `announceClientDecision`,
+    creates the task: title, owner, priority, due date, content link, audit.
+    Approving creates none.
+  - With no owner, the task goes to the manager, and the outcome says so.
+  - A named staff member works; a portal user is refused.
+  - It's one more task on a busy project, and nothing without a project.
+  - The notification still links to the content, and the project manager is
+    reachable.
+  - The config's defaults and validation.
+- **Mutation checks:** 15 of 15 caught.
+  - I wrote three mutants badly at first: one deleted a line instead of moving
+    it, one was equivalent, and one didn't compile. Rewritten properly, all
+    three were caught too.
+  - What they cover: the project on the decision event, link and entity
+    precedence, the project guard, the staff-only assignee, owner and
+    fallback, the content link, the filled title, priority, due date, order,
+    audit, dispatch, and the default assignee.
+- **Browser, on the production build, end to end:**
+  - I built the rule in the automation editor: "A client decides on social
+    content", with the decision is CHANGES_REQUESTED, and "Create a task on
+    the project".
+  - The Northwind portal user asked for changes on a seeded pending approval.
+  - *"Rework: Diwali festive reel (e2e)"* appeared on the project's page, and
+    the server log showed the system's audit of it.
+  - Analytics' period selector kept working across a change, with the figures
+    streaming in after the shell. Published rendered its filters with the
+    list below.
+  - No page errors. Everything seeded, and the rule and task, were removed.
+- **Gate:** lint, typecheck, **2069 tests across 131 files**, and the
+  production build. All clean.

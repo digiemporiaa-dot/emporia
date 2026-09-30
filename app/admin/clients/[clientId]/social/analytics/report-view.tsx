@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useRouter } from "next/navigation";
 import { ExternalLink, Info } from "lucide-react";
-import { Card, CardBody, CardHeader, CardTitle, Select } from "@/components/ui";
+import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
 import { PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { METRIC_KEYS, METRIC_LABEL } from "@/lib/social/metrics";
-import { RANGE_LABEL, RANGE_PRESETS } from "@/lib/analytics/range";
 import type { MetricKey } from "@/lib/social/metrics";
 import type { SocialProvider } from "@/generated/prisma/enums";
 
@@ -63,38 +61,13 @@ const HEADLINE: MetricKey[] = ["impressions", "likes", "comments", "clicks"];
 export function ReportView({
   clientId,
   data,
-  range,
 }: {
   clientId: string;
   data: ReportData;
-  range: string;
 }) {
-  const router = useRouter();
-
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <label className="block">
-          <span className="mb-1.5 block text-2xs font-medium uppercase tracking-wide text-ink-subtle">
-            Period
-          </span>
-          <Select
-            className="w-48"
-            value={range}
-            onChange={(event) =>
-              router.push(
-                `/admin/clients/${clientId}/social/analytics?range=${event.target.value}` as Route,
-              )
-            }
-          >
-            {RANGE_PRESETS.map((preset) => (
-              <option key={preset} value={preset}>
-                {RANGE_LABEL[preset]}
-              </option>
-            ))}
-          </Select>
-        </label>
-
         <p className="text-xs text-ink-subtle">
           {data.posts} post{data.posts === 1 ? "" : "s"} published
           {data.posts > 0 ? ` · ${data.measured} with figures from the platform` : ""}

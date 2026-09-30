@@ -15,6 +15,7 @@ export const ACTION_LABEL: Record<ActionConfig["type"], string> = {
   CREATE_CLIENT: "Create the client",
   CREATE_PROJECT: "Create a project",
   CREATE_PROJECT_TASKS: "Create onboarding tasks",
+  CREATE_PROJECT_TASK: "Create a task on the project",
   SET_LEAD_STATUS: "Set the lead's status",
   ADD_TAG: "Tag the lead",
 };

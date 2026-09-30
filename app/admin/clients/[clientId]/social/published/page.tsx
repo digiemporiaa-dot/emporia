@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { z } from "zod";
@@ -11,6 +12,7 @@ import { contentFormOptions } from "@/lib/services/social-content.service";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
 import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { Card, CardBody } from "@/components/ui";
+import { TableSkeleton } from "@/components/admin/table-skeleton";
 
 export const metadata: Metadata = { title: "Published posts" };
 export const dynamic = "force-dynamic";
@@ -44,10 +46,10 @@ export default async function PublishedPage({
   if (query.source === "direct") {
     return <DirectPosts clientId={clientId} actor={actor} platform={query.platform} page={query.page} />;
   }
-  const [list, options] = await Promise.all([
-    listPublished(actor, { clientId, provider: query.platform, campaignId: query.campaign, page: query.page }),
-    contentFormOptions(actor, clientId),
-  ]);
+  // Only what the filters need is awaited here; the list itself streams in
+  // under a Suspense boundary, so the filters stay usable while it loads.
+  // (Not a `loading.tsx`: see components/admin/table-skeleton.tsx.)
+  const options = await contentFormOptions(actor, clientId);
 
   const base = `/admin/clients/${clientId}/social/published`;
   const href = (next: Partial<{ platform: string | null; campaign: string | null; page: number }>) => {
@@ -88,108 +90,11 @@ export default async function PublishedPage({
             ))}
           </nav>
         ) : null}
-        <p className="text-xs text-ink-subtle">
-          {list.total} published post{list.total === 1 ? "" : "s"}
-          {list.pages > 1 ? ` · page ${list.page} of ${list.pages}` : ""}
-        </p>
       </div>
 
-      {list.posts.length === 0 ? (
-        <Card>
-          <CardBody>
-            <p className="text-sm text-ink-subtle">Nothing published matches.</p>
-          </CardBody>
-        </Card>
-      ) : (
-        <Card>
-          {/* `relative`: the table's screen-reader labels are absolutely
-              positioned, and would otherwise escape this scroll box and widen
-              the page on a phone. */}
-          <CardBody className="relative overflow-x-auto">
-            <table className="w-full min-w-[44rem] text-xs">
-              <thead>
-                <tr className="text-left text-2xs uppercase tracking-wide text-ink-subtle">
-                  <th className="py-1.5 pr-3 font-medium">Post</th>
-                  <th className="py-1.5 pr-3 font-medium">Published</th>
-                  {list.seesFigures ? (
-                    <>
-                      <th className="py-1.5 pr-3 text-right font-medium">Reach</th>
-                      <th className="py-1.5 pr-3 text-right font-medium">Engagement</th>
-                      <th className="py-1.5 pr-3 text-right font-medium">Rate</th>
-                    </>
-                  ) : null}
-                  <th className="py-1.5 font-medium">
-                    <span className="sr-only">Live post</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.posts.map((post) => (
-                  <tr key={post.id} className="border-t border-line align-top">
-                    <td className="py-2 pr-3">
-                      <div className="flex gap-2.5">
-                        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-surface-sunken">
-                          {post.thumbnail ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- an R2 URL for an arbitrary creative; next/image would need a remote pattern per bucket
-                            <img src={post.thumbnail.url} alt={post.thumbnail.alt ?? ""} className="size-full object-cover" />
-                          ) : (
-                            <ImageIcon size={14} aria-hidden="true" className="text-ink-subtle" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <Link href={`/admin/clients/${clientId}/social/content/${post.itemId}` as Route} className="text-sm text-navy-800 hover:text-brand-red-text">
-                            {post.title}
-                          </Link>
-                          <p className="text-2xs text-ink-subtle">
-                            {PROVIDER_LABEL[post.provider]} · {POST_TYPE_LABEL[post.type]}
-                            {post.accountName ? ` · ${post.accountName}` : ""}
-                            {post.campaign ? ` · ${post.campaign.name}` : ""}
-                          </p>
-                          {post.caption ? <p className="mt-0.5 line-clamp-1 max-w-md text-2xs text-ink-muted">{post.caption}</p> : null}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap py-2 pr-3 text-ink-muted">{post.publishedAt ? DATE.format(new Date(post.publishedAt)) : "—"}</td>
-                    {post.figures ? (
-                      <>
-                        <td className="py-2 pr-3 text-right tabular-nums">{post.figures.reach === null ? "—" : NUMBER.format(post.figures.reach)}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{post.figures.engagement === null ? "—" : NUMBER.format(post.figures.engagement)}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{post.figures.rate === null ? "—" : `${post.figures.rate.toFixed(2)}%`}</td>
-                      </>
-                    ) : null}
-                    <td className="py-2">
-                      {post.externalUrl ? (
-                        <a href={post.externalUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-ink-subtle hover:text-navy-800">
-                          <ExternalLink size={12} aria-hidden="true" />
-                          <span className="sr-only">Open the live post</span>
-                        </a>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {list.seesFigures ? <p className="mt-2 text-2xs text-ink-subtle">A dash means the platform has not reported that figure. It does not mean zero.</p> : null}
-          </CardBody>
-        </Card>
-      )}
-
-      {list.pages > 1 ? (
-        <nav aria-label="Pages" className="flex items-center justify-between text-xs">
-          {list.page > 1 ? (
-            <Link href={href({ page: list.page - 1 })} className="text-navy-800 underline underline-offset-4">
-              ← Newer
-            </Link>
-          ) : (
-            <span />
-          )}
-          {list.page < list.pages ? (
-            <Link href={href({ page: list.page + 1 })} className="text-navy-800 underline underline-offset-4">
-              Older →
-            </Link>
-          ) : null}
-        </nav>
-      ) : null}
+      <Suspense key={JSON.stringify(query)} fallback={<TableSkeleton rows={8} />}>
+        <PublishedList actor={actor} clientId={clientId} query={query} href={href} />
+      </Suspense>
     </div>
   );
 }
@@ -327,6 +232,125 @@ async function DirectPosts({
               </tbody>
             </table>
             {seesFigures ? <p className="mt-2 text-2xs text-ink-subtle">A dash means the platform has not reported that figure. It does not mean zero.</p> : null}
+          </CardBody>
+        </Card>
+      )}
+
+      {list.pages > 1 ? (
+        <nav aria-label="Pages" className="flex items-center justify-between text-xs">
+          {list.page > 1 ? (
+            <Link href={href({ page: list.page - 1 })} className="text-navy-800 underline underline-offset-4">
+              ← Newer
+            </Link>
+          ) : (
+            <span />
+          )}
+          {list.page < list.pages ? (
+            <Link href={href({ page: list.page + 1 })} className="text-navy-800 underline underline-offset-4">
+              Older →
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
+    </div>
+  );
+}
+
+/** The list, its count and its pages — the part that waits on the query. */
+async function PublishedList({
+  actor,
+  clientId,
+  query,
+  href,
+}: {
+  actor: Parameters<typeof listPublished>[0];
+  clientId: string;
+  query: z.infer<typeof params>;
+  href: (next: Partial<{ platform: string | null; campaign: string | null; page: number }>) => Route;
+}) {
+  const list = await listPublished(actor, { clientId, provider: query.platform, campaignId: query.campaign, page: query.page });
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-ink-subtle">
+        {list.total} published post{list.total === 1 ? "" : "s"}
+        {list.pages > 1 ? ` · page ${list.page} of ${list.pages}` : ""}
+      </p>
+      {list.posts.length === 0 ? (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-ink-subtle">Nothing published matches.</p>
+          </CardBody>
+        </Card>
+      ) : (
+        <Card>
+          {/* `relative`: the table's screen-reader labels are absolutely
+              positioned, and would otherwise escape this scroll box and widen
+              the page on a phone. */}
+          <CardBody className="relative overflow-x-auto">
+            <table className="w-full min-w-[44rem] text-xs">
+              <thead>
+                <tr className="text-left text-2xs uppercase tracking-wide text-ink-subtle">
+                  <th className="py-1.5 pr-3 font-medium">Post</th>
+                  <th className="py-1.5 pr-3 font-medium">Published</th>
+                  {list.seesFigures ? (
+                    <>
+                      <th className="py-1.5 pr-3 text-right font-medium">Reach</th>
+                      <th className="py-1.5 pr-3 text-right font-medium">Engagement</th>
+                      <th className="py-1.5 pr-3 text-right font-medium">Rate</th>
+                    </>
+                  ) : null}
+                  <th className="py-1.5 font-medium">
+                    <span className="sr-only">Live post</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.posts.map((post) => (
+                  <tr key={post.id} className="border-t border-line align-top">
+                    <td className="py-2 pr-3">
+                      <div className="flex gap-2.5">
+                        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-surface-sunken">
+                          {post.thumbnail ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- an R2 URL for an arbitrary creative; next/image would need a remote pattern per bucket
+                            <img src={post.thumbnail.url} alt={post.thumbnail.alt ?? ""} className="size-full object-cover" />
+                          ) : (
+                            <ImageIcon size={14} aria-hidden="true" className="text-ink-subtle" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <Link href={`/admin/clients/${clientId}/social/content/${post.itemId}` as Route} className="text-sm text-navy-800 hover:text-brand-red-text">
+                            {post.title}
+                          </Link>
+                          <p className="text-2xs text-ink-subtle">
+                            {PROVIDER_LABEL[post.provider]} · {POST_TYPE_LABEL[post.type]}
+                            {post.accountName ? ` · ${post.accountName}` : ""}
+                            {post.campaign ? ` · ${post.campaign.name}` : ""}
+                          </p>
+                          {post.caption ? <p className="mt-0.5 line-clamp-1 max-w-md text-2xs text-ink-muted">{post.caption}</p> : null}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-ink-muted">{post.publishedAt ? DATE.format(new Date(post.publishedAt)) : "—"}</td>
+                    {post.figures ? (
+                      <>
+                        <td className="py-2 pr-3 text-right tabular-nums">{post.figures.reach === null ? "—" : NUMBER.format(post.figures.reach)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{post.figures.engagement === null ? "—" : NUMBER.format(post.figures.engagement)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{post.figures.rate === null ? "—" : `${post.figures.rate.toFixed(2)}%`}</td>
+                      </>
+                    ) : null}
+                    <td className="py-2">
+                      {post.externalUrl ? (
+                        <a href={post.externalUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-ink-subtle hover:text-navy-800">
+                          <ExternalLink size={12} aria-hidden="true" />
+                          <span className="sr-only">Open the live post</span>
+                        </a>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {list.seesFigures ? <p className="mt-2 text-2xs text-ink-subtle">A dash means the platform has not reported that figure. It does not mean zero.</p> : null}
           </CardBody>
         </Card>
       )}
