@@ -156,8 +156,8 @@ to leave a password in the environment.
    session cookies are `__Secure-`-prefixed and `secure` in production, so over
    plain HTTP nobody can stay signed in.
 7. **Deploy.**
-8. **Add the scheduled job**, if you want pages to publish and unpublish on a
-   schedule. In Coolify, add a _Scheduled Task_ on the application resource:
+8. **Add the scheduled job.** Scheduled pages and scheduled social posts
+   depend on it, and so do the account checks described below. In Coolify, add a _Scheduled Task_ on the application resource:
 
    | Field     | Value                                                                              |
    | --------- | ---------------------------------------------------------------------------------- |
@@ -174,8 +174,23 @@ to leave a password in the environment.
    09:00 goes live on the first check after 09:00, and the editor is told so on
    screen.
 
-   Without this job, `publishAt` and `unpublishAt` are recorded and simply never
-   fire. Everything else in the application is unaffected.
+   Each run does the following, in order:
+
+   1. Publishes and unpublishes pages that are due.
+   2. Publishes social posts that are due.
+   3. Reads the latest metrics for recent posts.
+   4. Renews idle social tokens that can renew themselves.
+   5. Warns the client's owner, and whoever connected the account, about any
+      account whose access runs out within a week and can't be renewed.
+      Typically that's a LinkedIn token. The warning is sent once per expiry
+      date.
+
+   The JSON response reports each step's counts, including `expiringWarned`.
+
+   Without this job, `publishAt`, `unpublishAt` and a post's scheduled time
+   are recorded but never acted on. Metrics are never collected, and nobody is
+   warned before an account's access runs out. Everything else in the
+   application is unaffected.
 
 ### What happens on every deploy
 

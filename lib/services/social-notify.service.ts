@@ -380,3 +380,106 @@ export async function announceReportPublished(reportId: string) {
     notifyLog.error({ err: error, reportId }, "announcing a report failed");
   }
 }
+
+// ---------------------------------------------------------------------------
+// Accounts and new content
+// ---------------------------------------------------------------------------
+
+/**
+ * Who looks after an account: the client's owner and whoever connected it.
+ * Staff only, deliberately. Reconnecting is the agency's job, and a client is
+ * never sent anything about tokens.
+ */
+async function accountContext(accountId: string) {
+  const account = await db.socialAccount.findUniqueOrThrow({
+    where: { id: accountId },
+    select: {
+      id: true,
+      provider: true,
+      name: true,
+      clientId: true,
+      connectedById: true,
+      client: { select: { name: true, ownerId: true } },
+      _count: { select: { posts: { where: { status: "SCHEDULED" } } } },
+    },
+  });
+  const userIds = [...new Set([account.client.ownerId, account.connectedById])].filter(
+    (id): id is string => Boolean(id),
+  );
+  return { account, userIds, scheduled: account._count.posts };
+}
+
+const scheduledNote = (count: number) =>
+  count === 0 ? "" : ` ${count} scheduled ${count === 1 ? "post uses" : "posts use"} it.`;
+
+/**
+ * An account's access runs out soon and it cannot renew itself (brief §34,
+ * "Account expiring"). Called by the cron once per expiry date.
+ */
+export async function announceAccountExpiring(accountId: string, daysLeft: number) {
+  try {
+    const { account, userIds, scheduled } = await accountContext(accountId);
+    // Whole days left, rounded down: "in 6 days" never overstates the time.
+    const when = daysLeft <= 0 ? "within a day" : daysLeft === 1 ? "in a day" : `in ${daysLeft} days`;
+    await Promise.all(
+      userIds.map((userId) =>
+        notify({
+          userId,
+          title: `${PROVIDER_LABEL[account.provider]} access expires ${when}`,
+          body: `${account.name} (${account.client.name}) needs reconnecting before then, or its posts will fail.${scheduledNote(scheduled)}`,
+          href: `/admin/clients/${account.clientId}/social/accounts`,
+          entity: { type: "SocialAccount", id: account.id },
+        }),
+      ),
+    );
+    await runAutomations(
+      "SOCIAL_ACCOUNT_EXPIRING",
+      { clientId: account.clientId, socialAccountId: account.id },
+      { "social.daysLeft": daysLeft },
+    );
+  } catch (error) {
+    notifyLog.error({ err: error, accountId }, "announcing an expiring account failed");
+  }
+}
+
+/**
+ * The platform stopped accepting an account's credentials. Called once, on the
+ * change from connected, whichever path noticed: publishing, metrics, a
+ * refresh, or the Check button.
+ */
+export async function announceAccountNeedsReconnect(accountId: string, reason: string) {
+  try {
+    const { account, userIds, scheduled } = await accountContext(accountId);
+    await Promise.all(
+      userIds.map((userId) =>
+        notify({
+          userId,
+          title: `${PROVIDER_LABEL[account.provider]} account needs reconnecting`,
+          body: `${account.name} (${account.client.name}): ${reason.slice(0, 300)}${scheduledNote(scheduled)}`,
+          href: `/admin/clients/${account.clientId}/social/accounts`,
+          entity: { type: "SocialAccount", id: account.id },
+        }),
+      ),
+    );
+    await runAutomations("SOCIAL_ACCOUNT_NEEDS_RECONNECT", {
+      clientId: account.clientId,
+      socialAccountId: account.id,
+    });
+  } catch (error) {
+    notifyLog.error({ err: error, accountId }, "announcing a disconnected account failed");
+  }
+}
+
+/** New social content was created — a trigger only; creating is routine. */
+export async function announceContentCreated(contentItemId: string, actorUserId: string) {
+  try {
+    const item = await itemContext(contentItemId);
+    await runAutomations("SOCIAL_CONTENT_CREATED", {
+      clientId: item.clientId,
+      contentItemId: item.id,
+      actorUserId,
+    });
+  } catch (error) {
+    notifyLog.error({ err: error, contentItemId }, "announcing new content failed");
+  }
+}
