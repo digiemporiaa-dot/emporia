@@ -38,6 +38,12 @@ export type SocialCapabilities = {
   readonly carouselLimit: number | null;
   /** Whether metrics can be read back after publication. */
   readonly metrics: boolean;
+  /**
+   * Whether the account's recent posts can be listed — including ones made
+   * directly on the platform, outside Emporia (brief §48). Matches whether the
+   * adapter implements `listRecentPosts`; a test holds the two together.
+   */
+  readonly recentPosts: boolean;
   /** Whether the provider can schedule server-side, or we must hold and post. */
   readonly nativeScheduling: boolean;
   /**
@@ -199,4 +205,36 @@ export interface SocialProviderAdapter {
     account: AccountRef,
     externalPostId: string,
   ): Promise<ProviderMetrics>;
+  /**
+   * The account's own public posts published since `since`, newest first.
+   * Present only where the platform lets this app read them with the
+   * permissions it already requests; see `SocialCapabilities.recentPosts`.
+   */
+  listRecentPosts?(
+    credentials: ProviderCredentials,
+    account: AccountRef,
+    since: Date,
+  ): Promise<ProviderRecentPost[]>;
 }
+
+/**
+ * A post as the platform lists it. Only public, published posts — never a
+ * draft, a private video or a story that has already vanished.
+ */
+export type ProviderRecentPost = {
+  externalPostId: string;
+  externalUrl: string | null;
+  /** The platform's own words, for recognising it; never edited. */
+  caption: string | null;
+  /** The platform's own format name ("REELS", "VIDEO", "CAROUSEL_ALBUM"...). */
+  format: string | null;
+  thumbnailUrl: string | null;
+  publishedAt: Date;
+  /**
+   * Other ids the platform knows this post by. Facebook lists a video post by
+   * its page-qualified post id, while publishing stores the video's own id;
+   * without the alias, a video Emporia published would read as one the
+   * client posted directly.
+   */
+  aliases?: readonly string[];
+};

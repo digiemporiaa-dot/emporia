@@ -93,6 +93,37 @@ export function SocialReportDocument({ data, notes }: { data: SocialReportData; 
         </div>
       </div>
 
+      {data.direct && data.direct.posts > 0 ? (
+        <Section title="Also posted directly on the platforms">
+          <p className="text-xs text-ink-subtle">
+            Posts made on the platforms themselves, outside this workspace. Not included in the figures above. LinkedIn and
+            X do not let us read these, so they are not counted here.
+          </p>
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {(
+              [
+                ["Posts", { value: data.direct.posts, reporting: data.direct.posts, total: data.direct.posts }],
+                ["Reach", data.direct.reach],
+                ["Impressions", data.direct.impressions],
+                ["Engagement", data.direct.engagement],
+              ] as const
+            ).map(([label, figure]) => (
+              <div key={label} className="rounded-lg border border-line p-3 break-inside-avoid">
+                <dt className="text-2xs font-medium uppercase tracking-wide text-ink-subtle">{label}</dt>
+                <dd className={`mt-1 tabular-nums ${figure.value === null ? "text-sm text-ink-subtle" : "text-lg text-navy-800"}`}>
+                  {figure.value === null ? "Not reported" : NUMBER.format(figure.value)}
+                </dd>
+                {label !== "Posts" && figure.value !== null ? (
+                  <p className="text-2xs text-ink-subtle">
+                    from {figure.reporting} of {figure.total} posts
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </dl>
+        </Section>
+      ) : null}
+
       <Section title="Highlights">
         <dl className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-lg border border-line p-3.5">

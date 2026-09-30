@@ -1,4 +1,5 @@
 import "server-only";
+import { parsePlatformTime, RECENT_POSTS_LIMIT, text } from "@/lib/social/recent";
 import { ValidationError } from "@/lib/errors";
 import {
   AmbiguousPublishError,
@@ -21,6 +22,7 @@ import type {
   ProviderMetrics,
   PublishInput,
   PublishResult,
+  ProviderRecentPost,
   SocialProviderAdapter,
 } from "@/lib/social/types";
 
@@ -342,6 +344,56 @@ export class GoogleBusinessProvider implements SocialProviderAdapter {
   // -------------------------------------------------------------------------
   // Plumbing
   // -------------------------------------------------------------------------
+
+  /**
+   * The location's recent live posts, newest first (brief §48). Google keeps
+   * no per-post figures, so these arrive without any — which is the truth.
+   */
+  async listRecentPosts(
+    credentials: ProviderCredentials,
+    account: AccountRef,
+    since: Date,
+  ): Promise<ProviderRecentPost[]> {
+    if (!account.externalParentId) {
+      throw new ValidationError("This location is missing its Google account. Reconnect it.");
+    }
+    const base = `${this.postsApi}/${account.externalParentId}/${account.externalId}/localPosts`;
+    const rows = await this.paged<{
+      name?: unknown;
+      summary?: unknown;
+      searchUrl?: unknown;
+      createTime?: unknown;
+      state?: unknown;
+      topicType?: unknown;
+      media?: { googleUrl?: unknown }[];
+    }>(
+      credentials,
+      (pageToken) => {
+        const url = new URL(base);
+        url.searchParams.set("pageSize", "25");
+        if (pageToken) url.searchParams.set("pageToken", pageToken);
+        return url;
+      },
+      "localPosts",
+      "list the location's recent posts",
+    );
+    const posts: ProviderRecentPost[] = [];
+    for (const row of rows) {
+      const publishedAt = parsePlatformTime(row.createTime);
+      const name = text(row.name);
+      if (!name || !publishedAt || publishedAt < since || row.state !== "LIVE") continue;
+      posts.push({
+        externalPostId: name,
+        externalUrl: text(row.searchUrl),
+        caption: text(row.summary),
+        format: text(row.topicType),
+        thumbnailUrl: text(row.media?.[0]?.googleUrl),
+        publishedAt,
+      });
+    }
+    posts.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+    return posts.slice(0, RECENT_POSTS_LIMIT);
+  }
 
   private auth(credentials: ProviderCredentials): Record<string, string> {
     return { authorization: `Bearer ${credentials.accessToken}` };

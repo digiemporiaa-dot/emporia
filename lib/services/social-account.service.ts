@@ -6,6 +6,8 @@ import { withAudit } from "@/lib/services/audit.service";
 import { decryptSecret, encryptSecret } from "@/lib/security/secret";
 import { PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { missingPublishScopes } from "@/lib/social/scopes";
+import { CredentialsRejectedError } from "@/lib/social/errors";
+import { importRecentPosts } from "@/lib/services/social-external.service";
 import { resolveClientScope } from "@/lib/social/scope";
 import { log } from "@/lib/logger";
 import { announceAccountNeedsReconnect, announceAccountExpiring } from "@/lib/services/social-notify.service";
@@ -427,7 +429,7 @@ const checkSelect = {
  * actually rejects the credentials.
  */
 async function checkAccount(
-  account: { id: string; provider: SocialProvider; externalId: string; externalParentId: string | null },
+  account: { id: string; clientId: string; provider: SocialProvider; externalId: string; externalParentId: string | null },
   adapter: SocialProviderAdapter,
   { escalate }: { escalate: boolean },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -460,6 +462,18 @@ async function checkAccount(
       },
     });
     await recordSyncResult(id, { ok: true });
+    // Then the account's recent posts (brief §48). Never allowed to turn a
+    // good check into a failed one — except when the platform rejects the
+    // credentials, which is news about the account.
+    try {
+      await importRecentPosts(account, adapter, credentials);
+    } catch (error) {
+      if (error instanceof CredentialsRejectedError) {
+        await recordSyncResult(id, { ok: false, error: error.message, credentialsRejected: true });
+        return { ok: false, message: error.message };
+      }
+      accountLog.warn({ err: error, accountId: id }, "listing recent posts failed");
+    }
     return { ok: true };
   } catch (error) {
     const message =

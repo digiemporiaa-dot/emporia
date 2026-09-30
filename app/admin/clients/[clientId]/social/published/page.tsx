@@ -5,9 +5,11 @@ import { z } from "zod";
 import { ExternalLink, Image as ImageIcon } from "lucide-react";
 import { requireActorPage } from "@/lib/actor";
 import { listPublished } from "@/lib/services/social-summary.service";
+import { listExternalPosts } from "@/lib/services/social-external.service";
+import { can } from "@/lib/auth/rbac";
 import { contentFormOptions } from "@/lib/services/social-content.service";
 import { SOCIAL_PROVIDERS } from "@/lib/social";
-import { POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { CAPABILITIES, POST_TYPE_LABEL, PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { Card, CardBody } from "@/components/ui";
 
 export const metadata: Metadata = { title: "Published posts" };
@@ -19,6 +21,8 @@ export const dynamic = "force-dynamic";
  */
 
 const params = z.object({
+  /** Posts that went out through Emporia, or ones made directly on the platform (brief §48). */
+  source: z.enum(["emporia", "direct"]).catch("emporia").default("emporia"),
   platform: z.enum(SOCIAL_PROVIDERS).nullable().catch(null).default(null),
   campaign: z.string().max(40).nullable().catch(null).default(null),
   page: z.coerce.number().int().min(1).max(10_000).catch(1).default(1),
@@ -37,6 +41,9 @@ export default async function PublishedPage({
   const { clientId } = await routeParams;
   const actor = await requireActorPage(`/admin/clients/${clientId}/social/published`);
   const query = params.parse(await searchParams);
+  if (query.source === "direct") {
+    return <DirectPosts clientId={clientId} actor={actor} platform={query.platform} page={query.page} />;
+  }
   const [list, options] = await Promise.all([
     listPublished(actor, { clientId, provider: query.platform, campaignId: query.campaign, page: query.page }),
     contentFormOptions(actor, clientId),
@@ -57,6 +64,7 @@ export default async function PublishedPage({
 
   return (
     <div className="space-y-4">
+      <SourceSwitch clientId={clientId} source="emporia" />
       <div className="space-y-2">
         <nav aria-label="Platform" className="flex flex-wrap gap-1">
           <Link href={href({ platform: null })} className={chip(!query.platform)} aria-current={!query.platform ? "page" : undefined}>
@@ -162,6 +170,163 @@ export default async function PublishedPage({
               </tbody>
             </table>
             {list.seesFigures ? <p className="mt-2 text-2xs text-ink-subtle">A dash means the platform has not reported that figure. It does not mean zero.</p> : null}
+          </CardBody>
+        </Card>
+      )}
+
+      {list.pages > 1 ? (
+        <nav aria-label="Pages" className="flex items-center justify-between text-xs">
+          {list.page > 1 ? (
+            <Link href={href({ page: list.page - 1 })} className="text-navy-800 underline underline-offset-4">
+              ← Newer
+            </Link>
+          ) : (
+            <span />
+          )}
+          {list.page < list.pages ? (
+            <Link href={href({ page: list.page + 1 })} className="text-navy-800 underline underline-offset-4">
+              Older →
+            </Link>
+          ) : null}
+        </nav>
+      ) : null}
+    </div>
+  );
+}
+
+const chipClass = (active: boolean) =>
+  `rounded-md border px-2.5 py-1 text-xs ${active ? "border-navy-800 bg-navy-800 text-white" : "border-line text-navy-800 hover:border-navy-300"}`;
+
+function SourceSwitch({ clientId, source }: { clientId: string; source: "emporia" | "direct" }) {
+  const base = `/admin/clients/${clientId}/social/published`;
+  return (
+    <nav aria-label="Source" className="flex flex-wrap gap-1">
+      <Link href={base as Route} className={chipClass(source === "emporia")} aria-current={source === "emporia" ? "page" : undefined}>
+        Through Emporia
+      </Link>
+      <Link href={`${base}?source=direct` as Route} className={chipClass(source === "direct")} aria-current={source === "direct" ? "page" : undefined}>
+        Posted directly on the platform
+      </Link>
+    </nav>
+  );
+}
+
+/**
+ * Posts the client (or anyone with access) made on the platforms themselves,
+ * found by the daily account check. Listed apart, never mixed with the
+ * agency's own posts, and with no link into the content workspace — there is
+ * no idea, approval or campaign behind them.
+ */
+async function DirectPosts({
+  clientId,
+  actor,
+  platform,
+  page,
+}: {
+  clientId: string;
+  actor: Parameters<typeof listExternalPosts>[0];
+  platform: (typeof SOCIAL_PROVIDERS)[number] | null;
+  page: number;
+}) {
+  const list = await listExternalPosts(actor, { clientId, provider: platform, page });
+  const seesFigures = can(actor, "social.analytics.view");
+  const unreadable = SOCIAL_PROVIDERS.filter((provider) => !CAPABILITIES[provider].recentPosts).map((provider) => PROVIDER_LABEL[provider]);
+  const base = `/admin/clients/${clientId}/social/published?source=direct`;
+  const href = (next: Partial<{ platform: string | null; page: number }>) => {
+    const merged = { platform, page: 1, ...next };
+    return `${base}${merged.platform ? `&platform=${merged.platform}` : ""}${merged.page > 1 ? `&page=${merged.page}` : ""}` as Route;
+  };
+
+  return (
+    <div className="space-y-4">
+      <SourceSwitch clientId={clientId} source="direct" />
+      <div className="space-y-2">
+        <nav aria-label="Platform" className="flex flex-wrap gap-1">
+          <Link href={href({ platform: null })} className={chipClass(!platform)} aria-current={!platform ? "page" : undefined}>
+            All platforms
+          </Link>
+          {SOCIAL_PROVIDERS.filter((provider) => CAPABILITIES[provider].recentPosts).map((provider) => (
+            <Link key={provider} href={href({ platform: provider })} className={chipClass(platform === provider)} aria-current={platform === provider ? "page" : undefined}>
+              {PROVIDER_LABEL[provider]}
+            </Link>
+          ))}
+        </nav>
+        <p className="text-xs text-ink-subtle">
+          {list.total} post{list.total === 1 ? "" : "s"} made outside Emporia, found by the daily account check
+          {list.pages > 1 ? ` · page ${list.page} of ${list.pages}` : ""}. {unreadable.join(" and ")} do not let this app read
+          posts made outside it.
+        </p>
+      </div>
+
+      {list.posts.length === 0 ? (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-ink-subtle">
+              None found. Posts made directly on a connected account appear here after its next check.
+            </p>
+          </CardBody>
+        </Card>
+      ) : (
+        <Card>
+          <CardBody className="relative overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-xs">
+              <thead>
+                <tr className="text-left text-2xs uppercase tracking-wide text-ink-subtle">
+                  <th className="py-1.5 pr-3 font-medium">Post</th>
+                  <th className="py-1.5 pr-3 font-medium">Published</th>
+                  {seesFigures ? (
+                    <>
+                      <th className="py-1.5 pr-3 text-right font-medium">Reach</th>
+                      <th className="py-1.5 pr-3 text-right font-medium">Engagement</th>
+                    </>
+                  ) : null}
+                  <th className="py-1.5 font-medium">
+                    <span className="sr-only">Live post</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.posts.map((post) => (
+                  <tr key={post.id} className="border-t border-line align-top">
+                    <td className="py-2 pr-3">
+                      <div className="flex gap-2.5">
+                        <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-line bg-surface-sunken">
+                          {post.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- a platform CDN URL; next/image would need a remote pattern per platform
+                            <img src={post.thumbnailUrl} alt="" className="size-full object-cover" />
+                          ) : (
+                            <ImageIcon size={14} aria-hidden="true" className="text-ink-subtle" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 max-w-md text-sm text-navy-800">{post.caption ?? "No caption"}</p>
+                          <p className="text-2xs text-ink-subtle">
+                            {PROVIDER_LABEL[post.provider]}
+                            {post.format ? ` · ${post.format.toLowerCase().replace(/_/g, " ")}` : ""} · {post.accountName}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-ink-muted">{DATE.format(post.publishedAt)}</td>
+                    {seesFigures ? (
+                      <>
+                        <td className="py-2 pr-3 text-right tabular-nums">{post.reach === null ? "—" : NUMBER.format(post.reach)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{post.engagement === null ? "—" : NUMBER.format(post.engagement)}</td>
+                      </>
+                    ) : null}
+                    <td className="py-2">
+                      {post.externalUrl ? (
+                        <a href={post.externalUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-ink-subtle hover:text-navy-800">
+                          <ExternalLink size={12} aria-hidden="true" />
+                          <span className="sr-only">Open the live post</span>
+                        </a>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {seesFigures ? <p className="mt-2 text-2xs text-ink-subtle">A dash means the platform has not reported that figure. It does not mean zero.</p> : null}
           </CardBody>
         </Card>
       )}

@@ -3333,3 +3333,127 @@ Sync now does. Both paths share `checkAccount`.
   seeded rows were removed afterwards.
 - **Gate:** lint, typecheck, **2041 tests across 127 files**, and the
   production build. All clean.
+
+---
+
+## 32. Posts made outside Emporia (brief §48, "fetch recent posts")
+
+The sync engine in the brief goes: account → **recent posts** → metrics. The
+middle step was missing. Only posts Emporia published were known, so a client
+posting on their own Instagram was invisible.
+
+### The decision
+
+The agency chose to keep them **as a separate line**. They're shown in
+Published and Analytics as *"posted directly on the platform"*. Monthly
+reports keep the agency's own posts as the headline figures and add *"also
+posted directly: N posts, reach X"* beside them. Agency work stays
+distinguishable from the client's.
+
+### What can be read
+
+| Platform | Listing | Figures |
+|----------|---------|---------|
+| Instagram | `GET /me/media`: feed posts and reels. Stories are skipped because they vanish within a day | Yes, via the existing `getMetrics` |
+| Facebook | `GET /{page}/published_posts`: only what the Page itself published | Yes |
+| YouTube | The channel's uploads playlist: public videos only. Private and unlisted videos are skipped | Views, likes, comments |
+| Business Profile | `localPosts`: `LIVE` posts only. Rejected ones are skipped | None: Google keeps no per-post figures |
+| LinkedIn | **Not readable.** Reading a member's posts needs `r_member_social`, which LinkedIn grants only to approved partners | — |
+| X | **Not readable.** Timelines are on X's paid tiers | — |
+
+`SocialCapabilities.recentPosts` declares this, and a test holds each flag to
+whether the adapter implements `listRecentPosts`. Screens and reports say that
+LinkedIn and X can't be read, so a missing line isn't taken to mean "none".
+
+The endpoint and field names come from the platforms' published APIs as
+remembered, like the adapters themselves (§17). They were exercised against
+local stand-ins, not live accounts.
+
+### The model
+
+`SocialExternalPost` is deliberately **not** a `SocialPost`. It had no idea,
+no review, no approval and no campaign, and it can never appear in the
+calendar, the approval queues or the publisher.
+
+- It's unique on `(provider, externalPostId)`.
+- It holds the **latest** figures, with `metricsAt`, rather than daily
+  snapshots. These posts only ever appear as a period's separate line, never
+  in trend charts.
+- Absent is not zero, as everywhere else.
+
+### The import
+
+`importRecentPosts` runs inside the account check, daily from the cron and on
+Sync now, after the credentials have proved good. It looks back
+`IMPORT_WINDOW_DAYS` (31), so a month's report line is complete.
+
+- **Recognising Emporia's own posts.** A listed post is matched against
+  Emporia's by its platform ID **or an alias**. Facebook lists a video by its
+  page-qualified post ID, while publishing stores the video's own ID. The
+  listing returns the attachment's video ID as an alias; without it, every
+  video Emporia published would read as posted by the client.
+- **Self-correcting.** A post first listed mid-publication, before Emporia
+  stored its ID, is removed on the next check once it's recognised.
+- **Idempotent.** Upserted, so re-running records once. Captions are trimmed
+  to 500 characters and never edited.
+- **Figures.**
+  - Read only for posts from the last 14 days (the same horizon as Emporia's
+    own), at most `MAX_METRIC_READS` (25) per check.
+  - Never read where the platform keeps none.
+  - Never stored as a row of nulls dated today.
+- **Failures.** One post's failure skips that post. A rejected credential
+  stops the import and marks the account. Anything else is logged and never
+  turns a good check into a failed one.
+- **Paging.** Links are followed only on the platform's own host
+  (`sameOriginNext`). A response is data; it doesn't get to send the token
+  elsewhere. Meta's `+0000` timestamps are parsed explicitly
+  (`parsePlatformTime`).
+
+### Where it shows
+
+- **Published → "Posted directly on the platform"**: newest first, 25 per page,
+  filterable by platform. Figures are shown only with `social.analytics.view`.
+  There's no link into the content workspace, because there's nothing behind
+  these posts.
+- **Analytics**: an *"Also posted directly on the platforms"* card for the
+  chosen period, below the agency's figures and not added into them.
+- **Monthly report**:
+  - `data.direct` holds posts, reach, impressions and engagement, each with
+    "from N of M".
+  - It's frozen with the rest of the report and appears in the document
+    shared by admin, portal and print, and in the CSV.
+  - It's optional in the schema, so reports frozen before this existed read
+    unchanged.
+- **Isolation**: every read is scoped by `resolveClientScope` /
+  `resolveScopeFilter`. Portal users reach the line only through their own
+  published reports.
+
+### Verified
+
+- **Tests:** 18 new.
+  - `tests/social-recent-posts.test.ts`: 9 tests. Each platform's listing runs
+    against `tests/support/route-double.ts`, a small generic stand-in. Also
+    timestamps, same-host paging, and the capability-versus-method check.
+  - `tests/social-external.db.test.ts`: 9 tests. Recognising Emporia's posts
+    by ID and alias, self-correction, idempotence, figures (window, cap, never
+    null rows, platforms without figures), failures, the account check,
+    isolation and permissions, and the report line, including an older report
+    without it.
+- **Mutation checks:** 38 run, 37 caught. The survivor normalises Meta's
+  `+0000` offset. Node's parser accepts that form natively, so on this runtime
+  the mutant is equivalent. The normalisation stays, because the JavaScript
+  spec leaves parsing of non-ISO strings to each engine.
+- **Browser, on the production build:** five direct posts seeded for
+  Northwind.
+  - Published → *Posted directly* listed them newest first, with dashes for
+    unreported figures. The default view was unchanged.
+  - Analytics showed the September card: 2 posts, reach 2,600, engagement 230,
+    from 1 of 2.
+  - August's report, generated through the UI, showed the agency's headline at
+    0 posts and the separate line at 3 posts, reach 6,000, engagement 499, from
+    2 of 3. All match the seeded rows by hand. The CSV carried the same four
+    rows.
+  - No overflow at 390px and no page errors. Everything seeded, and the
+    generated report, was removed afterwards.
+- **Gate:** lint, typecheck, **2059 tests across 129 files**, and the
+  production build. All clean.
