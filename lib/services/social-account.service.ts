@@ -2,7 +2,8 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
-import { withAudit } from "@/lib/services/audit.service";
+import { record, withAudit } from "@/lib/services/audit.service";
+import { systemActor } from "@/lib/actor/types";
 import { decryptSecret, encryptSecret } from "@/lib/security/secret";
 import { PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { missingPublishScopes } from "@/lib/social/scopes";
@@ -322,7 +323,17 @@ export async function recordSyncResult(
       where: { id, status: "CONNECTED" },
       data: { status: "NEEDS_RECONNECT" as SocialAccountStatus },
     });
-    if (count === 1) await announceAccountNeedsReconnect(id, result.error);
+    if (count === 1) {
+      await record({
+        actor: systemActor(),
+        action: "STATUS_CHANGE",
+        entityType: "SocialAccount",
+        entityId: id,
+        before: { status: "CONNECTED" },
+        after: { status: "NEEDS_RECONNECT", reason: result.error.slice(0, 300) },
+      });
+      await announceAccountNeedsReconnect(id, result.error);
+    }
   }
 }
 
@@ -774,6 +785,22 @@ export async function usableCredentials(
             ...(fresh.scopes ? { scopes: [...fresh.scopes], scopesReportedAt: new Date() } : {}),
           },
         });
+        // Brief §37, "account credentials changed". That they changed, and
+        // until when — never what they are.
+        await record(
+          {
+            actor: systemActor(),
+            action: "UPDATE",
+            entityType: "SocialAccount",
+            entityId: id,
+            after: {
+              credentialsRenewed: true,
+              tokenExpiresAt: fresh.expiresAt?.toISOString() ?? null,
+              permissionsReported: fresh.scopes ? [...fresh.scopes] : null,
+            },
+          },
+          tx,
+        );
         return { ...fresh, refreshToken };
       } catch (error) {
         failure = error instanceof Error ? error.message : "The access token could not be refreshed.";

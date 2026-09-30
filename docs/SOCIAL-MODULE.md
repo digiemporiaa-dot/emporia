@@ -3457,3 +3457,47 @@ Sync now, after the credentials have proved good. It looks back
     generated report, was removed afterwards.
 - **Gate:** lint, typecheck, **2059 tests across 129 files**, and the
   production build. All clean.
+
+---
+
+## 33. Completing the audit trail (brief §37)
+
+I checked the brief's list of audited events one by one. Most were already
+recorded: account connected, disconnected and reconnected; approved and
+rejected; rescheduled with the Reschedule action; published; publication
+failed; content deleted. Three were not.
+
+| Event | Before | Now |
+|-------|--------|-----|
+| Scheduled time changed **in the editor** | `savePost` logged an `UPDATE` with neither time. Moving a post there left no trace of the move | `before` and `after` carry `scheduledFor` and `accountId`, plus `contentChanged`, so a reschedule is distinguishable from a rewrite |
+| Account credentials changed | Automatic token renewal rewrote the credentials silently | A system `UPDATE` inside the renewal's own transaction: `credentialsRenewed`, the new `tokenExpiresAt`, and the permissions reported. Never the token |
+| Account marked for reconnection | The automatic switch left no entry | A system `STATUS_CHANGE`, CONNECTED → NEEDS_RECONNECT, with the reason. Written only by the caller whose conditional write made the change, so it appears once even when two paths notice together |
+
+**A safety net for tokens.** The audit sanitizer's redaction list had no
+OAuth keys. Social audits build their payloads by hand, so nothing had
+leaked. But `withAudit` stores the mutation's *result* when no `after` is
+given, so a future call returning an account row would have written tokens
+into the log. `accessToken`, `refreshToken`, `clientSecret` and `credentials`
+are now always redacted. `tokenExpiresAt` stays readable, because it isn't a
+secret.
+
+### Verified
+
+- **Tests:** 4 new. `tests/social-audit-trail.db.test.ts` has 3: an
+  editor-only time change, a renewal whose row contains no token text, and a
+  single status entry when two paths notice at once. A new redaction case is
+  in `tests/audit.test.ts`.
+- **Mutation checks:** 9 of 9 caught. Each field in the editor entry, the
+  renewal entry, its system actor, a token slipped into it, the once-only
+  status entry, and both groups of redacted keys.
+- **Gate:** lint, typecheck, **2063 tests across 130 files**, and the
+  production build.
+  - The first full run had two failures (the acceptance scenario and a
+    navigation audit test) and a file-level error in the password-reset
+    tests.
+  - All three passed on their own, and two consecutive full runs were then
+    completely clean.
+  - The navigation test's query is limited to navigation settings, so it
+    can't see the new social entries. The database dropped repeatedly during
+    this session.
+  - The first run's error detail wasn't kept, so the cause isn't proven.
