@@ -77,7 +77,6 @@ export type ProviderAccount = {
   username: string | null;
   profileUrl: string | null;
   avatarUrl: string | null;
-  scopes: readonly string[];
 };
 
 /** Credentials as stored. The adapter is the only thing that sees these. */
@@ -85,6 +84,12 @@ export type ProviderCredentials = {
   accessToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
+  /**
+   * The permissions the platform said it granted with this token — see
+   * `lib/social/scopes.ts`. Absent or null: it did not say. Never filled in
+   * with what was requested.
+   */
+  scopes?: readonly string[] | null;
 };
 
 export type PublishInput = {

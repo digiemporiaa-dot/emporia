@@ -97,6 +97,30 @@ describe("connecting", () => {
     expect(longCall!.query).toMatchObject({ grant_type: "fb_exchange_token", fb_exchange_token: "fb-short-user" });
   });
 
+  it("records the permissions the person actually allowed, not the ones asked for", async () => {
+    double.permissions([
+      { permission: "pages_show_list", status: "granted" },
+      { permission: "pages_manage_posts", status: "declined" },
+      { permission: "read_insights", status: "granted" },
+    ]);
+    const credentials = await provider.exchangeCode("the-code", "https://emporia.test/cb");
+    expect(credentials.scopes).toEqual(["pages_show_list", "read_insights"]);
+    // Read with the long-lived user token.
+    expect(double.requests.at(-1)).toMatchObject({ path: expect.stringMatching(/\/me\/permissions$/), query: { access_token: "fb-long-user" } });
+  });
+
+  it("connects anyway when the permissions cannot be read, as not reported", async () => {
+    double.failWith("permissions", 500, { error: { message: "boom", code: 1 } });
+    const credentials = await provider.exchangeCode("the-code", "https://emporia.test/cb");
+    expect(credentials.accessToken).toBe("fb-long-user");
+    expect(credentials.scopes).toBeNull();
+  });
+
+  it("carries the person's grant to the chosen Page", async () => {
+    const selected = await provider.selectAccount({ ...user, scopes: ["pages_manage_posts"] }, "1002");
+    expect(selected.credentials.scopes).toEqual(["pages_manage_posts"]);
+  });
+
   it("lists only the Pages the sign-in can post to, across pages of results, with no token", async () => {
     double.pageSize(1);
     try {
@@ -118,7 +142,7 @@ describe("connecting", () => {
   it("swaps the person's token for the chosen Page's own", async () => {
     const selected = await provider.selectAccount(user, "1002");
     expect(selected.account.externalId).toBe("1002");
-    expect(selected.credentials).toEqual({ accessToken: "page-token-1002", refreshToken: null, expiresAt: null });
+    expect(selected.credentials).toEqual({ accessToken: "page-token-1002", refreshToken: null, expiresAt: null, scopes: null });
   });
 
   it("refuses a Page id that is not one before asking Facebook anything", async () => {

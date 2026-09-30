@@ -23,6 +23,7 @@ export type FbRequest = {
 export type FbRoute =
   | "token"
   | "accounts"
+  | "permissions"
   | "page"
   | "me"
   | "feed"
@@ -47,6 +48,8 @@ export type FacebookDouble = {
   pages: (value: FbPage[]) => void;
   /** Split `/me/accounts` into pages of this size. */
   pageSize: (size: number) => void;
+  /** The rows `/me/permissions` answers with: what the person allowed and declined. */
+  permissions: (rows: { permission: string; status: "granted" | "declined" }[]) => void;
   /** What `/{videoId}?fields=post_id` answers. */
   videoPost: (postId: string | null) => void;
   /** Make the next request of a kind fail. */
@@ -74,6 +77,13 @@ export async function startFacebookDouble(): Promise<FacebookDouble> {
   let pages = DEFAULT_PAGES;
   let size = 100;
   let videoPostId: string | null = null;
+  let permissionRows: { permission: string; status: "granted" | "declined" }[] = [
+    { permission: "pages_show_list", status: "granted" },
+    { permission: "pages_read_engagement", status: "granted" },
+    { permission: "pages_manage_posts", status: "granted" },
+    { permission: "read_insights", status: "granted" },
+    { permission: "public_profile", status: "granted" },
+  ];
   let photoCount = 0;
   let noShares = false;
   const failures = new Map<FbRoute, { status: number; body: object }>();
@@ -117,6 +127,8 @@ export async function startFacebookDouble(): Promise<FacebookDouble> {
             ? "token"
             : graph === "/me/accounts"
               ? "accounts"
+              : graph === "/me/permissions"
+                ? "permissions"
               : graph === "/me"
                 ? "me"
                 : graph.endsWith("/feed")
@@ -180,6 +192,9 @@ export async function startFacebookDouble(): Promise<FacebookDouble> {
             },
           });
         }
+
+        case "permissions":
+          return json(200, { data: permissionRows });
 
         case "page": {
           const p = pageFor(graph.slice(1));
@@ -267,6 +282,9 @@ export async function startFacebookDouble(): Promise<FacebookDouble> {
     },
     pageSize: (value) => {
       size = value;
+    },
+    permissions: (rows) => {
+      permissionRows = rows;
     },
     videoPost: (value) => {
       videoPostId = value;

@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { decryptSecret, encryptSecret } from "@/lib/security/secret";
 import { PROVIDER_LABEL } from "@/lib/social/capabilities";
+import { missingPublishScopes } from "@/lib/social/scopes";
 import { resolveClientScope } from "@/lib/social/scope";
 import { log } from "@/lib/logger";
 import { announceAccountNeedsReconnect, announceAccountExpiring } from "@/lib/services/social-notify.service";
@@ -45,8 +46,10 @@ const accountSelect = {
   profileUrl: true,
   status: true,
   scopes: true,
+  scopesReportedAt: true,
   tokenExpiresAt: true,
   lastSyncedAt: true,
+  lastCheckAttemptAt: true,
   lastSyncError: true,
   failureCount: true,
   createdAt: true,
@@ -77,7 +80,36 @@ export async function listAccounts(actor: Actor, clientId: string | null) {
       })
     ).map((a) => a.id),
   );
-  return accounts.map((account) => ({ ...account, renewsItself: renewable.has(account.id) }));
+  const streaks = await publishFailureStreaks(accounts.map((a) => a.id));
+  return accounts.map((account) => ({
+    ...account,
+    renewsItself: renewable.has(account.id),
+    publishFailureStreak: streaks.get(account.id) ?? 0,
+  }));
+}
+
+/**
+ * Failed publications in a row, most recent first, for each account — the
+ * brief's "repeated publication failures". A success ends the run; attempts
+ * still in flight are ignored. Bounded: only the last few finished attempts
+ * per account are read, since only whether the run reaches the threshold
+ * matters.
+ */
+export async function publishFailureStreaks(accountIds: readonly string[]): Promise<Map<string, number>> {
+  const streaks = new Map<string, number>();
+  await Promise.all(
+    accountIds.map(async (accountId) => {
+      const recent = await db.socialPublication.findMany({
+        where: { post: { accountId }, status: { in: ["PUBLISHED", "FAILED"] } },
+        orderBy: { attemptedAt: "desc" },
+        take: REPEATED_PUBLISH_FAILURES * 2,
+        select: { status: true },
+      });
+      const firstSuccess = recent.findIndex((row) => row.status === "PUBLISHED");
+      streaks.set(accountId, firstSuccess === -1 ? recent.length : firstSuccess);
+    }),
+  );
+  return streaks;
 }
 
 export async function getAccount(actor: Actor, id: string) {
@@ -144,7 +176,10 @@ export async function connectAccount(
     name: input.account.name,
     username: input.account.username,
     profileUrl: input.account.profileUrl,
-    scopes: [...input.account.scopes],
+    // Only what the platform reported for this grant. A reconnection replaces
+    // the old answer entirely — including with "not reported".
+    scopes: [...(input.credentials.scopes ?? [])],
+    scopesReportedAt: input.credentials.scopes ? new Date() : null,
     status: "CONNECTED" as SocialAccountStatus,
     lastSyncedAt: new Date(),
     lastSyncError: null,
@@ -166,7 +201,7 @@ export async function connectAccount(
         provider: input.provider,
         externalId: input.account.externalId,
         name: input.account.name,
-        scopes: input.account.scopes,
+        scopes: input.credentials.scopes ?? null,
         reconnected: Boolean(existing),
       },
     },
@@ -218,6 +253,7 @@ export async function disconnectAccount(actor: Actor, id: string) {
           refreshToken: null,
           tokenExpiresAt: null,
           scopes: [],
+          scopesReportedAt: null,
         },
         select: accountSelect,
       }),
@@ -239,7 +275,18 @@ const FAILURES_BEFORE_RECONNECT = 3;
 
 export async function recordSyncResult(
   id: string,
-  result: { ok: true } | { ok: false; error: string; credentialsRejected?: boolean },
+  result:
+    | { ok: true }
+    | {
+        ok: false;
+        error: string;
+        credentialsRejected?: boolean;
+        /**
+         * Whether enough failures in a row may mark the account on their own.
+         * Default true; the scheduled check passes false (see `checkAccount`).
+         */
+        escalate?: boolean;
+      },
 ) {
   if (result.ok) {
     await db.socialAccount.update({
@@ -257,7 +304,8 @@ export async function recordSyncResult(
 
   const failureCount = current.failureCount + 1;
   const needsReconnect =
-    result.credentialsRejected === true || failureCount >= FAILURES_BEFORE_RECONNECT;
+    result.credentialsRejected === true ||
+    (result.escalate !== false && failureCount >= FAILURES_BEFORE_RECONNECT);
 
   await db.socialAccount.update({
     where: { id },
@@ -338,17 +386,7 @@ export async function syncAccount(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   requirePermission(actor, "social.accounts.manage");
 
-  const account = await db.socialAccount.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      clientId: true,
-      provider: true,
-      status: true,
-      externalId: true,
-      externalParentId: true,
-    },
-  });
+  const account = await db.socialAccount.findUnique({ where: { id }, select: checkSelect });
   if (!account) throw new NotFoundError("That account does not exist.");
   await resolveClientScope(actor, account.clientId);
 
@@ -365,6 +403,36 @@ export async function syncAccount(
       message: `${PROVIDER_LABEL[account.provider]} is not configured in this deployment.`,
     };
   }
+
+  return checkAccount(account, adapter, { escalate: true });
+}
+
+const checkSelect = {
+  id: true,
+  clientId: true,
+  provider: true,
+  status: true,
+  externalId: true,
+  externalParentId: true,
+} as const;
+
+/**
+ * The check itself, shared by the button and the scheduled run. No actor:
+ * callers establish who may ask before calling.
+ *
+ * `escalate` is whether repeated failures alone may mark the account for
+ * reconnection. A person pressing the button three times and failing is
+ * telling us something; the scheduler failing three times during a
+ * platform outage is not, so it marks the account only when the platform
+ * actually rejects the credentials.
+ */
+async function checkAccount(
+  account: { id: string; provider: SocialProvider; externalId: string; externalParentId: string | null },
+  adapter: SocialProviderAdapter,
+  { escalate }: { escalate: boolean },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const id = account.id;
+  await db.socialAccount.update({ where: { id }, data: { lastCheckAttemptAt: new Date() } });
 
   // Renewed first, like every other use. Checking with the stored token as-is
   // meant an hour-long Google token, idle past its hour, came back 401 and a
@@ -389,7 +457,6 @@ export async function syncAccount(
         name: fresh.name,
         username: fresh.username,
         profileUrl: fresh.profileUrl,
-        scopes: [...fresh.scopes],
       },
     });
     await recordSyncResult(id, { ok: true });
@@ -403,11 +470,84 @@ export async function syncAccount(
     // A 401/403 means the credentials themselves are gone, which is a
     // different state from a bad minute and is marked immediately.
     const rejected = /reconnect|rejected|expired/i.test(message);
-    await recordSyncResult(id, { ok: false, error: message, credentialsRejected: rejected });
+    await recordSyncResult(id, { ok: false, error: message, credentialsRejected: rejected, escalate });
 
     accountLog.warn({ accountId: id, provider: account.provider }, "social account sync failed");
     return { ok: false, message };
   }
+}
+
+/** How often each connected account is checked without anybody asking. */
+export const SCHEDULED_SYNC_MS = 24 * 60 * 60 * 1000;
+/** After a failed scheduled check, how long before trying again. */
+export const SYNC_RETRY_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * When the scheduled run will next check an account, for the screen's "next
+ * check". Null for accounts it does not check: disconnected, or waiting on a
+ * person to reconnect.
+ */
+export function nextSyncAt(account: {
+  status: SocialAccountStatus;
+  lastSyncedAt: Date | null;
+  lastCheckAttemptAt?: Date | null;
+  createdAt: Date;
+}): Date | null {
+  if (account.status !== "CONNECTED") return null;
+  const lastGood = account.lastSyncedAt ?? account.createdAt;
+  const lastTry = account.lastCheckAttemptAt ?? null;
+  // The last attempt failed: the retry gap governs, not the daily rhythm.
+  if (lastTry && lastTry.getTime() > lastGood.getTime()) {
+    return new Date(Math.max(lastTry.getTime() + SYNC_RETRY_MS, lastGood.getTime() + SCHEDULED_SYNC_MS));
+  }
+  return new Date(lastGood.getTime() + SCHEDULED_SYNC_MS);
+}
+
+/**
+ * The scheduled half of "manual sync, scheduled sync, retry, failure status,
+ * last sync, next sync" (brief §48).
+ *
+ * From the cron: every connected account not checked successfully for a day
+ * is checked the same way the button does, oldest first, one at a time —
+ * these are third-party calls, and firing them all at once is how the agency
+ * gets rate limited. An account whose last attempt failed waits
+ * `SYNC_RETRY_MS` before the next, so an outage is not hammered every five
+ * minutes. A platform that is not configured is skipped, not failed: that is
+ * the deployment's state, not the account's.
+ *
+ * No permission check, deliberately: there is no actor. Reachable only from
+ * `/api/cron` behind its shared secret, and it only reads from platforms.
+ */
+export async function syncDueAccounts(
+  resolve: (provider: SocialProvider) => Promise<SocialProviderAdapter>,
+  now = new Date(),
+  /** Limit the run to one client's accounts. The cron checks everyone's. */
+  only: { clientId?: string } = {},
+): Promise<{ checked: number; failed: number }> {
+  const staleBefore = new Date(now.getTime() - SCHEDULED_SYNC_MS);
+  const retryBefore = new Date(now.getTime() - SYNC_RETRY_MS);
+  const due = await db.socialAccount.findMany({
+    where: {
+      ...(only.clientId ? { clientId: only.clientId } : {}),
+      status: "CONNECTED",
+      OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: staleBefore } }],
+      AND: [{ OR: [{ lastCheckAttemptAt: null }, { lastCheckAttemptAt: { lt: retryBefore } }] }],
+    },
+    orderBy: [{ lastSyncedAt: { sort: "asc", nulls: "first" } }],
+    take: 50,
+    select: checkSelect,
+  });
+
+  let checked = 0;
+  let failed = 0;
+  for (const account of due) {
+    const adapter = await resolve(account.provider);
+    if (!adapter.configured) continue;
+    const result = await checkAccount(account, adapter, { escalate: false });
+    checked += 1;
+    if (!result.ok) failed += 1;
+  }
+  return { checked, failed };
 }
 
 /** Health, for the accounts screen. Derived, never stored. */
@@ -415,7 +555,24 @@ export type AccountHealth = "HEALTHY" | "EXPIRING" | "ATTENTION" | "DISCONNECTED
 
 const EXPIRY_WARNING_MS = 7 * 24 * 60 * 60 * 1000;
 
-export function accountHealth(account: {
+/** This many failed publications in a row, most recent first, is a pattern rather than bad luck. */
+export const REPEATED_PUBLISH_FAILURES = 3;
+
+/** The scheduled check runs daily; two days without one means it is not running for this account. */
+export const SYNC_OVERDUE_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * One reason an account is not simply fine (brief §36), in words an operator
+ * can act on. `attention` warnings mean posts are failing or will fail; the
+ * rest are worth knowing but change nothing yet.
+ */
+export type AccountWarning = {
+  kind: "NOT_CONFIGURED" | "PERMISSION" | "PUBLISH_FAILURES" | "SYNC_OVERDUE";
+  text: string;
+  attention: boolean;
+};
+
+type HealthInput = {
   status: SocialAccountStatus;
   tokenExpiresAt: Date | null;
   failureCount: number;
@@ -425,10 +582,76 @@ export function accountHealth(account: {
    * YouTube account would read "expiring soon" for ever.
    */
   renewsItself?: boolean;
-}): AccountHealth {
+  provider?: SocialProvider;
+  scopes?: readonly string[];
+  scopesReportedAt?: Date | null;
+  lastSyncedAt?: Date | null;
+  /** Failed publications in a row, most recent first. See `publishFailureStreaks`. */
+  publishFailureStreak?: number;
+  /** Whether this deployment has the platform's app credentials. Unknown when absent. */
+  providerConfigured?: boolean;
+};
+
+/** The warnings for an account, derived like its health and never stored. */
+export function accountWarnings(account: HealthInput, now = new Date()): AccountWarning[] {
+  if (account.status === "DISCONNECTED") return [];
+  const warnings: AccountWarning[] = [];
+
+  // Nothing can post through, or check, an account whose platform this
+  // deployment has no app credentials for — whatever the account itself says.
+  const unconfigured = account.providerConfigured === false;
+  if (unconfigured && account.provider) {
+    warnings.push({
+      kind: "NOT_CONFIGURED",
+      text: `${PROVIDER_LABEL[account.provider]} is not configured in this deployment, so nothing can be posted or checked through this account. Add its app credentials in Settings.`,
+      attention: true,
+    });
+  }
+
+  if (account.provider && account.scopes) {
+    const missing = missingPublishScopes(account.provider, {
+      scopes: account.scopes,
+      scopesReportedAt: account.scopesReportedAt ?? null,
+    });
+    if (missing.length > 0) {
+      warnings.push({
+        kind: "PERMISSION",
+        text: `${PROVIDER_LABEL[account.provider]} did not grant permission to post (${missing.join(", ")}). Reconnect and allow every permission.`,
+        attention: true,
+      });
+    }
+  }
+
+  const streak = account.publishFailureStreak ?? 0;
+  if (streak >= REPEATED_PUBLISH_FAILURES) {
+    warnings.push({
+      kind: "PUBLISH_FAILURES",
+      text: `The last ${streak} posts through this account failed. Check the queue for the reasons.`,
+      attention: true,
+    });
+  }
+
+  if (
+    !unconfigured &&
+    account.status === "CONNECTED" &&
+    account.lastSyncedAt &&
+    now.getTime() - account.lastSyncedAt.getTime() > SYNC_OVERDUE_MS
+  ) {
+    warnings.push({
+      kind: "SYNC_OVERDUE",
+      text: "Not checked for over two days. Is the scheduled job running?",
+      attention: false,
+    });
+  }
+
+  return warnings;
+}
+
+export function accountHealth(account: HealthInput): AccountHealth {
   if (account.status === "DISCONNECTED") return "DISCONNECTED";
   if (account.status === "NEEDS_RECONNECT") return "ATTENTION";
   if (account.failureCount > 0) return "ATTENTION";
+  if (accountWarnings(account).some((warning) => warning.attention)) return "ATTENTION";
   if (
     !account.renewsItself &&
     account.tokenExpiresAt &&
@@ -532,6 +755,9 @@ export async function usableCredentials(
             accessToken: encryptSecret(fresh.accessToken),
             refreshToken: refreshToken ? encryptSecret(refreshToken) : null,
             tokenExpiresAt: fresh.expiresAt,
+            // A renewal that reports its grant updates it; one that does not
+            // leaves the last answer standing rather than erasing it.
+            ...(fresh.scopes ? { scopes: [...fresh.scopes], scopesReportedAt: new Date() } : {}),
           },
         });
         return { ...fresh, refreshToken };

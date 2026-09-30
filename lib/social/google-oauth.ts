@@ -1,4 +1,5 @@
 import "server-only";
+import { parseGrantedScopes } from "@/lib/social/scopes";
 import { ValidationError } from "@/lib/errors";
 import { CredentialsRejectedError } from "@/lib/social/errors";
 import type { ProviderCredentials } from "@/lib/social/types";
@@ -116,7 +117,12 @@ export async function googleExchangeCode(
     );
   }
 
-  return { accessToken: json.access_token, refreshToken: json.refresh_token, expiresAt: expiry(json) };
+  return {
+    accessToken: json.access_token,
+    refreshToken: json.refresh_token,
+    expiresAt: expiry(json),
+    scopes: parseGrantedScopes(json.scope),
+  };
 }
 
 export async function googleRefresh(
@@ -148,5 +154,6 @@ export async function googleRefresh(
     // Google usually keeps the refresh token the same and omits it here.
     refreshToken: typeof json.refresh_token === "string" ? json.refresh_token : credentials.refreshToken,
     expiresAt: expiry(json),
+    scopes: parseGrantedScopes(json.scope),
   };
 }

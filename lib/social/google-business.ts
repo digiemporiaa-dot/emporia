@@ -223,7 +223,6 @@ export class GoogleBusinessProvider implements SocialProviderAdapter {
       username: null,
       profileUrl: typeof location.metadata?.mapsUri === "string" ? location.metadata.mapsUri : null,
       avatarUrl: null,
-      scopes: [...GOOGLE_BUSINESS_SCOPES],
     };
   }
 

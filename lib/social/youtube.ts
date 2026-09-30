@@ -169,7 +169,6 @@ export class YouTubeProvider implements SocialProviderAdapter {
         typeof channel.snippet?.thumbnails?.default?.url === "string"
           ? channel.snippet.thumbnails.default.url
           : null,
-      scopes: [...YOUTUBE_SCOPES],
     };
   }
 

@@ -56,6 +56,7 @@ describe("token exchange", () => {
     expect(credentials.accessToken).toBe("li-access-token");
     expect(credentials.refreshToken).toBe("li-refresh-token");
     expect(credentials.expiresAt?.getTime()).toBeGreaterThan(before);
+    expect(credentials.scopes).toEqual(["email", "openid", "profile", "w_member_social"]);
 
     const request = double.requests.at(-1);
     expect(request?.method).toBe("POST");
@@ -64,6 +65,12 @@ describe("token exchange", () => {
     expect(body.get("grant_type")).toBe("authorization_code");
     expect(body.get("code")).toBe("the-code");
     expect(body.get("client_secret")).toBe("app-secret");
+  });
+
+  it("reports no grant rather than the requested one when LinkedIn does not say", async () => {
+    double.token({ access_token: "li-access-token", expires_in: 5_184_000 });
+    const credentials = await provider.exchangeCode("the-code", "https://app.test/cb");
+    expect(credentials.scopes).toBeNull();
   });
 
   it("keeps the refresh token when a refresh response omits one", async () => {

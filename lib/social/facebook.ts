@@ -1,4 +1,5 @@
 import "server-only";
+import { parseGrantedScopes } from "@/lib/social/scopes";
 import { createHmac } from "node:crypto";
 import { ValidationError } from "@/lib/errors";
 import {
@@ -162,7 +163,32 @@ export class FacebookProvider implements SocialProviderAdapter {
     longUrl.searchParams.set("client_id", this.options.clientId);
     longUrl.searchParams.set("client_secret", this.options.clientSecret);
     longUrl.searchParams.set("fb_exchange_token", short.accessToken);
-    return this.token(longUrl, "exchange for a long-lived token");
+    const long = await this.token(longUrl, "exchange for a long-lived token");
+    return { ...long, scopes: await this.grantedPermissions(long) };
+  }
+
+  /**
+   * What the person actually allowed. Facebook's consent screen lets them
+   * untick individual permissions, and the token response does not say which;
+   * the permissions edge does, one row per permission with its status.
+   *
+   * A failure here does not fail the connection — it is recorded as "not
+   * reported", which is the truth, rather than as the list that was asked for.
+   */
+  private async grantedPermissions(credentials: ProviderCredentials): Promise<string[] | null> {
+    try {
+      const url = new URL(`${this.graph}/me/permissions`);
+      const json = (await this.get(url, credentials, "read the granted permissions")) as {
+        data?: { permission?: unknown; status?: unknown }[];
+      };
+      const granted = (json.data ?? [])
+        .filter((row) => row.status === "granted")
+        .map((row) => row.permission);
+      return parseGrantedScopes(granted);
+    } catch (error) {
+      facebookLog.warn({ err: error }, "facebook granted permissions could not be read");
+      return null;
+    }
   }
 
   async refresh(): Promise<ProviderCredentials> {
@@ -225,7 +251,9 @@ export class FacebookProvider implements SocialProviderAdapter {
 
     return {
       account,
-      credentials: { accessToken: row.access_token, refreshToken: null, expiresAt: null },
+      // A Page token acts with the person's own grant, so what they allowed
+      // at sign-in is what the Page connection holds.
+      credentials: { accessToken: row.access_token, refreshToken: null, expiresAt: null, scopes: credentials.scopes ?? null },
     };
   }
 
@@ -251,7 +279,6 @@ export class FacebookProvider implements SocialProviderAdapter {
           ? row.link
           : `https://www.facebook.com/${username ?? row.id}`,
       avatarUrl: typeof row.picture?.data?.url === "string" ? row.picture.data.url : null,
-      scopes: [...FACEBOOK_SCOPES],
     };
   }
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { parseGrantedScopes } from "@/lib/social/scopes";
 import { ValidationError } from "@/lib/errors";
 import {
   AmbiguousPublishError,
@@ -160,7 +161,6 @@ export class XProvider implements SocialProviderAdapter {
       username: me.username,
       profileUrl: `https://x.com/${me.username}`,
       avatarUrl: typeof me.profile_image_url === "string" ? me.profile_image_url : null,
-      scopes: [...X_SCOPES],
     };
   }
 
@@ -424,6 +424,7 @@ export class XProvider implements SocialProviderAdapter {
       accessToken: json.access_token,
       refreshToken: json.refresh_token,
       expiresAt: typeof json.expires_in === "number" ? new Date(Date.now() + json.expires_in * 1000) : null,
+      scopes: parseGrantedScopes(json.scope),
     };
   }
 

@@ -54,6 +54,8 @@ export async function startLinkedInDouble(): Promise<LinkedInDouble> {
     access_token: "li-access-token",
     refresh_token: "li-refresh-token",
     expires_in: 5_184_000,
+    // LinkedIn lists the granted scopes comma-separated.
+    scope: "email,openid,profile,w_member_social",
   };
   let profileResponse: object = {
     sub: "li-member-1",

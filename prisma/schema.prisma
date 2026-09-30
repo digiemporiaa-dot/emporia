@@ -2861,10 +2861,17 @@ model SocialAccount {
   /// for the same expiry does not.
   expiryWarnedFor DateTime?
   /// The scopes the provider actually granted, so a missing permission is a
-  /// diagnosable state rather than a mystery failure at publish time.
-  scopes         String[]  @default([])
+  /// diagnosable state rather than a mystery failure at publish time. Only
+  /// what the platform reported — never the list that was requested.
+  scopes           String[]  @default([])
+  /// When the platform last reported `scopes`. Null means it has not said, so
+  /// an empty list reads as "not reported" rather than "granted nothing".
+  scopesReportedAt DateTime?
 
   lastSyncedAt  DateTime?
+  /// The last check, successful or not. The scheduled check waits a retry gap
+  /// after a failed one rather than asking again every cron run.
+  lastCheckAttemptAt DateTime?
   lastSyncError String?
   /// Consecutive failures. Reset on success; used to surface a failing account
   /// before somebody notices their posts stopped going out.
