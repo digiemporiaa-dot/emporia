@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
-import { accountHealth, listAccounts } from "@/lib/services/social-account.service";
+import { accountHealth, accountWarnings, listAccounts, nextSyncAt } from "@/lib/services/social-account.service";
 import { providerStatuses } from "@/lib/social";
 import { AccountsPanel, type AccountRow, type ProviderRow } from "./accounts-panel";
 
@@ -30,20 +30,34 @@ export default async function SocialAccountsPage({
     providerStatuses(),
   ]);
 
-  const rows: AccountRow[] = accounts.map((account) => ({
-    id: account.id,
-    provider: account.provider,
-    name: account.name,
-    username: account.username,
-    profileUrl: account.profileUrl,
-    status: account.status,
-    health: accountHealth(account),
-    lastSyncedAt: account.lastSyncedAt?.toISOString() ?? null,
-    lastSyncError: account.lastSyncError,
-    tokenExpiresAt: account.tokenExpiresAt?.toISOString() ?? null,
-    scopes: account.scopes,
-    connectedBy: account.connectedBy?.name ?? null,
-  }));
+  const configured = new Map(providers.map((provider) => [provider.provider, provider.configured]));
+  const now = new Date();
+
+  const rows: AccountRow[] = accounts.map((account) => {
+    const health = { ...account, providerConfigured: configured.get(account.provider) ?? false };
+    // An unconfigured platform is skipped by the scheduled check, so it has no next check.
+    const next = health.providerConfigured ? nextSyncAt(account) : null;
+    return {
+      id: account.id,
+      provider: account.provider,
+      name: account.name,
+      username: account.username,
+      profileUrl: account.profileUrl,
+      status: account.status,
+      health: accountHealth(health),
+      warnings: accountWarnings(health, now).map(({ text, attention }) => ({ text, attention })),
+      lastSyncedAt: account.lastSyncedAt?.toISOString() ?? null,
+      nextSyncAt: next?.toISOString() ?? null,
+      // Overdue: the next scheduled run picks it up, whatever the clock says.
+      nextSyncDue: next !== null && next.getTime() <= now.getTime(),
+      lastSyncError: account.lastSyncError,
+      tokenExpiresAt: account.tokenExpiresAt?.toISOString() ?? null,
+      // Null when the platform never said: the screen reads "not reported",
+      // not an empty list that looks like "granted nothing".
+      scopes: account.scopesReportedAt ? account.scopes : null,
+      connectedBy: account.connectedBy?.name ?? null,
+    };
+  });
 
   const connected = new Set(
     accounts.filter((a) => a.status !== "DISCONNECTED").map((a) => a.provider),

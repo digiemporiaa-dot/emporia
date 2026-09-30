@@ -26,10 +26,14 @@ export type AccountRow = {
   profileUrl: string | null;
   status: SocialAccountStatus;
   health: AccountHealth;
+  warnings: readonly { text: string; attention: boolean }[];
   lastSyncedAt: string | null;
+  nextSyncAt: string | null;
+  nextSyncDue: boolean;
   lastSyncError: string | null;
   tokenExpiresAt: string | null;
-  scopes: readonly string[];
+  /** What the platform said it granted; null when it never said. */
+  scopes: readonly string[] | null;
   connectedBy: string | null;
 };
 
@@ -189,6 +193,11 @@ export function AccountsPanel({
                     <p className="mt-0.5 text-xs text-ink-subtle">
                       {account.username ? `@${account.username} · ` : ""}
                       Last checked {when(account.lastSyncedAt)}
+                      {account.nextSyncDue
+                        ? " · check due on the next scheduled run"
+                        : account.nextSyncAt
+                          ? ` · next check around ${when(account.nextSyncAt)}`
+                          : ""}
                       {account.connectedBy ? ` · connected by ${account.connectedBy}` : ""}
                     </p>
                     {account.lastSyncError ? (
@@ -197,6 +206,29 @@ export function AccountsPanel({
                         {account.lastSyncError}
                       </p>
                     ) : null}
+                    {account.warnings.map((warning) => (
+                      <p
+                        key={warning.text}
+                        className={
+                          warning.attention
+                            ? "mt-1.5 flex items-start gap-1.5 text-xs text-brand-red-text"
+                            : "mt-1.5 flex items-start gap-1.5 text-xs text-ink-subtle"
+                        }
+                      >
+                        <TriangleAlert size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
+                        {warning.text}
+                      </p>
+                    ))}
+                    <details className="mt-1.5 text-xs text-ink-subtle">
+                      <summary className="cursor-pointer select-none hover:text-navy-800">Permissions</summary>
+                      <p className="mt-1 break-words">
+                        {/* Only what the platform said it granted — never the
+                            list that was asked for. */}
+                        {account.scopes
+                          ? account.scopes.join(", ")
+                          : "Not reported by the platform. Reconnecting records them where the platform says."}
+                      </p>
+                    </details>
                     {account.health === "EXPIRING" ? (
                       <p className="mt-1.5 text-xs text-warning">
                         Access expires {when(account.tokenExpiresAt)}. Reconnect before then to

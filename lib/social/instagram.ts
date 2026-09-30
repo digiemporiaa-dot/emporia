@@ -1,4 +1,5 @@
 import "server-only";
+import { parseGrantedScopes } from "@/lib/social/scopes";
 import { ValidationError } from "@/lib/errors";
 import {
   AmbiguousPublishError,
@@ -62,6 +63,9 @@ import type {
  */
 
 const instagramLog = log("social");
+
+/** The short-lived token exchange's answer, in either of Meta's shapes. */
+type ShortToken = { access_token?: unknown; permissions?: unknown };
 
 /**
  * Pinned rather than tracking latest, for the same reason LinkedIn's is: Meta
@@ -165,7 +169,13 @@ export class InstagramProvider implements SocialProviderAdapter {
     });
     if (!response.ok) throw await this.error(response, "exchange an authorization code");
 
-    const short = (await response.json()) as { access_token?: unknown };
+    // Meta documents this response both flat and wrapped in `data: [...]`;
+    // either is accepted. `permissions` is what the person actually allowed —
+    // Instagram's consent screen lets them untick individual ones.
+    const body = (await response.json()) as { data?: unknown } & ShortToken;
+    const short: ShortToken = Array.isArray(body.data) && body.data[0] && typeof body.data[0] === "object"
+      ? (body.data[0] as ShortToken)
+      : body;
     if (typeof short.access_token !== "string") {
       throw new ValidationError("Instagram did not return an access token.");
     }
@@ -174,7 +184,9 @@ export class InstagramProvider implements SocialProviderAdapter {
     url.searchParams.set("grant_type", "ig_exchange_token");
     url.searchParams.set("client_secret", this.options.clientSecret);
     url.searchParams.set("access_token", short.access_token);
-    return this.longLivedToken(url, "exchange for a long-lived token");
+    const long = await this.longLivedToken(url, "exchange for a long-lived token");
+    // The long-lived token carries the same grant; only the short response says what it was.
+    return { ...long, scopes: parseGrantedScopes(short.permissions) };
   }
 
   async refresh(credentials: ProviderCredentials): Promise<ProviderCredentials> {
@@ -218,7 +230,6 @@ export class InstagramProvider implements SocialProviderAdapter {
       username,
       profileUrl: username ? `https://www.instagram.com/${username}/` : null,
       avatarUrl: typeof me.profile_picture_url === "string" ? me.profile_picture_url : null,
-      scopes: [...INSTAGRAM_SCOPES],
     };
   }
 

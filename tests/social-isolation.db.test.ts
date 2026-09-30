@@ -119,9 +119,13 @@ describeDb("social module — isolation and credentials", () => {
         username: "client_a",
         profileUrl: "https://example.com/client_a",
         avatarUrl: null,
-        scopes: ["instagram_content_publish"],
       },
-      credentials: { accessToken: "super-secret-token", refreshToken: "refresh-me", expiresAt: null },
+      credentials: {
+        accessToken: "super-secret-token",
+        refreshToken: "refresh-me",
+        expiresAt: null,
+        scopes: ["instagram_business_content_publish"],
+      },
     });
     accountA = account.id;
   });
@@ -204,7 +208,6 @@ describeDb("social module — isolation and credentials", () => {
           username: null,
           profileUrl: null,
           avatarUrl: null,
-          scopes: [],
         },
         credentials: { accessToken: "another", refreshToken: null, expiresAt: null },
       }),

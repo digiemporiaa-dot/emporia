@@ -92,6 +92,7 @@ describe("connecting with PKCE", () => {
     const result = await provider.exchangeCode("code", "https://emporia.test/cb", { verifier });
     expect(result.accessToken).toMatch(/^x-access-/);
     expect(result.refreshToken).toMatch(/^x-refresh-/);
+    expect(result.scopes).toEqual(expect.arrayContaining(["tweet.write", "media.write"]));
 
     const call = double.requests[from]!;
     expect(new URLSearchParams(call.body).get("client_secret")).toBeNull();

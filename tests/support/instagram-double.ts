@@ -115,7 +115,15 @@ export async function startInstagramDouble(): Promise<InstagramDouble> {
 
       switch (route) {
         case "shortToken":
-          return json(200, { access_token: "ig-short-token", user_id: 17841400000000001 });
+          return json(200, {
+            data: [
+              {
+                access_token: "ig-short-token",
+                user_id: "17841400000000001",
+                permissions: "instagram_business_basic,instagram_business_content_publish",
+              },
+            ],
+          });
         case "exchange":
           return json(200, { access_token: "ig-long-token", token_type: "bearer", expires_in: 5_184_000 });
         case "refresh":

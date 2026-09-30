@@ -180,16 +180,23 @@ to leave a password in the environment.
    2. Publishes social posts that are due.
    3. Reads the latest metrics for recent posts.
    4. Renews idle social tokens that can renew themselves.
-   5. Warns the client's owner, and whoever connected the account, about any
+   5. Checks each connected social account once a day, the same check as the
+      Sync now button. After a failed check it waits 6 hours before trying
+      again. It marks an account for reconnection only when the platform
+      rejects its credentials, and it skips platforms this deployment has no
+      app credentials for.
+   6. Warns the client's owner, and whoever connected the account, about any
       account whose access runs out within a week and can't be renewed.
       Typically that's a LinkedIn token. The warning is sent once per expiry
       date.
 
-   The JSON response reports each step's counts, including `expiringWarned`.
+   The JSON response reports each step's counts, including `accountsChecked`
+   and `expiringWarned`.
 
    Without this job, `publishAt`, `unpublishAt` and a post's scheduled time
-   are recorded but never acted on. Metrics are never collected, and nobody is
-   warned before an account's access runs out. Everything else in the
+   are recorded but never acted on. Metrics are never collected, accounts are
+   only checked when someone presses Sync now, and nobody is warned before an
+   account's access runs out. Everything else in the
    application is unaffected.
 
 ### What happens on every deploy

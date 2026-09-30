@@ -45,7 +45,11 @@ export async function socialOverview(actor: Actor, clientId: string, now = new D
       implemented: provider.implemented,
       accounts: accounts
         .filter((account) => account.provider === provider.provider && account.status !== "DISCONNECTED")
-        .map((account) => ({ id: account.id, name: account.name, health: accountHealth(account) })),
+        .map((account) => ({
+          id: account.id,
+          name: account.name,
+          health: accountHealth({ ...account, providerConfigured: provider.configured }),
+        })),
     })),
     work: { internalReviews, clientApprovals, scheduled, failed },
     performance: month,

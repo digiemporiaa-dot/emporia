@@ -5,7 +5,11 @@ import { env } from "@/lib/config/env";
 import { runScheduledPublishing } from "@/lib/services/schedule.service";
 import { publishDuePosts } from "@/lib/services/social-publish.service";
 import { collectMetrics } from "@/lib/services/social-metrics.service";
-import { renewIdleCredentials, warnExpiringAccounts } from "@/lib/services/social-account.service";
+import {
+  renewIdleCredentials,
+  syncDueAccounts,
+  warnExpiringAccounts,
+} from "@/lib/services/social-account.service";
 import { socialProvider } from "@/lib/social";
 import { log } from "@/lib/logger";
 
@@ -97,6 +101,11 @@ async function handle(request: Request): Promise<NextResponse> {
     if (renewal.status === "rejected") {
       cronLog.error({ err: renewal.reason }, "renewing idle social credentials failed");
     }
+    // The daily check of each account: the scheduled "Sync now".
+    const accountSync = await Promise.allSettled([syncDueAccounts(socialProvider)]).then(([result]) => result);
+    if (accountSync.status === "rejected") {
+      cronLog.error({ err: accountSync.reason }, "scheduled social account checks failed");
+    }
     // After renewal, so only what renewal could not extend is warned about.
     const expiring = await Promise.allSettled([warnExpiringAccounts()]).then(([result]) => result);
     if (expiring.status === "rejected") {
@@ -153,6 +162,7 @@ async function handle(request: Request): Promise<NextResponse> {
           : { attempted: 0, captured: 0, skipped: 0, failed: 0 },
       credentials:
         renewal.status === "fulfilled" ? renewal.value : { renewed: 0, failed: 0 },
+      accountsChecked: accountSync.status === "fulfilled" ? accountSync.value : { checked: 0, failed: 0 },
       expiringWarned: expiring.status === "fulfilled" ? expiring.value.warned : 0,
       pagesFailed: pages.status === "rejected",
       socialFailed: social.status === "rejected",

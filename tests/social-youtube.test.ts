@@ -77,6 +77,7 @@ describe("connecting", () => {
     expect(result.accessToken).toBe("yt-access");
     expect(result.refreshToken).toBe("yt-refresh");
     expect(result.expiresAt!.getTime()).toBeGreaterThan(Date.now());
+    expect(result.scopes).toContain("https://www.googleapis.com/auth/youtube.upload");
 
     const call = double.requests[from]!;
     expect(call.query["client_secret"]).toBeUndefined();

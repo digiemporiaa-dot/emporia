@@ -99,6 +99,8 @@ export async function startPendingConnection(
           accessToken: input.credentials.accessToken,
           refreshToken: input.credentials.refreshToken,
           expiresAt: input.credentials.expiresAt?.toISOString() ?? null,
+          // What the platform said it granted, carried to the chosen account.
+          scopes: input.credentials.scopes ?? null,
         }),
       ),
       options,
@@ -215,6 +217,7 @@ export async function completePendingConnection(
     accessToken: string;
     refreshToken: string | null;
     expiresAt: string | null;
+    scopes?: string[] | null;
   } | null;
   if (!stored) {
     // AUTH_SECRET rotated between sign-in and choice. Rare, and honest.
@@ -227,6 +230,7 @@ export async function completePendingConnection(
       accessToken: stored.accessToken,
       refreshToken: stored.refreshToken,
       expiresAt: stored.expiresAt ? new Date(stored.expiresAt) : null,
+      scopes: stored.scopes ?? null,
     },
     externalId,
   );

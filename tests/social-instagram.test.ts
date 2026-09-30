@@ -87,6 +87,8 @@ describe("connection", () => {
     const exchange = double.requests.slice(before).find((r) => r.path === "/access_token")!;
     expect(exchange.query["grant_type"]).toBe("ig_exchange_token");
     expect(exchange.query["access_token"]).toBe("ig-short-token");
+    // What the person allowed, read from the short-lived exchange.
+    expect(creds.scopes).toEqual(["instagram_business_basic", "instagram_business_content_publish"]);
   });
 
   it("refreshes by presenting the token itself", async () => {

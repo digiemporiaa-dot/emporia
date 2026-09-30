@@ -3222,3 +3222,114 @@ an account that's already marked tell nobody.
 - **Gate:** lint, typecheck, **2015 tests across 125 files**, and the
   production build. All clean.
 
+
+---
+
+## 31. Gap phase 7 — account health and sync (brief §36, §48)
+
+A fresh audit of the brief against the code, after the six gap phases, found
+the account side thinner than it looked.
+
+### Granted permissions were the requested ones
+
+`SocialAccount.scopes` is documented as *"the scopes the provider actually
+granted"*. It wasn't. Every adapter's `getAccount` returned the permissions
+it **asked for**, and each Check overwrote the column with that list again.
+Google and X already refused a connection missing their post permission. The
+others didn't, and Facebook's and Instagram's consent screens let a person
+untick individual permissions. So an account could read healthy while unable
+to post, and nobody found out until the first scheduled post failed.
+
+**Where granted permissions now come from:**
+
+| Platform | Source |
+|----------|--------|
+| LinkedIn | The token response's `scope` (comma-separated) |
+| X | The token response's `scope` |
+| YouTube, Business Profile | The token response's `scope` (the shared Google flow) |
+| Instagram | The short-lived exchange's `permissions`. It's carried onto the long-lived token, since only the short response says what was granted. Both of Meta's response shapes are read: flat, and wrapped in `data: [...]` |
+| Facebook | `GET /me/permissions` with the long-lived user token, keeping `status: "granted"` only. The chosen Page inherits the person's grant, carried through the choose-a-Page step. If that lookup fails, the connection still goes ahead, recorded as not reported |
+
+**How it's stored:**
+
+- Grants travel on `ProviderCredentials.scopes`. `ProviderAccount` no longer
+  has a `scopes` field at all, so a profile read can't claim permissions.
+- The new column `scopesReportedAt` separates *not reported* from *granted
+  nothing*. A reconnection replaces the old answer, including with "not
+  reported".
+- A token renewal that reports its grant updates it. One that doesn't leaves
+  the last answer standing.
+- The Check button no longer touches permissions.
+
+`lib/social/scopes.ts` holds the single parser and `PUBLISH_SCOPES`: the
+permission each platform needs to post. A test pins that every one of them is
+something the adapter actually requests.
+
+### Warnings the brief asks for
+
+`accountWarnings()` is derived like `accountHealth()` and never stored. Each
+warning says what to do.
+
+| Warning | When | Needs attention |
+|---------|------|-----------------|
+| Not configured | The deployment has no app credentials for the platform, so nothing can post or be checked. Before, the screen said "Connected" | Yes |
+| Permission | The platform reported its grant, and the post permission isn't in it. An unknown grant is never called missing | Yes |
+| Repeated failures | The last 3 or more finished publications through the account failed. A success ends the run, and attempts still in flight are ignored | Yes |
+| Check overdue | Connected and not checked for over 48 hours, on a configured platform | No: it's a note |
+
+Any warning that needs attention turns the badge to *Needs attention*, on the
+accounts screen and on the Overview. The accounts screen also shows the
+granted permissions, or *"Not reported by the platform"*, and when the next
+check is due.
+
+### Scheduled checks
+
+`syncDueAccounts` runs from the cron. It checks every connected account not
+checked successfully for 24 hours, oldest first, one at a time, the same way
+Sync now does. Both paths share `checkAccount`.
+
+- **Retry.** Each check stamps `lastCheckAttemptAt`, a new column. After a
+  failure, the account waits 6 hours before the next try. Without this, a
+  failing account would be re-checked every five minutes, and three
+  unreachable-platform failures would flag a healthy account within 15
+  minutes.
+- **Never marked on failures alone.** A scheduled check marks an account for
+  reconnection only when the platform rejects the credentials. `escalate:
+  false` turns off the "three failures" rule for this path. The rule still
+  applies to a person pressing the button.
+- **Unconfigured platforms are skipped, not failed.** That's the deployment's
+  state, not the account's.
+- **Next check.** `nextSyncAt()` gives a day after the last good check, or the
+  retry gap after a failed one. There's no next check for an account waiting
+  on a person. When the check is overdue, the screen says it's due on the next
+  scheduled run.
+- **Reporting.** The cron response reports `accountsChecked`.
+
+### Verified
+
+- **Tests:** 26 new.
+  - `tests/social-scopes.test.ts`: 5 tests.
+  - `tests/social-account-health.db.test.ts`: 17 tests.
+  - 3 new Facebook adapter tests and 1 new LinkedIn test.
+  - Exchange assertions added to the LinkedIn, Instagram, X and YouTube tests.
+- **Test doubles now send what the platforms send:** LinkedIn's
+  comma-separated `scope`, Instagram's wrapped `permissions`, and a Facebook
+  `/me/permissions` route.
+- **Mutation checks:** 39 of 39 caught.
+  - Parsing, including unknown versus missing.
+  - Each adapter dropping or faking the grant.
+  - The pending connection carrying it through.
+  - Connect, renewal and check writes.
+  - Every warning's rule and severity.
+  - The failure streak.
+  - Next-check logic.
+  - Each condition of the scheduled check: stale only, retry gap, connected
+    only, configured only, no escalation, attempt stamp, client limit.
+- **Browser, on the production build:** the accounts screen showed seeded
+  Northwind accounts for a missing Facebook post permission, 3 failed
+  Instagram posts, and LinkedIn's unreported grant. In dev no platform is
+  configured, and the screen said so for each. No overflow at 390px, and no
+  page errors. The real cron skipped all three without marking them. The
+  seeded rows were removed afterwards.
+- **Gate:** lint, typecheck, **2041 tests across 127 files**, and the
+  production build. All clean.

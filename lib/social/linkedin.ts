@@ -1,4 +1,5 @@
 import "server-only";
+import { parseGrantedScopes } from "@/lib/social/scopes";
 import { ValidationError } from "@/lib/errors";
 import {
   AmbiguousPublishError,
@@ -65,6 +66,7 @@ type TokenResponse = {
   access_token?: unknown;
   refresh_token?: unknown;
   expires_in?: unknown;
+  scope?: unknown;
 };
 
 type ProfileResponse = {
@@ -171,7 +173,6 @@ export class LinkedInProvider implements SocialProviderAdapter {
       // also takes, so this is stored once and reused at publication.
       profileUrl: "https://www.linkedin.com/in/me",
       avatarUrl: typeof profile.picture === "string" ? profile.picture : null,
-      scopes: [...LINKEDIN_SCOPES],
     };
   }
 
@@ -478,6 +479,8 @@ export class LinkedInProvider implements SocialProviderAdapter {
       accessToken,
       refreshToken: typeof json.refresh_token === "string" ? json.refresh_token : null,
       expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+      // LinkedIn lists what it granted, comma-separated.
+      scopes: parseGrantedScopes(json.scope),
     };
   }
 
