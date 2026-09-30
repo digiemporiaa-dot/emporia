@@ -139,7 +139,11 @@ describeDb("social workflow notifications", () => {
   const fired = (trigger: AutomationTriggerType) =>
     db.notification.count({ where: { userId: users.manager, title: { startsWith: `${TAG} rule ${trigger}` } } });
   const inbox = (userId: string, entityId: string) =>
-    db.notification.findMany({ where: { userId, entityId }, select: { title: true, body: true, href: true } });
+    // Excluding what a test's own rule sent, which carries the same entity.
+    db.notification.findMany({
+      where: { userId, entityId, NOT: { title: { startsWith: `${TAG} rule` } } },
+      select: { title: true, body: true, href: true },
+    });
   const mail = (entityId: string) =>
     db.emailLog.findMany({ where: { entityId, templateKey: "CLIENT_NOTIFICATION" }, select: { to: true, variables: true } });
 

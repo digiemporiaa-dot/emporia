@@ -27,6 +27,11 @@ export async function buildFacts(
   if (subject.projectId) Object.assign(facts, await projectFacts(subject.projectId));
   if (subject.paymentId) Object.assign(facts, await paymentFacts(subject.paymentId));
   if (subject.socialPostId) Object.assign(facts, await socialPostFacts(subject.socialPostId));
+  // Content with no version yet (just created) still has a title and campaign.
+  if (subject.contentItemId && facts["social.title"] === undefined) {
+    Object.assign(facts, await contentItemFacts(subject.contentItemId));
+  }
+  if (subject.socialAccountId) Object.assign(facts, await socialAccountFacts(subject.socialAccountId));
   if (subject.clientId && facts["client.name"] === undefined) {
     const client = await db.client.findUnique({
       where: { id: subject.clientId },
@@ -186,6 +191,37 @@ async function socialPostFacts(postId: string): Promise<Facts> {
     "social.attempts": post.attemptCount,
     "social.error": post.lastError,
     "client.name": post.client.name,
+  };
+}
+
+/** A social idea before any platform version exists. */
+async function contentItemFacts(contentItemId: string): Promise<Facts> {
+  const item = await db.contentCalendarItem.findUnique({
+    where: { id: contentItemId },
+    select: { title: true, campaign: { select: { name: true } }, client: { select: { name: true } } },
+  });
+  if (!item) return {};
+  return {
+    "social.title": item.title,
+    "social.campaignName": item.campaign?.name ?? null,
+    "client.name": item.client.name,
+  };
+}
+
+/**
+ * A connected account. The platform, the account's display name and its
+ * client — never a token, a scope or the provider's own id.
+ */
+async function socialAccountFacts(accountId: string): Promise<Facts> {
+  const account = await db.socialAccount.findUnique({
+    where: { id: accountId },
+    select: { provider: true, name: true, client: { select: { name: true } } },
+  });
+  if (!account) return {};
+  return {
+    "social.provider": account.provider,
+    "social.accountName": account.name,
+    "client.name": account.client.name,
   };
 }
 

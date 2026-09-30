@@ -3119,15 +3119,10 @@ campaign, account, attempts and client name.
 The social triggers that already existed are unchanged: published, failed,
 and client decision.
 
-### Not wired
+### Not wired at the time
 
-- **Account token expiring.** Nothing notices a token nearing expiry ahead of
-  time. Revoked or expired credentials are found at publish or sync time and
-  already mark the account.
-- **Content created.** There is no trigger for this yet.
-
-Both need an event source first. They are left unimplemented rather than
-faked.
+Account expiry and new content had no trigger when this section was written.
+Both are now built; see section 30.
 
 ### Verified
 
@@ -3144,3 +3139,86 @@ faked.
   - Once per day for metrics sync.
 - **Gate:** lint, typecheck, **2008 tests across 124 files**, and the
   production build. All clean.
+
+---
+
+## 30. Account warnings, and the content-created trigger
+
+Section 29 left two gaps. Filling them turned up a third:
+
+- Nobody was warned before an account's access ran out. The accounts screen
+  showed an "expiring" badge, but only to someone who opened it.
+- When a platform rejected an account's credentials, the account quietly
+  became *needs reconnecting*. Scheduled posts then failed one by one.
+- There was no trigger for new content.
+
+### Access about to run out
+
+`warnExpiringAccounts` runs from the cron, after `renewIdleCredentials`.
+Anything renewal could extend is already out of the window. What remains are
+accounts a person must reconnect by hand: connected, holding no refresh token,
+and expiring within 7 days. Typically that's a LinkedIn token, which lasts
+sixty days. These are the same accounts the screen marks as *expiring*.
+
+- **Who hears:** the client's owner and the person who connected the account.
+  Staff only: a client is never told anything about tokens.
+- **The message:** *"LinkedIn access expires in 3 days"*, naming the account
+  and client, with how many scheduled posts use it, linking to the client's
+  accounts page.
+- **Once per expiry date.** The new column `SocialAccount.expiryWarnedFor`
+  records the date warned about. Claiming it is a conditional write, so
+  overlapping cron runs warn once. A reconnection brings a new date, so it
+  warns again.
+- **Days left** round down, so "in 6 days" never overstates the time.
+- **Never warned:** accounts that renew themselves, accounts more than a week
+  off, lapsed accounts (these are marked at first use), and accounts already
+  marked as needing reconnection.
+
+### Needs reconnecting
+
+`recordSyncResult` now makes the change to `NEEDS_RECONNECT` as its own
+conditional write (`WHERE status = 'CONNECTED'`). Publishing, metrics, a
+token refresh and the Check button can all notice together, and exactly one of
+them makes the change. Only that one announces it, to the same two people,
+with the reason and the number of scheduled posts affected. Later failures on
+an account that's already marked tell nobody.
+
+### New triggers
+
+| Trigger | Fires when | Facts |
+|---------|-----------|-------|
+| `SOCIAL_ACCOUNT_EXPIRING` | The warning above goes out | Platform, account name, client name, `social.daysLeft` |
+| `SOCIAL_ACCOUNT_NEEDS_RECONNECT` | The change above happens | Platform, account name, client name |
+| `SOCIAL_CONTENT_CREATED` | `createSocialContent` commits. This covers the form, the planner, repurposing and the occasion flow, which all go through it | Title, campaign, client name |
+
+- Account facts are read fresh from the database in `facts.ts`, like every
+  other fact block. None of them is a token, a scope or the platform's own id,
+  and a test pins that.
+- Rule notifications for social subjects now link somewhere. Before, a
+  "notify someone" rule on a social trigger sent a notification with no link.
+  Now it links to the client's accounts page or to the content item, and
+  carries that entity.
+
+### Verified
+
+- **Tests:** 7 new, in `tests/social-account-notify.db.test.ts`.
+- **Mutation checks:** 20 of 20 caught.
+  - The warning's once-per-date claim, and its window.
+  - Excluding self-renewing, lapsed and marked accounts.
+  - The rounding of days left.
+  - Making the reconnect change atomic, and wiring it.
+  - Both recipients.
+  - The scheduled-posts note.
+  - The daysLeft fact.
+  - The trigger choice.
+  - The content wiring.
+  - Both fact builders.
+  - Both links.
+  - The entity.
+- **The real cron route**, on the production build against the dev database.
+  A seeded LinkedIn account for Northwind, expiring in 4 days, was warned
+  exactly once across two cron runs, with the right text and link. The seeded
+  rows were removed afterwards.
+- **Gate:** lint, typecheck, **2015 tests across 125 files**, and the
+  production build. All clean.
+

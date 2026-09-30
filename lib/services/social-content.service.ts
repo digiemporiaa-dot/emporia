@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
 import { resolveClientScope } from "@/lib/social/scope";
 import { assertPillarForClient } from "@/lib/services/social-brand.service";
+import { announceContentCreated } from "@/lib/services/social-notify.service";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ContentStage } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
@@ -162,7 +163,7 @@ export async function createSocialContent(
     if (!owner) throw new ValidationError("That owner is not a member of staff.");
   }
 
-  return withAudit(
+  const created = await withAudit(
     {
       actor,
       action: "CREATE",
@@ -190,6 +191,9 @@ export async function createSocialContent(
         select: { id: true },
       }),
   );
+  // After the commit, and never able to undo it.
+  await announceContentCreated(created.id, actor.userId);
+  return created;
 }
 
 /** The pickers a social content form needs, all scoped to the one client. */

@@ -7,6 +7,7 @@ import { decryptSecret, encryptSecret } from "@/lib/security/secret";
 import { PROVIDER_LABEL } from "@/lib/social/capabilities";
 import { resolveClientScope } from "@/lib/social/scope";
 import { log } from "@/lib/logger";
+import { announceAccountNeedsReconnect, announceAccountExpiring } from "@/lib/services/social-notify.service";
 import type { SocialAccountStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
 import type {
@@ -260,14 +261,19 @@ export async function recordSyncResult(
 
   await db.socialAccount.update({
     where: { id },
-    data: {
-      lastSyncError: result.error.slice(0, 500),
-      failureCount,
-      ...(needsReconnect && current.status === "CONNECTED"
-        ? { status: "NEEDS_RECONNECT" as SocialAccountStatus }
-        : {}),
-    },
+    data: { lastSyncError: result.error.slice(0, 500), failureCount },
   });
+
+  // The change of state is its own conditional write, so when two paths notice
+  // at once — a publish and the metrics run — exactly one of them makes the
+  // change, and only that one tells anybody.
+  if (needsReconnect && current.status === "CONNECTED") {
+    const { count } = await db.socialAccount.updateMany({
+      where: { id, status: "CONNECTED" },
+      data: { status: "NEEDS_RECONNECT" as SocialAccountStatus },
+    });
+    if (count === 1) await announceAccountNeedsReconnect(id, result.error);
+  }
 }
 
 /**
@@ -589,4 +595,48 @@ export async function renewIdleCredentials(
     else failed += 1;
   }
   return { renewed, failed };
+}
+
+/**
+ * Warn about accounts whose access runs out within a week and will not renew
+ * itself.
+ *
+ * Runs from the cron after `renewIdleCredentials`, so an account that renewal
+ * just extended is no longer due. What is left is what a person must reconnect
+ * by hand: typically a LinkedIn token, which lasts sixty days and has no
+ * refresh token behind it. The same accounts the accounts screen shows as
+ * "expiring".
+ *
+ * Once per expiry date: `expiryWarnedFor` records the date warned about, and
+ * claiming it is a conditional write, so overlapping cron runs warn once.
+ */
+export async function warnExpiringAccounts(now = new Date()): Promise<{ warned: number }> {
+  const due = await db.socialAccount.findMany({
+    where: {
+      status: "CONNECTED",
+      accessToken: { not: null },
+      refreshToken: null,
+      tokenExpiresAt: { not: null, gt: now, lt: new Date(now.getTime() + EXPIRY_WARNING_MS) },
+    },
+    select: { id: true, tokenExpiresAt: true },
+    take: 200,
+  });
+
+  let warned = 0;
+  for (const account of due) {
+    const expiresAt = account.tokenExpiresAt!;
+    const { count } = await db.socialAccount.updateMany({
+      where: {
+        id: account.id,
+        tokenExpiresAt: expiresAt,
+        OR: [{ expiryWarnedFor: null }, { expiryWarnedFor: { not: expiresAt } }],
+      },
+      data: { expiryWarnedFor: expiresAt },
+    });
+    if (count === 0) continue;
+    const daysLeft = Math.floor((expiresAt.getTime() - now.getTime()) / 86_400_000);
+    await announceAccountExpiring(account.id, daysLeft);
+    warned += 1;
+  }
+  return { warned };
 }

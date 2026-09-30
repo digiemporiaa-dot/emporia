@@ -332,6 +332,11 @@ function hrefFor(subject: Subject): string | null {
   if (subject.projectId) return `/admin/projects/${subject.projectId}`;
   if (subject.invoiceId) return `/admin/finance/invoices/${subject.invoiceId}`;
   if (subject.proposalId) return `/admin/sales/proposals/${subject.proposalId}`;
+  // Social subjects always carry their client: every social page lives under it.
+  if (subject.socialAccountId && subject.clientId) return `/admin/clients/${subject.clientId}/social/accounts`;
+  if (subject.contentItemId && subject.clientId) {
+    return `/admin/clients/${subject.clientId}/social/content/${subject.contentItemId}`;
+  }
   return null;
 }
 
@@ -340,6 +345,8 @@ function entityFor(subject: Subject): { type: string; id: string } | null {
   if (subject.projectId) return { type: "Project", id: subject.projectId };
   if (subject.invoiceId) return { type: "Invoice", id: subject.invoiceId };
   if (subject.proposalId) return { type: "Proposal", id: subject.proposalId };
+  if (subject.socialAccountId) return { type: "SocialAccount", id: subject.socialAccountId };
+  if (subject.contentItemId) return { type: "ContentCalendarItem", id: subject.contentItemId };
   return null;
 }
 

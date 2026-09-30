@@ -403,6 +403,9 @@ enum AutomationTriggerType {
   SOCIAL_SENT_FOR_APPROVAL
   SOCIAL_POST_SCHEDULED
   SOCIAL_METRICS_SYNCED
+  SOCIAL_ACCOUNT_EXPIRING
+  SOCIAL_ACCOUNT_NEEDS_RECONNECT
+  SOCIAL_CONTENT_CREATED
 }
 
 enum AutomationActionType {
@@ -2853,6 +2856,10 @@ model SocialAccount {
   accessToken    String?
   refreshToken   String?
   tokenExpiresAt DateTime?
+  /// The `tokenExpiresAt` people were last warned about. Keyed on the value, not
+  /// a flag, so a reconnection (a new expiry) warns again and a repeat cron run
+  /// for the same expiry does not.
+  expiryWarnedFor DateTime?
   /// The scopes the provider actually granted, so a missing permission is a
   /// diagnosable state rather than a mystery failure at publish time.
   scopes         String[]  @default([])

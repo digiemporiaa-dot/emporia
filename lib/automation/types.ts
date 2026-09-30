@@ -36,6 +36,9 @@ export const WIRED_TRIGGERS = [
   "SOCIAL_SENT_FOR_APPROVAL",
   "SOCIAL_POST_SCHEDULED",
   "SOCIAL_METRICS_SYNCED",
+  "SOCIAL_ACCOUNT_EXPIRING",
+  "SOCIAL_ACCOUNT_NEEDS_RECONNECT",
+  "SOCIAL_CONTENT_CREATED",
 ] as const satisfies readonly AutomationTriggerType[];
 
 export type WiredTrigger = (typeof WIRED_TRIGGERS)[number];
@@ -58,6 +61,9 @@ export const TRIGGER_LABEL: Record<WiredTrigger, string> = {
   SOCIAL_SENT_FOR_APPROVAL: "Social content is sent to the client",
   SOCIAL_POST_SCHEDULED: "A social post is scheduled",
   SOCIAL_METRICS_SYNCED: "A social post's figures arrive for the day",
+  SOCIAL_ACCOUNT_EXPIRING: "A social account's access is about to expire",
+  SOCIAL_ACCOUNT_NEEDS_RECONNECT: "A social account needs reconnecting",
+  SOCIAL_CONTENT_CREATED: "New social content is created",
 };
 
 /** What a rule is running about. Ids are the handles actions act through. */
@@ -70,6 +76,7 @@ export type Subject = {
   paymentId?: string | null;
   socialPostId?: string | null;
   contentItemId?: string | null;
+  socialAccountId?: string | null;
   /** Whoever caused the trigger, for the audit trail. Null for the system. */
   actorUserId?: string | null;
 };
@@ -120,6 +127,16 @@ export const TRIGGER_FACTS: Record<WiredTrigger, readonly FactField[]> = {
   ],
   SOCIAL_POST_SCHEDULED: socialFacts(),
   SOCIAL_METRICS_SYNCED: socialFacts(),
+  SOCIAL_ACCOUNT_EXPIRING: [
+    ...accountFacts(),
+    { key: "social.daysLeft", label: "Days until it expires", kind: "number" },
+  ],
+  SOCIAL_ACCOUNT_NEEDS_RECONNECT: accountFacts(),
+  SOCIAL_CONTENT_CREATED: [
+    { key: "social.title", label: "Content title", kind: "string" },
+    { key: "social.campaignName", label: "Campaign", kind: "string" },
+    { key: "client.name", label: "Client name", kind: "string" },
+  ],
   PAYMENT_RECEIVED: [
     ...invoiceFacts(),
     { key: "payment.amount", label: "Payment amount", kind: "money" },
@@ -150,6 +167,15 @@ function leadFacts(): FactField[] {
 }
 
 /** What a rule can read about a social post. */
+/** What a rule knows about a connected account. Never a token or a scope. */
+function accountFacts(): FactField[] {
+  return [
+    { key: "social.provider", label: "Platform", kind: "string" },
+    { key: "social.accountName", label: "Account", kind: "string" },
+    { key: "client.name", label: "Client name", kind: "string" },
+  ];
+}
+
 function socialFacts(): FactField[] {
   return [
     { key: "social.provider", label: "Platform", kind: "string" },
