@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
+  portalDirectPosts,
   portalPublished,
   portalSocialApprovals,
   portalSocialCalendar,
@@ -114,6 +115,8 @@ describeDb("portal social", () => {
   });
 
   afterAll(async () => {
+    await db.socialExternalPost.deleteMany({ where: { clientId: { in: [clientA, clientB] } } });
+    await db.socialAccount.deleteMany({ where: { clientId: { in: [clientA, clientB] } } });
     await db.approval.deleteMany({ where: { clientId: { in: [clientA, clientB] } } });
     await db.socialPost.deleteMany({ where: { clientId: { in: [clientA, clientB] } } });
     await db.contentCalendarItem.deleteMany({ where: { clientId: { in: [clientA, clientB] } } });
@@ -168,4 +171,34 @@ describeDb("portal social", () => {
     expect(list.posts.map((p) => p.id)).toEqual([ids["november"], ids["published"]]);
     expect(list.posts[0]).toMatchObject({ engagement: null, reach: null, rate: null, externalUrl: "https://instagram.example/p" });
   });
+
+  it("shows the client's own direct posts apart, scoped to their session, with nothing internal", async () => {
+    const accounts = await Promise.all(
+      [clientA, clientB].map((clientId, i) =>
+        db.socialAccount.create({
+          data: { clientId, provider: "INSTAGRAM", externalId: `${TAG}-ig-${i}`, name: `IG ${i}`, status: "CONNECTED", accessToken: "x" },
+          select: { id: true },
+        }),
+      ),
+    );
+    await db.socialExternalPost.createMany({
+      data: [
+        { clientId: clientA, accountId: accounts[0]!.id, provider: "INSTAGRAM", externalPostId: `${TAG}-a1`, externalUrl: "https://instagram.example/a1", caption: "Our own reel", format: "REELS", publishedAt: new Date("2026-10-20T06:00:00Z"), reach: 500, likes: 30, comments: 4, metricsAt: new Date() },
+        { clientId: clientA, accountId: accounts[0]!.id, provider: "INSTAGRAM", externalPostId: `${TAG}-a2`, caption: "No figures yet", publishedAt: new Date("2026-10-18T06:00:00Z") },
+        { clientId: clientB, accountId: accounts[1]!.id, provider: "INSTAGRAM", externalPostId: `${TAG}-b1`, caption: "Someone else's", publishedAt: new Date("2026-10-19T06:00:00Z") },
+      ],
+    });
+
+    const mine = await portalDirectPosts(portalA, 1);
+    expect(mine.total).toBe(2);
+    expect(mine.posts.map((p) => p.caption)).toEqual(["Our own reel", "No figures yet"]);
+    expect(mine.posts[0]).toMatchObject({ reach: 500, engagement: 34, externalUrl: "https://instagram.example/a1" });
+    expect(mine.posts[1]).toMatchObject({ reach: null, engagement: null });
+    expect(Object.keys(mine.posts[0]!).sort()).toEqual(["caption", "engagement", "externalUrl", "format", "id", "provider", "publishedAt", "reach", "thumbnailUrl"]);
+    expect((await portalDirectPosts(portalB, 1)).posts.map((p) => p.caption)).toEqual(["Someone else's"]);
+
+    // Never in the list of what the agency published.
+    expect((await portalPublished(portalA, 1)).posts.map((p) => p.title)).not.toContain("Our own reel");
+  });
 });
+

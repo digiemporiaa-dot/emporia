@@ -187,3 +187,50 @@ export async function portalPublished(actor: PortalActor, page: number) {
     }),
   };
 }
+
+export const PORTAL_DIRECT_PAGE = 20;
+
+/**
+ * Posts the client made directly on their own accounts, outside Emporia,
+ * found by the daily account check (brief §48). Shown apart from the agency's
+ * posts and never mixed into them — the same separate line the reports carry.
+ *
+ * Scoped by the session's client only. Carries nothing internal: no account
+ * id, no platform id, no read timestamps — only what the client could see on
+ * the platform themselves, plus the figures it reported.
+ */
+export async function portalDirectPosts(actor: PortalActor, page: number) {
+  const where: Prisma.SocialExternalPostWhereInput = { clientId: actor.clientId };
+  const current = Math.max(1, page);
+  const [total, rows] = await Promise.all([
+    db.socialExternalPost.count({ where }),
+    db.socialExternalPost.findMany({
+      where,
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      skip: (current - 1) * PORTAL_DIRECT_PAGE,
+      take: PORTAL_DIRECT_PAGE,
+      select: { id: true, provider: true, caption: true, format: true, externalUrl: true, thumbnailUrl: true, publishedAt: true, ...SNAPSHOT_SELECT },
+    }),
+  ]);
+  return {
+    total,
+    page: current,
+    pages: Math.max(1, Math.ceil(total / PORTAL_DIRECT_PAGE)),
+    posts: rows.map((row) => {
+      const figures = toReportRow({ id: row.id, provider: row.provider, metrics: [row] });
+      return {
+        id: row.id,
+        provider: row.provider,
+        caption: row.caption,
+        format: row.format,
+        externalUrl: row.externalUrl,
+        thumbnailUrl: row.thumbnailUrl,
+        publishedAt: row.publishedAt.toISOString(),
+        reach: figures.reach,
+        engagement: isMeasured(figures) ? engagementOf(figures) : null,
+      };
+    }),
+  };
+}
+
+export type PortalDirectPost = Awaited<ReturnType<typeof portalDirectPosts>>["posts"][number];

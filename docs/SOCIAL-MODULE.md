@@ -3602,3 +3602,49 @@ Portal pages were left alone, because their queries are light.
   - No page errors. Everything seeded, and the rule and task, were removed.
 - **Gate:** lint, typecheck, **2069 tests across 131 files**, and the
   production build. All clean.
+
+---
+
+## 35. The client's direct posts in the portal
+
+Section 32 brought in posts made directly on the platforms, and showed them
+to the agency and in reports. The client's own Published tab didn't show
+them. That tab now has a source switch:
+
+- **Published by us** (the default) is unchanged.
+- **Posted directly by you** lists the client's own posts: newest first, 20
+  per page, each with its interactions and reach where the platform reported
+  them, and a link to the post. A short note says these are kept apart from
+  the agency's figures and reports, and that LinkedIn and X can't be read.
+
+`portalDirectPosts` is scoped only by the session's client. A post's output
+is built field by field, and a test pins its keys exactly: id, platform,
+caption, format, link, thumbnail, time, reach, engagement. There's no account
+ID, no platform ID and no read timestamp.
+
+### Verified
+
+- **Tests:** 1 new case in `tests/portal-social.db.test.ts`, covering
+  session scoping, the exact public keys, figures versus "not reported",
+  newest first, and never appearing in the agency list.
+- **Mutation checks:** 5 run, 4 caught. The survivor selects `accountId` from
+  the database. That's equivalent, because the output is built field by field
+  and its keys are pinned; the mutant that added a field to the *output* was
+  caught.
+- **Browser, as the Northwind portal user:** two seeded direct posts showed
+  under *Posted directly by you*, with 269 interactions and 3,100 reached,
+  matching the seeded figures. The other said "Figures not reported yet". The
+  agency tab didn't include them. No overflow at 390px and no page errors.
+  The seeded rows were removed.
+- **Gate:** lint, typecheck, **2070 tests across 131 files**, and the
+  production build.
+- **One failed run, investigated.** A full run had three failures:
+  password-reset, a navigation audit test, and a social-isolation audit
+  test. All three were **timeouts** (5–10 seconds), not wrong results.
+  - The same suite's run time ranged from 111s to 193s across runs on
+    identical code, on a 4-core container.
+  - The audit table the isolation test reads holds 622 `SocialAccount` rows,
+    with indexes in place.
+  - The rerun was fully green at 111s.
+  - This is load, not the code. It's worth raising those tests' timeouts if
+    it recurs in CI.
