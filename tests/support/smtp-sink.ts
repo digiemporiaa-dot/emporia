@@ -25,6 +25,15 @@ export class SmtpSink {
   /** When set, the server refuses at that command with a 5xx. */
   rejectAt: "MAIL" | "RCPT" | "DATA" | null = null;
 
+  /**
+   * When set, the server requires AUTH PLAIN with exactly these credentials:
+   * wrong ones get 535, and mail without logging in gets 530 — what a real
+   * provider does, so the "authentication failed" path is exercised for real.
+   */
+  credentials: { user: string; pass: string } | null = null;
+  /** Who logged in most recently, for assertions. */
+  lastAuthUser: string | null = null;
+
   async start(): Promise<number> {
     this.server = createServer((socket: Socket) => this.session(socket));
 
@@ -46,6 +55,7 @@ export class SmtpSink {
   private session(socket: Socket): void {
     let buffer = "";
     let inData = false;
+    let authenticated = false;
     let current: CapturedMail = { from: "", to: [], data: "" };
 
     socket.write("220 sink.test ESMTP ready\r\n");
@@ -72,9 +82,20 @@ export class SmtpSink {
           const upper = line.toUpperCase();
 
           if (upper.startsWith("EHLO") || upper.startsWith("HELO")) {
-            socket.write("250-sink.test\r\n250 8BITMIME\r\n");
+            socket.write(this.credentials ? "250-sink.test\r\n250-AUTH PLAIN\r\n250 8BITMIME\r\n" : "250-sink.test\r\n250 8BITMIME\r\n");
+          } else if (upper.startsWith("AUTH PLAIN")) {
+            const [, user = "", pass = ""] = Buffer.from(line.slice("AUTH PLAIN".length).trim(), "base64").toString("utf8").split("\0");
+            if (this.credentials && user === this.credentials.user && pass === this.credentials.pass) {
+              authenticated = true;
+              this.lastAuthUser = user;
+              socket.write("235 2.7.0 Authentication successful\r\n");
+            } else {
+              socket.write("535 5.7.8 Authentication credentials invalid\r\n");
+            }
           } else if (upper.startsWith("MAIL FROM")) {
-            if (this.rejectAt === "MAIL") {
+            if (this.credentials && !authenticated) {
+              socket.write("530 5.7.0 Authentication required\r\n");
+            } else if (this.rejectAt === "MAIL") {
               socket.write("550 5.1.8 Sender rejected\r\n");
             } else {
               current.from = extractAddress(line);
@@ -94,6 +115,10 @@ export class SmtpSink {
               inData = true;
               socket.write("354 End data with <CR><LF>.<CR><LF>\r\n");
             }
+          } else if (upper === "STARTTLS") {
+            // No TLS here, and a real server without it says so rather than
+            // agreeing and then failing the handshake.
+            socket.write("502 5.5.1 STARTTLS not available\r\n");
           } else if (upper === "QUIT") {
             socket.write("221 2.0.0 Bye\r\n");
             socket.end();

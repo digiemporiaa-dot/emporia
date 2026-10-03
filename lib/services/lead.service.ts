@@ -136,7 +136,7 @@ export async function captureContactLead(
   // After the transaction, and deliberately not awaited into it: a lead is
   // captured whether or not the alert goes out, and the send is logged either
   // way (lib/services/email.service.ts).
-  await alertNewLead(lead.id);
+  await alertNewLead(lead.id, { form: "Contact form", path: context.landingPath });
 
   // After the capture is committed, and never able to undo it.
   await runAutomations("LEAD_CREATED", { leadId: lead.id });
@@ -200,7 +200,7 @@ export async function capturePopupLead(
   // A popup id from the client is only honoured if it names a real popup.
   const popup = await db.popup.findUnique({
     where: { id: input.popupId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!popup) {
     throw new ValidationError("That form is no longer available.");
@@ -321,7 +321,7 @@ export async function capturePopupLead(
   });
 
   // Outside the transaction, for the same reason as the contact form.
-  await alertNewLead(result.leadId);
+  await alertNewLead(result.leadId, { form: `Popup “${popup.name}”`, path: context.path });
   await runAutomations("LEAD_CREATED", { leadId: result.leadId });
 
   return result;
@@ -502,7 +502,10 @@ export async function capturePageFormLead(
 
   // Outside the transaction, for the same reason as the other two paths: a lead
   // is captured whether or not the alert goes out.
-  await alertNewLead(result.leadId);
+  await alertNewLead(result.leadId, {
+    form: `${block.variant[0]?.toUpperCase() ?? ""}${block.variant.slice(1)} form on “${section.page.title}”`,
+    path: context.path,
+  });
   await runAutomations("LEAD_CREATED", { leadId: result.leadId });
 
   return { ...result, successMessage: block.successMessage };

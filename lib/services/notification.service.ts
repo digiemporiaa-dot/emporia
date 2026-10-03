@@ -49,7 +49,12 @@ export async function notify(input: NotifyInput) {
  * email result is returned so a caller that cares can look.
  */
 export async function notifyWithEmail(
-  input: NotifyInput & { templateKey: EmailTemplateKey; variables: Record<string, string> },
+  input: NotifyInput & {
+    templateKey: EmailTemplateKey;
+    variables: Record<string, string>;
+    /** False keeps the in-app row and skips the mail — a toggle in Settings → Email is off. */
+    email?: boolean;
+  },
 ) {
   const user = await db.user.findUnique({
     where: { id: input.userId },
@@ -60,7 +65,7 @@ export async function notifyWithEmail(
   const notification = await notify(input);
 
   // A suspended account still gets the in-app row for the record, but no mail.
-  if (user.status !== "ACTIVE") {
+  if (user.status !== "ACTIVE" || input.email === false) {
     return { notification, email: null };
   }
 

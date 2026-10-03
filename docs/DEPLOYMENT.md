@@ -95,7 +95,7 @@ the screen explains what is missing. Nothing is faked, ever.
 
 | Group      | Keys                                                                                       | Off means                                                        |
 | ---------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Email      | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_SECURE`              | no mail sends; attempts are still logged                         |
+| Email      | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_SECURE`              | no mail sends unless set in **Settings → Email**; attempts logged |
 | Storage    | `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET_NAME` `R2_PUBLIC_URL` | media library refuses uploads                                    |
 | Payments   | `RAZORPAY_KEY_ID` `RAZORPAY_KEY_SECRET` `RAZORPAY_WEBHOOK_SECRET`                          | invoices can still be recorded paid manually; no online checkout |
 | AI         | `AI_PROVIDER=anthropic` `AI_API_KEY`                                                       | AI drafting hidden                                               |
@@ -350,6 +350,15 @@ visible there, not swallowed and not surfaced as an error to the visitor.
 
 `SMTP_SECURE=true` for implicit TLS (port 465); leave it false for STARTTLS
 (587).
+
+The environment is only the fallback. An admin can enter the SMTP server in
+**Settings → Email** instead, and once a host is saved there it wins — the
+environment is ignored, and switching "Send email using these settings" off
+stops all mail rather than falling back. The saved password is encrypted with
+`AUTH_SECRET`; rotating that secret makes it unreadable, and sending stops with
+a line asking for it to be entered again. Use **Test connection** after any
+change, and **Send a test** to see a real message arrive
+(docs/ARCHITECTURE.md §16B).
 
 ### AI
 

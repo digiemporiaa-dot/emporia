@@ -73,6 +73,7 @@ describe("the default templates", () => {
       [
         "CLIENT_NOTIFICATION",
         "FOLLOW_UP",
+        "FORM_SUBMISSION",
         "INVOICE_SENT",
         "LEAD_ASSIGNED",
         "NEW_LEAD",

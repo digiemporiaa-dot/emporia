@@ -4,13 +4,12 @@ import * as React from "react";
 import { useActionState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, CheckCircle2, RotateCw } from "lucide-react";
+import { AlertCircle, RotateCw } from "lucide-react";
 import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
 import {
   retryEmailAction,
   saveTemplateAction,
   sendTestAction,
-  verifyMailerAction,
   type EmailActionState,
 } from "./actions";
 import type { EmailStatus } from "@/generated/prisma/enums";
@@ -33,54 +32,6 @@ function Submit({ label }: { label: string }) {
     <Button type="submit" size="sm" disabled={pending}>
       {pending ? "Working…" : label}
     </Button>
-  );
-}
-
-export function MailerCheck({ configured }: { configured: boolean }) {
-  const [pending, start] = useTransition();
-  const [result, setResult] = React.useState<{ ok: boolean; message: string } | null>(null);
-
-  return (
-    <div className="space-y-2">
-      {configured ? null : (
-        <p className="rounded-md border border-warning/30 bg-warning-bg px-3 py-2 text-xs text-warning">
-          No mail server is configured, so every send will be recorded as failed. Set the SMTP_*
-          environment variables.
-        </p>
-      )}
-
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={pending}
-          onClick={() => {
-            setResult(null);
-            start(async () => {
-              const outcome = await verifyMailerAction();
-              setResult(
-                outcome.ok
-                  ? { ok: true, message: outcome.data.message }
-                  : { ok: false, message: outcome.message },
-              );
-            });
-          }}
-        >
-          {pending ? "Checking…" : "Test the connection"}
-        </Button>
-
-        {result ? (
-          result.ok ? (
-            <span role="status" className="flex items-center gap-1 text-xs text-success">
-              <CheckCircle2 size={13} aria-hidden="true" />
-              {result.message}
-            </span>
-          ) : (
-            <Problem message={result.message} />
-          )
-        ) : null}
-      </div>
-    </div>
   );
 }
 

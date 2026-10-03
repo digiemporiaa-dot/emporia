@@ -4,7 +4,7 @@ import { env } from "@/lib/config/env";
 import { NotFoundError, ValidationError, isAppError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
-import { mailer } from "@/lib/email";
+import { resolveMailer } from "@/lib/email";
 import { htmlToText, missingVariables, render } from "@/lib/email/render";
 import { DEFAULT_TEMPLATES, GLOBAL_VARIABLES } from "@/lib/email/templates";
 import { log } from "@/lib/logger";
@@ -37,14 +37,16 @@ export type SendOptions = {
   variables: Record<string, string>;
   /** What this email is about, so the log can be filtered by record. */
   entity?: { type: string; id: string } | null;
+  /** Where a reply should go, for this message only — a lead alert replies to the lead. */
+  replyTo?: string | null;
 };
 
 export type SendOutcome =
   | { ok: true; logId: string; messageId: string | null }
   | { ok: false; logId: string | null; error: string };
 
-/** Site-wide values every template may use. */
-async function globals(): Promise<Record<string, string>> {
+/** The site name and URL every template can use. Also the brand line of the SMTP test email. */
+export async function globals(): Promise<Record<string, string>> {
   const setting = await db.siteSetting.findUnique({
     where: { key: "site.name" },
     select: { value: true },
@@ -121,7 +123,15 @@ export async function sendTemplate(
     });
     logId = row.id;
 
-    const result = await mailer().send({ to: options.to, cc: options.cc ?? null, subject, html, text });
+    const { provider } = await resolveMailer();
+    const result = await provider.send({
+      to: options.to,
+      cc: options.cc ?? null,
+      replyTo: options.replyTo ?? null,
+      subject,
+      html,
+      text,
+    });
 
     await db.emailLog.update({
       where: { id: row.id },

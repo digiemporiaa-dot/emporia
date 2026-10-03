@@ -3,10 +3,11 @@ import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { can, requirePermission } from "@/lib/auth/rbac";
 import { listEmailLog, listTemplates } from "@/lib/services/email.service";
-import { isEmailConfigured } from "@/lib/email";
+import { getEmailSettings } from "@/lib/services/email-settings.service";
 import { emailLogParamsSchema } from "@/lib/validation/email";
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
-import { EmailLogTable, MailerCheck } from "./email-panels";
+import { EmailLogTable } from "./email-panels";
+import { SmtpSettingsForm } from "./smtp-settings-form";
 
 export const metadata: Metadata = { title: "Email" };
 export const dynamic = "force-dynamic";
@@ -23,7 +24,8 @@ export default async function EmailSettingsPage({
   const parsed = emailLogParamsSchema.safeParse(raw);
   const params = parsed.success ? parsed.data : emailLogParamsSchema.parse({});
 
-  const [templates, logResult] = await Promise.all([
+  const [settings, templates, logResult] = await Promise.all([
+    getEmailSettings(actor),
     listTemplates(actor),
     listEmailLog(actor, params),
   ]);
@@ -34,19 +36,16 @@ export default async function EmailSettingsPage({
         <p className="text-2xs font-semibold uppercase tracking-widest text-brand-red-text">Settings</p>
         <h1 className="mt-1.5 text-2xl text-navy-800">Email</h1>
         <p className="mt-1.5 text-xs text-ink-subtle">
-          Every send is recorded here, including the ones that failed.
+          SMTP delivery, notification recipients and the transactional templates.
         </p>
       </header>
 
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Mail server</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <MailerCheck configured={isEmailConfigured()} />
-          </CardBody>
-        </Card>
+        <SmtpSettingsForm
+          initial={settings}
+          canEdit={can(actor, "settings.edit")}
+          canSend={can(actor, "emails.send")}
+        />
 
         <Card>
           <CardHeader>
@@ -78,7 +77,8 @@ export default async function EmailSettingsPage({
         </Card>
 
         <section>
-          <h2 className="mb-3 font-display text-lg text-navy-800">Send log</h2>
+          <h2 className="mb-1 font-display text-lg text-navy-800">Send log</h2>
+          <p className="mb-3 text-xs text-ink-subtle">Every send is recorded here, including the ones that failed.</p>
           <EmailLogTable
             rows={logResult.rows.map((row) => ({
               id: row.id,

@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { requireActor } from "@/lib/actor";
 import * as email from "@/lib/services/email.service";
 import * as notifications from "@/lib/services/notification.service";
-import { mailer } from "@/lib/email";
-import { templateUpdateSchema, testSendSchema } from "@/lib/validation/email";
+import * as emailSettings from "@/lib/services/email-settings.service";
+import type { SafeEmailSettings } from "@/lib/services/email-settings.service";
+import { smtpSettingsSchema, smtpTestSendSchema, templateUpdateSchema, testSendSchema } from "@/lib/validation/email";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
-import { requirePermission } from "@/lib/auth/rbac";
 import { log } from "@/lib/logger";
 
 const actionLog = log("email");
@@ -87,15 +87,57 @@ export async function sendTestAction(
   }
 }
 
-export async function verifyMailerAction(): Promise<ActionResult<{ message: string }>> {
+/** Zod's issues as `{ field: [message] }`, for inline errors beside each input. */
+function fieldErrors(issues: { path: PropertyKey[]; message: string }[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const key = String(issue.path[0] ?? "form");
+    (out[key] ??= []).push(issue.message);
+  }
+  return out;
+}
+
+export async function saveSmtpSettingsAction(input: unknown): Promise<ActionResult<{ settings: SafeEmailSettings; message: string }>> {
   try {
     const actor = await requireActor();
-    requirePermission(actor, "emails.view");
-
-    await mailer().verify();
-    return { ok: true, data: { message: "The mail server answered." } };
+    const parsed = smtpSettingsSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check the form.", details: fieldErrors(parsed.error.issues) };
+    }
+    const settings = await emailSettings.saveEmailSettings(actor, parsed.data);
+    revalidatePath("/admin/settings/email");
+    return { ok: true, data: { settings, message: "Email settings saved successfully." } };
   } catch (error) {
-    actionLog.warn({ err: error }, "mailer verification failed");
+    actionLog.warn({ code: (error as { code?: unknown })?.code }, "smtp settings save refused");
+    return toActionFailure(error);
+  }
+}
+
+/** Test connection: what is in the form now, nothing saved, nothing sent. */
+export async function verifySmtpAction(input: unknown): Promise<ActionResult<{ message: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = smtpSettingsSchema.safeParse({ ...(input as object), enabled: false });
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check the form.", details: fieldErrors(parsed.error.issues) };
+    }
+    const result = await emailSettings.verifySmtpSettings(actor, parsed.data);
+    return result.ok ? { ok: true, data: { message: result.message } } : { ok: false, code: "INTEGRATION_NOT_CONFIGURED", message: result.message };
+  } catch (error) {
+    return toActionFailure(error);
+  }
+}
+
+/** Send a test: a real email through the saved settings. */
+export async function sendSmtpTestAction(input: unknown): Promise<ActionResult<{ message: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = smtpTestSendSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Enter a valid email address." };
+    const result = await emailSettings.sendSmtpTestEmail(actor, parsed.data.to);
+    revalidatePath("/admin/settings/email");
+    return result.ok ? { ok: true, data: { message: result.message } } : { ok: false, code: "INTEGRATION_NOT_CONFIGURED", message: result.message };
+  } catch (error) {
     return toActionFailure(error);
   }
 }
