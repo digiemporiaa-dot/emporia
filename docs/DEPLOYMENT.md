@@ -360,6 +360,29 @@ a line asking for it to be entered again. Use **Test connection** after any
 change, and **Send a test** to see a real message arrive
 (docs/ARCHITECTURE.md §16B).
 
+### Google Search Console (SEO Intelligence)
+
+No environment variables: the credentials are entered in **Marketing → SEO
+Intelligence → Settings** (needs `seo.intelligence.connect`) and stored
+encrypted with `AUTH_SECRET`. Set up either or both:
+
+1. **Sign in with Google.** In a Google Cloud project, enable the *Google
+   Search Console API*, create an OAuth client of type *Web application*, and
+   add the authorised redirect URI the settings page shows —
+   `${SITE_URL}/api/seo/google/callback`. Until Google verifies the app, only
+   the test users listed on its consent screen can sign in.
+2. **Service account.** In the same project, create a service account, add a
+   JSON key, and paste the whole file into the settings page. A client then
+   adds the service account's address as a user (Restricted is enough) in
+   their Search Console.
+
+Data arrives through the scheduler (`/api/cron`, §4): each run syncs up to two
+websites, re-reading the last five days and filling history a month at a time
+until it reaches the 16 months Google keeps. A busy installation with many
+websites needs the cron at least every 15 minutes for history to fill
+promptly. **Sync now** on a website's Search Console page runs one sync
+immediately (three per website per ten minutes).
+
 ### AI
 
 `AI_PROVIDER=anthropic` is the only implemented value. Any other value leaves AI

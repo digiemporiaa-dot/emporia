@@ -1,5 +1,6 @@
 import "server-only";
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
+import { derivedSecret, issueSignedState, readSignedState, type SignedStateFailure } from "@/lib/security/signed-state";
 import { env } from "@/lib/config/env";
 import type { SocialProvider } from "@/generated/prisma/enums";
 
@@ -45,17 +46,7 @@ export type OAuthState = {
   returnTo: string;
 };
 
-function key(): Buffer {
-  return createHash("sha256").update(`${env().AUTH_SECRET}:social-oauth`).digest();
-}
-
-function sign(payload: string): string {
-  return createHmac("sha256", key()).update(payload).digest("base64url");
-}
-
-function encode(value: object): string {
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-}
+const PURPOSE = "social-oauth";
 
 /** Build the state to send, plus the nonce to store in the cookie. */
 export function issueState(input: {
@@ -63,15 +54,12 @@ export function issueState(input: {
   provider: SocialProvider;
   returnTo: string;
 }): { state: string; nonce: string } {
-  const nonce = randomBytes(24).toString("base64url");
-  const payload: OAuthState = { ...input, nonce, issuedAt: Date.now() };
-  const body = encode(payload);
-  return { state: `${body}.${sign(body)}`, nonce };
+  return issueSignedState(PURPOSE, input);
 }
 
 export type StateResult =
   | { ok: true; value: OAuthState }
-  | { ok: false; reason: "malformed" | "signature" | "expired" | "nonce" };
+  | { ok: false; reason: SignedStateFailure };
 
 /**
  * Read a state back, refusing anything that is not exactly what we issued.
@@ -81,47 +69,10 @@ export type StateResult =
  * the screen — while telling the operator the same generic thing.
  */
 export function readState(state: string | null, cookieNonce: string | null): StateResult {
-  if (!state) return { ok: false, reason: "malformed" };
-
-  const at = state.lastIndexOf(".");
-  if (at <= 0) return { ok: false, reason: "malformed" };
-
-  const body = state.slice(0, at);
-  const signature = state.slice(at + 1);
-
-  const expected = Buffer.from(sign(body), "utf8");
-  const given = Buffer.from(signature, "utf8");
-  // Length-checked first: timingSafeEqual throws on a mismatch.
-  if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
-    return { ok: false, reason: "signature" };
-  }
-
-  let payload: OAuthState;
-  try {
-    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as OAuthState;
-  } catch {
-    return { ok: false, reason: "malformed" };
-  }
-
-  if (
-    typeof payload.clientId !== "string" ||
-    typeof payload.provider !== "string" ||
-    typeof payload.nonce !== "string" ||
-    typeof payload.issuedAt !== "number"
-  ) {
-    return { ok: false, reason: "malformed" };
-  }
-
-  if (Date.now() - payload.issuedAt > MAX_AGE_MS) return { ok: false, reason: "expired" };
-
-  // The half an attacker cannot supply: the nonce lives in an httpOnly cookie
-  // on the browser that started the flow.
-  if (!cookieNonce) return { ok: false, reason: "nonce" };
-  const a = Buffer.from(payload.nonce, "utf8");
-  const b = Buffer.from(cookieNonce, "utf8");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, reason: "nonce" };
-
-  return { ok: true, value: payload };
+  return readSignedState<OAuthState>(PURPOSE, state, cookieNonce, {
+    maxAgeMs: MAX_AGE_MS,
+    isPayload: (value) => typeof value["clientId"] === "string" && typeof value["provider"] === "string",
+  });
 }
 
 /**
@@ -147,7 +98,7 @@ export function callbackUrl(provider: SocialProvider): string {
  * the shortest a verifier may be and more than enough entropy.
  */
 export function pkceVerifier(nonce: string): string {
-  return createHmac("sha256", key()).update(`pkce:${nonce}`).digest("base64url");
+  return derivedSecret(PURPOSE, `pkce:${nonce}`);
 }
 
 /** The S256 challenge sent in place of the verifier. */

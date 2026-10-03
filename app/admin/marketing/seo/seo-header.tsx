@@ -11,9 +11,11 @@ import { cn } from "@/lib/utils/cn";
  * (CLAUDE.md 2 rule 5) — each phase adds its tab when it lands.
  */
 
-const TABS: readonly { href: Route; label: string; key: string }[] = [
+const TABS: readonly { href: Route; label: string; key: string; connectOnly?: boolean }[] = [
   { href: "/admin/marketing/seo", label: "Overview", key: "overview" },
+  { href: "/admin/marketing/seo/performance", label: "Search performance", key: "performance" },
   { href: "/admin/marketing/seo/properties", label: "Websites", key: "properties" },
+  { href: "/admin/marketing/seo/settings", label: "Settings", key: "settings", connectOnly: true },
 ];
 
 export function SeoHeader({
@@ -22,6 +24,7 @@ export function SeoHeader({
   description,
   crumbs = [],
   query = "",
+  canConnect = false,
 }: {
   current: string;
   title: string;
@@ -29,6 +32,8 @@ export function SeoHeader({
   crumbs?: readonly { href?: Route; label: string }[];
   /** Carried across tabs, e.g. `?property=…`. */
   query?: string;
+  /** Shows the Settings tab (Google credentials), which needs `seo.intelligence.connect`. */
+  canConnect?: boolean;
 }) {
   return (
     <header className="mb-6">
@@ -56,10 +61,10 @@ export function SeoHeader({
       <h1 className="mt-1.5 text-2xl text-navy-800">{title}</h1>
       {description ? <p className="mt-1.5 max-w-3xl text-xs text-ink-subtle">{description}</p> : null}
       <nav aria-label="SEO Intelligence sections" className="mt-4 flex gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => !tab.connectOnly || canConnect).map((tab) => (
           <Link
             key={tab.key}
-            href={`${tab.href}${query}` as Route}
+            href={`${tab.href}${tab.connectOnly ? "" : query}` as Route}
             aria-current={tab.key === current ? "page" : undefined}
             className={cn(
               "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm",

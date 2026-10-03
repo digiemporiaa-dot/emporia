@@ -533,6 +533,7 @@ model User {
 
   socialAccountsConnected    SocialAccount[]           @relation("SocialAccountConnectedBy")
   seoPropertiesCreated       SeoProperty[]             @relation("SeoPropertyCreatedBy")
+  seoConnectionsMade         SeoConnection[]           @relation("SeoConnectionConnectedBy")
   socialPendingConnections   SocialPendingConnection[]
   socialBrandProfilesUpdated SocialBrandProfile[]      @relation("SocialBrandProfileUpdatedBy")
   socialStrategiesUpdated    SocialStrategy[]          @relation("SocialStrategyUpdatedBy")
@@ -3406,9 +3407,168 @@ model SeoProperty {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  connections SeoConnection[]
+  syncRuns    SeoSyncRun[]
+  gscTotals   GscDailyTotal[]
+  gscQueries  GscQueryDaily[]
+  gscPages    GscPageDaily[]
+
   @@unique([clientId, domain])
   @@index([clientId, isActive])
   @@index([projectId])
   @@index([defaultCountryId])
   @@index([createdById])
+}
+
+enum SeoDataSource {
+  SEARCH_CONSOLE
+  ANALYTICS
+}
+
+enum SeoAuthMethod {
+  /// A Google user clicked Allow; tokens are theirs.
+  OAUTH
+  /// The agency's service account was added as a user on the client's property.
+  SERVICE_ACCOUNT
+}
+
+enum SeoConnectionStatus {
+  /// Signed in, but no Search Console site / GA4 property chosen yet.
+  PENDING
+  CONNECTED
+  /// Google refused the credentials or the site; needs a person.
+  ERROR
+}
+
+enum SeoSyncTrigger {
+  SCHEDULED
+  MANUAL
+}
+
+enum SeoSyncStatus {
+  RUNNING
+  SUCCEEDED
+  /// Some days were written, then something failed; the next run resumes.
+  PARTIAL
+  FAILED
+}
+
+/// How a property reads one Google data source. One per property and source.
+model SeoConnection {
+  id         String              @id @default(cuid())
+  propertyId String
+  property   SeoProperty         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  source     SeoDataSource
+  method     SeoAuthMethod
+  status     SeoConnectionStatus @default(PENDING)
+
+  /// Encrypted. OAuth only; a service account mints its own short-lived tokens.
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  /// What Google actually granted — never the list requested.
+  scopes         String[]  @default([])
+  /// The Google account that signed in, or the service account's address.
+  accountEmail   String?
+
+  /// The Search Console site ("sc-domain:…" or a URL prefix) or GA4 property.
+  externalId      String?
+  /// Google's permission level for that site, e.g. "siteOwner".
+  permissionLevel String?
+
+  lastSyncedAt    DateTime?
+  lastAttemptAt   DateTime?
+  lastSyncError   String?
+  failureCount    Int       @default(0)
+  /// Set while a sync runs, so two cannot run at once; expires on its own if a
+  /// run dies mid-way.
+  syncLockedUntil DateTime?
+  /// The earliest day fetched so far. Backfill walks this back towards the
+  /// oldest day Google keeps; null before the first sync.
+  backfilledFrom  DateTime? @db.Date
+  /// The latest day Google had data for at the last sync.
+  dataThrough     DateTime? @db.Date
+
+  connectedById String?
+  connectedBy   User?   @relation("SeoConnectionConnectedBy", fields: [connectedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([propertyId, source])
+  @@index([source, status, lastSyncedAt])
+  @@index([connectedById])
+}
+
+/// One sync, for the record and for "why is this out of date?".
+model SeoSyncRun {
+  id          String         @id @default(cuid())
+  propertyId  String
+  property    SeoProperty    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  source      SeoDataSource
+  trigger     SeoSyncTrigger
+  status      SeoSyncStatus  @default(RUNNING)
+  rangeFrom   DateTime?      @db.Date
+  rangeTo     DateTime?      @db.Date
+  daysWritten Int            @default(0)
+  rowsWritten Int            @default(0)
+  error       String?
+  startedAt   DateTime       @default(now())
+  finishedAt  DateTime?
+
+  @@index([propertyId, source, startedAt])
+}
+
+/// Search Console totals for one day. `device` and `country` are "" for the
+/// all-traffic row, so one unique key covers the total, per-device and
+/// per-country rows (nullable columns would not be unique in Postgres).
+/// `position` is Google's impression-weighted average for the row; sums of
+/// several rows are re-weighted by impressions, never averaged.
+model GscDailyTotal {
+  id          String      @id @default(cuid())
+  propertyId  String
+  property    SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// Search Console's day, which is Pacific time.
+  date        DateTime    @db.Date
+  /// "", "DESKTOP", "MOBILE" or "TABLET".
+  device      String      @default("")
+  /// "" or ISO 3166-1 alpha-3 lower case, as Google reports it ("ind", "are").
+  country     String      @default("")
+  clicks      Int
+  impressions Int
+  position    Float
+
+  @@unique([propertyId, date, device, country])
+  @@index([propertyId, date])
+}
+
+/// One query on one day. Google leaves out anonymised queries, so these never
+/// add up to the totals above — the totals are what the KPIs use.
+model GscQueryDaily {
+  id          String      @id @default(cuid())
+  propertyId  String
+  property    SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  date        DateTime    @db.Date
+  query       String
+  clicks      Int
+  impressions Int
+  position    Float
+
+  @@unique([propertyId, date, query])
+  @@index([propertyId, query])
+}
+
+/// One page on one day.
+model GscPageDaily {
+  id          String      @id @default(cuid())
+  propertyId  String
+  property    SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  date        DateTime    @db.Date
+  page        String
+  clicks      Int
+  impressions Int
+  position    Float
+
+  @@unique([propertyId, date, page])
+  @@index([propertyId, page])
 }

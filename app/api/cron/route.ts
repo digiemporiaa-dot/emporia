@@ -11,6 +11,7 @@ import {
   warnExpiringAccounts,
 } from "@/lib/services/social-account.service";
 import { socialProvider } from "@/lib/social";
+import { syncDueGscProperties } from "@/lib/services/seo-intel/gsc-sync.service";
 import { log } from "@/lib/logger";
 
 /**
@@ -112,6 +113,13 @@ async function handle(request: Request): Promise<NextResponse> {
       cronLog.error({ err: expiring.reason }, "warning about expiring social accounts failed");
     }
 
+    // Search Console: a couple of websites per run, history filled a month at
+    // a time. Last, and never able to fail the run — it is a read.
+    const seo = await Promise.allSettled([syncDueGscProperties({ limit: 2 })]).then(([result]) => result);
+    if (seo.status === "rejected") {
+      cronLog.error({ err: seo.reason }, "search console sync failed");
+    }
+
     if (pages.status === "rejected") {
       cronLog.error({ err: pages.reason }, "scheduled page run failed");
     }
@@ -164,6 +172,7 @@ async function handle(request: Request): Promise<NextResponse> {
         renewal.status === "fulfilled" ? renewal.value : { renewed: 0, failed: 0 },
       accountsChecked: accountSync.status === "fulfilled" ? accountSync.value : { checked: 0, failed: 0 },
       expiringWarned: expiring.status === "fulfilled" ? expiring.value.warned : 0,
+      searchConsole: seo.status === "fulfilled" ? seo.value : { synced: 0, failed: 0 },
       pagesFailed: pages.status === "rejected",
       socialFailed: social.status === "rejected",
       metricsFailed: metrics.status === "rejected",
