@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/config/env";
 import { notifyWithEmail } from "@/lib/services/notification.service";
 import { sendTemplate } from "@/lib/services/email.service";
+import { readSmtpSettings } from "@/lib/email";
 import { formatMoney } from "@/lib/money";
 import { log } from "@/lib/logger";
 
@@ -22,63 +23,116 @@ function siteUrl(): string {
 }
 
 const DATE = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const SUBMITTED = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
 
-/** Someone new came in through the website. */
-export async function alertNewLead(leadId: string): Promise<void> {
+/** Which form a lead came through, for the alert. Built server-side by the capture path. */
+export type LeadFormContext = { form: string; path: string | null };
+
+/**
+ * Someone new came in through the website.
+ *
+ * Two audiences, both governed by Settings → Email:
+ *
+ * - Staff — the assignee, or failing that everyone who can see the pipeline
+ *   team-wide — always get the in-app notification; the email copy follows the
+ *   "lead captured" toggle.
+ * - The notification addresses (a shared sales inbox, say) get one email:
+ *   the lead email when "lead captured" is on, otherwise the form-submission
+ *   email when that toggle is on. Never both — every form here creates a lead,
+ *   so both on would mean two mails about one enquiry; the lead email carries
+ *   the form details instead. Either replies to the lead's own address.
+ */
+export async function alertNewLead(leadId: string, form: LeadFormContext | null = null): Promise<void> {
   try {
-    const lead = await db.lead.findUnique({
-      where: { id: leadId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        company: true,
-        message: true,
-        assignedToId: true,
-        source: { select: { name: true } },
-        service: { select: { name: true } },
-        city: { select: { name: true } },
-      },
-    });
+    const [lead, settings] = await Promise.all([
+      db.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          company: true,
+          message: true,
+          assignedToId: true,
+          landingPath: true,
+          referrer: true,
+          device: true,
+          createdAt: true,
+          source: { select: { name: true } },
+          service: { select: { name: true } },
+          city: { select: { name: true } },
+          lastTouch: { select: { source: true, medium: true, campaign: true } },
+        },
+      }),
+      readSmtpSettings(),
+    ]);
     if (!lead) return;
 
     // Whoever it was assigned to; failing that, everyone who can see the
     // pipeline team-wide, so a lead never lands with nobody watching.
     const recipients = lead.assignedToId
-      ? [lead.assignedToId]
-      : (
-          await db.user.findMany({
-            where: {
-              type: "STAFF",
-              status: "ACTIVE",
-              role: { permissions: { some: { permission: { key: "leads.view.team" } } } },
-            },
-            select: { id: true },
-            take: 10,
-          })
-        ).map((user) => user.id);
+      ? await db.user.findMany({ where: { id: lead.assignedToId }, select: { id: true, email: true } })
+      : await db.user.findMany({
+          where: {
+            type: "STAFF",
+            status: "ACTIVE",
+            role: { permissions: { some: { permission: { key: "leads.view.team" } } } },
+          },
+          select: { id: true, email: true },
+          take: 10,
+        });
 
+    const page = form?.path ?? lead.landingPath;
+    const touch = lead.lastTouch;
     const variables = {
       leadName: lead.name,
       company: lead.company ? ` — ${lead.company}` : "",
+      companyName: lead.company ?? "—",
       email: lead.email ?? "no email",
       phone: lead.phone ?? "no phone",
-      source: lead.source.name,
+      // Carries the form for templates edited before the form variables existed.
+      source: form ? `${lead.source.name} — ${form.form}` : lead.source.name,
       interest: [lead.service?.name, lead.city?.name].filter(Boolean).join(" in ") || "not specified",
       message: lead.message ?? "",
       leadUrl: `${siteUrl()}/admin/leads/${lead.id}`,
+      formName: form?.form ?? lead.source.name,
+      page: page ? `${siteUrl()}${page.startsWith("/") ? page : `/${page}`}` : "not recorded",
+      attribution:
+        touch && (touch.source || touch.medium || touch.campaign)
+          ? [touch.source, touch.medium, touch.campaign].filter(Boolean).join(" / ")
+          : lead.referrer
+            ? `referred by ${lead.referrer}`
+            : "direct",
+      device: lead.device ? lead.device.toLowerCase() : "unknown",
+      submittedAt: SUBMITTED.format(lead.createdAt),
     };
 
-    for (const userId of recipients) {
+    // A staff member whose address is also on the notification list gets the
+    // list's copy, not a second one.
+    const listed = new Set(settings.salesAddresses.map((address) => address.toLowerCase()));
+
+    for (const user of recipients) {
       await notifyWithEmail({
-        userId,
+        userId: user.id,
         title: `New lead: ${lead.name}`,
         body: lead.company ?? lead.email ?? null,
         href: `/admin/leads/${lead.id}`,
         entity: { type: "Lead", id: lead.id },
         templateKey: "NEW_LEAD",
         variables,
+        email: settings.notifyLeadCreated && !listed.has(user.email.toLowerCase()),
+      });
+    }
+
+    const key = settings.notifyLeadCreated ? "NEW_LEAD" : settings.notifyFormSubmission ? "FORM_SUBMISSION" : null;
+    if (key && settings.salesAddresses.length > 0) {
+      // One message to the whole list — one log row, one SMTP conversation.
+      await sendTemplate(key, {
+        to: settings.salesAddresses.join(", "),
+        variables,
+        entity: { type: "Lead", id: lead.id },
+        replyTo: lead.email,
       });
     }
   } catch (error) {
@@ -86,20 +140,23 @@ export async function alertNewLead(leadId: string): Promise<void> {
   }
 }
 
-/** A lead has been handed to someone. */
+/** A lead has been handed to someone. The email copy follows the "lead assigned" toggle. */
 export async function alertLeadAssigned(leadId: string, assigneeId: string, assignedBy: string): Promise<void> {
   try {
-    const lead = await db.lead.findUnique({
-      where: { id: leadId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        company: true,
-        score: true,
-      },
-    });
+    const [lead, settings] = await Promise.all([
+      db.lead.findUnique({
+        where: { id: leadId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          company: true,
+          score: true,
+        },
+      }),
+      readSmtpSettings(),
+    ]);
     if (!lead) return;
 
     await notifyWithEmail({
@@ -118,6 +175,7 @@ export async function alertLeadAssigned(leadId: string, assigneeId: string, assi
         assignedBy,
         leadUrl: `${siteUrl()}/admin/leads/${lead.id}`,
       },
+      email: settings.notifyLeadAssigned,
     });
   } catch (error) {
     alertLog.warn({ err: error, leadId }, "lead-assigned alert failed");

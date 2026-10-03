@@ -14,6 +14,8 @@ export type OutgoingEmail = {
   subject: string;
   html: string;
   text: string;
+  /** Overrides the configured Reply-to for this message — a lead alert replies to the lead. */
+  replyTo?: string | null;
 };
 
 export type SendResult = {

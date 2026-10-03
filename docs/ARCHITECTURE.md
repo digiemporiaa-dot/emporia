@@ -214,7 +214,7 @@ PaymentGateway      RAZORPAY BANK_TRANSFER CASH CHEQUE UPI OTHER
 RetainerStatus      ACTIVE PAUSED CANCELLED EXPIRED
 MediaType           IMAGE VIDEO DOCUMENT
 EmailStatus         QUEUED SENT FAILED BOUNCED
-EmailTemplateKey    NEW_LEAD LEAD_ASSIGNED FOLLOW_UP STAFF_INVITATION
+EmailTemplateKey    NEW_LEAD LEAD_ASSIGNED FORM_SUBMISSION FOLLOW_UP STAFF_INVITATION
                     PASSWORD_RESET PROPOSAL_SENT PROPOSAL_ACCEPTED
                     INVOICE_SENT PAYMENT_RECEIVED PAYMENT_REMINDER
                     CLIENT_NOTIFICATION
@@ -1409,6 +1409,72 @@ saved.
 `isAIConfigured()` and render no assist buttons at all, with a line saying why.
 An `AI_PROVIDER` naming a vendor that is not implemented is treated as
 unconfigured rather than guessed at.
+
+---
+
+## 16B. Email settings (Settings → Email)
+
+An admin sets up outgoing mail on one screen — the SMTP server, who hears about
+new enquiries, and a real test send — without a redeploy. Matches the saas
+reference build's screen: an **SMTP server** card, a **Notifications** card and
+a **Send a test** card above the existing templates and send log.
+
+**Storage.** One `IntegrationSetting` row, `provider = "smtp"` — the same shape
+the AI provider, Meta CAPI and the social apps use, so no new table. `config`
+holds host, port, username, encryption (`SSL_TLS` / `STARTTLS` / `NONE`), From
+name and address, Reply-to, the notification addresses and the three toggles;
+`isEnabled` is the "Send email using these settings" switch. The password is
+encrypted with `lib/security/secret` (AES-256-GCM under `AUTH_SECRET`), so no new
+secret is needed. Pure parsing lives in `lib/email/smtp-settings.ts`; the
+service is `lib/services/email-settings.service.ts`.
+
+**The password is write-only.** It is decrypted only to build a transport.
+`SafeEmailSettings` is assembled field by field and carries `passwordConfigured`
+instead; the audit row records `passwordConfigured` and `passwordChanged`, never
+the value or its ciphertext. A blank password field keeps the stored one;
+"Remove the stored password" clears it.
+
+**Which settings send.** `resolveMailer()` runs on every send (one small row):
+
+| State                                         | Result                                               |
+| --------------------------------------------- | ---------------------------------------------------- |
+| Row has a host, switch on                     | sends through the saved server                       |
+| Row has a host, switch off                    | **nothing sends** — no fallback to the environment   |
+| Saved password unreadable (secret rotated)    | nothing sends, with "enter it again" as the reason   |
+| No host saved                                 | the `SMTP_*` environment, exactly as before          |
+| Neither                                       | not configured                                       |
+
+Each refusal is an `EmailUnavailableError` whose words land in `EmailLog.error`.
+STARTTLS is `requireTLS`: a server that cannot upgrade fails the send rather
+than continuing in the clear. Connect, greeting and socket timeouts are 10 s,
+10 s and 20 s.
+
+**The two checks.** *Test connection* (`settings.edit`) connects and logs in with
+what is typed now — a blank password means the stored one — and sends nothing.
+*Send a test* (`emails.send`) delivers "SMTP Test Email" through the saved
+settings and logs it like any other send. Both are rate limited (five a minute
+per person), and failures read as sentences (`describeSmtpError`) built from
+Nodemailer's code and the server's reply code, never the raw message, which can
+echo the username.
+
+**Notifications** (`alertNewLead`, `alertLeadAssigned`):
+
+| Toggle                      | Effect                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| Lead captured               | the lead email to the notification addresses, and the email copy to the assignee (or the team) |
+| Lead assigned               | the email copy of "is now yours" to the new owner                                          |
+| Every form submission       | the `FORM_SUBMISSION` email to the notification addresses — only when "lead captured" is off |
+
+Every website form creates a lead, so with both on the list gets **one** email —
+the lead email, which carries the form details (form, page, campaign, device,
+time). In-app notifications are never switched off. Mail to the list is one
+message to all the addresses and replies to the lead's own address. A staff
+member who is also on the list gets the list's copy only. The lead toggles
+default on, so a deployment that never opens the screen keeps its alerts.
+
+The capture paths pass the form label server-side (contact form; popup by name;
+a page form by variant and page title). Templates edited before the form
+variables existed still show the form, folded into `{{source}}`.
 
 ---
 

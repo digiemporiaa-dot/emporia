@@ -5,6 +5,7 @@ import { z } from "zod";
 const TEMPLATE_KEYS = [
   "NEW_LEAD",
   "LEAD_ASSIGNED",
+  "FORM_SUBMISSION",
   "FOLLOW_UP",
   "STAFF_INVITATION",
   "PASSWORD_RESET",
@@ -43,3 +44,59 @@ export const emailLogParamsSchema = z.object({
 });
 
 export type EmailLogParamsInput = z.infer<typeof emailLogParamsSchema>;
+
+// ---------------------------------------------------------------------------
+// SMTP settings (Settings → Email)
+// ---------------------------------------------------------------------------
+
+/** No line breaks: a header value with CR/LF in it could add headers of its own. */
+const singleLine = (label: string, max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `${label} is too long.`)
+    .refine((value) => !/[\r\n]/.test(value), `${label} cannot contain line breaks.`);
+
+const optionalEmail = (label: string) =>
+  z
+    .string()
+    .trim()
+    .max(254)
+    .transform((value) => (value === "" ? null : value))
+    .refine((value) => value === null || z.string().email().safeParse(value).success, `${label} must be an email address.`);
+
+export const smtpSettingsSchema = z
+  .object({
+    host: z
+      .string()
+      .trim()
+      .max(253, "The host name is too long.")
+      .refine((value) => !/\s|:\/\//.test(value), "Enter the host name only, without spaces or smtp://.")
+      .transform((value) => (value === "" ? null : value.toLowerCase())),
+    port: z.coerce.number({ message: "Enter a port number." }).int("Enter a whole number.").min(1, "Ports run from 1 to 65535.").max(65535, "Ports run from 1 to 65535."),
+    username: singleLine("The username", 320).transform((value) => (value === "" ? null : value)),
+    /** Blank means "keep the stored password". */
+    password: z.string().max(500, "The password is too long.").default(""),
+    removePassword: z.boolean().default(false),
+    encryption: z.enum(["SSL_TLS", "STARTTLS", "NONE"], { message: "Choose an encryption setting." }),
+    fromName: singleLine("From name", 100),
+    fromAddress: optionalEmail("From address"),
+    replyTo: optionalEmail("Reply-to"),
+    enabled: z.boolean().default(false),
+    salesAddresses: z.string().max(5_000).default(""),
+    notifyLeadCreated: z.boolean().default(false),
+    notifyLeadAssigned: z.boolean().default(false),
+    notifyFormSubmission: z.boolean().default(false),
+  })
+  .superRefine((value, ctx) => {
+    // Turning sending on needs somewhere to send from.
+    if (value.enabled && !value.host) ctx.addIssue({ code: "custom", path: ["host"], message: "Enter an SMTP host before turning email on." });
+    if (value.enabled && !value.fromAddress) ctx.addIssue({ code: "custom", path: ["fromAddress"], message: "Enter a From address before turning email on." });
+    if (value.enabled && !value.fromName) ctx.addIssue({ code: "custom", path: ["fromName"], message: "Enter a From name before turning email on." });
+  });
+
+export type SmtpSettingsInput = z.infer<typeof smtpSettingsSchema>;
+
+export const smtpTestSendSchema = z.object({
+  to: z.string().trim().email("Enter a valid email address.").max(254),
+});

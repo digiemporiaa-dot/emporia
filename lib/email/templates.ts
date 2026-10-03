@@ -54,6 +54,20 @@ function button(label: string, href: string): string {
 </table>`;
 }
 
+/** One label/value line of the form-submission table. */
+function row(label: string, value: string): string {
+  return `<tr><td style="padding:6px 12px 6px 0;color:#6b7a80;white-space:nowrap;vertical-align:top;">${label}</td><td style="padding:6px 0;">${value}</td></tr>`;
+}
+
+/** Where a website enquiry came from — shared by the lead and the form-submission emails. */
+const FORM_VARIABLES: Record<string, string> = {
+  formName: "The form it came through",
+  page: "The page it was filled in on",
+  attribution: "Campaign source / medium / name, the referrer, or direct",
+  device: "Desktop, mobile or tablet",
+  submittedAt: "When it was submitted",
+};
+
 /** Variables every template can use; the service injects them. */
 export const GLOBAL_VARIABLES: Record<string, string> = {
   siteName: "The agency name from site settings",
@@ -70,17 +84,41 @@ export const DEFAULT_TEMPLATES: TemplateDefinition[] = [
 <p style="margin:0 0 12px;color:#6b7a80;font-size:14px;">{{email}} · {{phone}}</p>
 <p style="margin:0 0 12px;">Interested in: {{interest}}</p>
 <p style="margin:0 0 4px;color:#6b7a80;font-size:13px;">What they said:</p>
-<p style="margin:0;padding:12px;background:#f4f5f6;font-size:14px;">{{message}}</p>${button("Open the lead", "{{leadUrl}}")}`),
-    text: "A new lead came in from {{source}}.\n\n{{leadName}}{{company}}\n{{email}} \u00b7 {{phone}}\nInterested in: {{interest}}\n\nWhat they said:\n{{message}}\n\nOpen the lead: {{leadUrl}}",
+<p style="margin:0;padding:12px;background:#f4f5f6;font-size:14px;">{{message}}</p>
+<p style="margin:12px 0 0;color:#6b7a80;font-size:13px;">{{formName}} · {{page}}<br>{{attribution}} · {{device}} · {{submittedAt}}</p>${button("Open the lead", "{{leadUrl}}")}`),
+    text: "A new lead came in from {{source}}.\n\n{{leadName}}{{company}}\n{{email}} \u00b7 {{phone}}\nInterested in: {{interest}}\n\nWhat they said:\n{{message}}\n\n{{formName}} \u00b7 {{page}}\n{{attribution}} \u00b7 {{device}} \u00b7 {{submittedAt}}\n\nOpen the lead: {{leadUrl}}",
     variables: {
       "leadName": "The lead name",
       "company": "Their company, prefixed with a dash, or empty",
       "email": "Their email address",
       "phone": "Their phone number",
-      "source": "Where the lead came from",
+      "source": "Where the lead came from, with the form when known",
       "interest": "The service and city they asked about",
       "message": "What they wrote",
       "leadUrl": "Admin link to the lead",
+      ...FORM_VARIABLES,
+    },
+  },
+  {
+    key: "FORM_SUBMISSION",
+    name: "Form submission",
+    subject: "New form submission: {{formName}}",
+    html: layout(`<p style="margin:0 0 12px;">Someone filled in <strong>{{formName}}</strong>.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-size:14px;border-collapse:collapse;">
+${row("Name", "{{leadName}}")}${row("Email", "{{email}}")}${row("Phone", "{{phone}}")}${row("Company", "{{companyName}}")}${row("Interested in", "{{interest}}")}${row("Page", "{{page}}")}${row("Campaign", "{{attribution}}")}${row("Device", "{{device}}")}${row("Submitted", "{{submittedAt}}")}
+</table>
+<p style="margin:16px 0 4px;color:#6b7a80;font-size:13px;">Message:</p>
+<p style="margin:0;padding:12px;background:#f4f5f6;font-size:14px;">{{message}}</p>${button("Open the lead", "{{leadUrl}}")}`),
+    text: "Someone filled in {{formName}}.\n\nName: {{leadName}}\nEmail: {{email}}\nPhone: {{phone}}\nCompany: {{companyName}}\nInterested in: {{interest}}\nPage: {{page}}\nCampaign: {{attribution}}\nDevice: {{device}}\nSubmitted: {{submittedAt}}\n\nMessage:\n{{message}}\n\nOpen the lead: {{leadUrl}}",
+    variables: {
+      "leadName": "The name they gave",
+      "email": "Their email address",
+      "phone": "Their phone number",
+      "companyName": "Their company, or a dash",
+      "interest": "The service and city they asked about",
+      "message": "What they wrote",
+      "leadUrl": "Admin link to the lead it became",
+      ...FORM_VARIABLES,
     },
   },
   {
