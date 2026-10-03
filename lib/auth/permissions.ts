@@ -179,6 +179,17 @@ export const PERMISSIONS = [
   "media.delete",
   "seo.view",
   "seo.edit",
+  /**
+   * SEO Intelligence — client websites' search data, crawls and opportunities.
+   * Separate from `seo.view`/`seo.edit`, which mean "edit the CMS SEO fields":
+   * re-using those would hand every content editor every client's rankings.
+   * `connect` is narrower than `manage` because it attaches a client's Google
+   * account to the agency's system.
+   */
+  "seo.intelligence.view",
+  "seo.intelligence.manage",
+  "seo.intelligence.connect",
+  "seo.opportunities.manage",
   "redirects.view",
   "redirects.edit",
   "automation.view",
@@ -330,6 +341,9 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
   MARKETING_MANAGER: [
     "leads.view",
     "leads.view.team",
+    "seo.intelligence.view",
+    "seo.intelligence.manage",
+    "seo.opportunities.manage",
     "campaigns.view",
     "campaigns.create",
     "campaigns.edit",
@@ -446,6 +460,8 @@ export const ROLE_PERMISSIONS: Record<Exclude<RoleNameLiteral, "SUPER_ADMIN">, P
   ],
 
   PROJECT_MANAGER: [
+    "seo.intelligence.view",
+    "seo.opportunities.manage",
     "projects.view",
     "projects.view.team",
     "projects.create",

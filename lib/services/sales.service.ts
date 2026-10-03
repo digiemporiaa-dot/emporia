@@ -1084,6 +1084,7 @@ export async function listClients(actor: Actor) {
       id: true,
       name: true,
       slug: true,
+      isInternal: true,
       industry: true,
       status: true,
       createdAt: true,

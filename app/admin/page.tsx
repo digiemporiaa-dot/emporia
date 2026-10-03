@@ -37,7 +37,7 @@ const PANELS: readonly Panel[] = [
   {
     label: "Active clients",
     permission: "clients.view",
-    load: () => db.client.count({ where: { deletedAt: null } }),
+    load: () => db.client.count({ where: { deletedAt: null, isInternal: false } }),
   },
   {
     label: "Live projects",

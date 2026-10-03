@@ -34,7 +34,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // area beats an error page.
   if (actor.type === "CLIENT") redirect("/portal");
 
-  const items: NavItem[] = NAV.filter(({ permission }) => can(actor, permission)).map(
+  // A module shows when its own permission is held, or when any of its
+  // sub-sections is — a project manager with SEO Intelligence and no popups
+  // still needs Marketing to reach it. The hub page checks per card.
+  const items: NavItem[] = NAV.filter(
+    ({ permission, children }) =>
+      can(actor, permission) || (children ?? []).some((child) => can(actor, child.permission)),
+  ).map(
     ({ item, children }) => {
       if (item.kind !== "link" || !children) return item;
       // Each sub-item is filtered on its own permission, so a link that would

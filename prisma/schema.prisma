@@ -498,40 +498,41 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  assignedLeads      Lead[]                @relation("LeadAssignee")
+  assignedLeads      Lead[]                 @relation("LeadAssignee")
   leadActivities     LeadActivity[]
   leadNotes          LeadNote[]
-  leadTasks          LeadTask[]            @relation("LeadTaskAssignee")
-  assignmentsFrom    LeadAssignment[]      @relation("LeadAssignmentFrom")
-  assignmentsTo      LeadAssignment[]      @relation("LeadAssignmentTo")
-  assignmentsMade    LeadAssignment[]      @relation("LeadAssignmentBy")
+  leadTasks          LeadTask[]             @relation("LeadTaskAssignee")
+  assignmentsFrom    LeadAssignment[]       @relation("LeadAssignmentFrom")
+  assignmentsTo      LeadAssignment[]       @relation("LeadAssignmentTo")
+  assignmentsMade    LeadAssignment[]       @relation("LeadAssignmentBy")
   ownedOpportunities Opportunity[]
   createdProposals   Proposal[]
   proposalRevisions  ProposalRevision[]
-  ownedClients       Client[]              @relation("ClientOwner")
+  ownedClients       Client[]               @relation("ClientOwner")
   clientContact      ClientContact[]
-  clientMessages     ClientMessage[]       @relation("ClientMessageAuthor")
+  clientMessages     ClientMessage[]        @relation("ClientMessageAuthor")
   managedProjects    Project[]
-  assignedTasks      ProjectTask[]         @relation("ProjectTaskAssignee")
+  assignedTasks      ProjectTask[]          @relation("ProjectTaskAssignee")
   projectComments    ProjectComment[]
   timeEntries        TimeEntry[]
   ownedContentItems  ContentCalendarItem[]
-  approvalsRequested Approval[]            @relation("ApprovalRequestedBy")
-  approvalsDecided   Approval[]            @relation("ApprovalDecidedBy")
+  approvalsRequested Approval[]             @relation("ApprovalRequestedBy")
+  approvalsDecided   Approval[]             @relation("ApprovalDecidedBy")
   reviewsSubmitted   SocialInternalReview[] @relation("InternalReviewSubmittedBy")
   reviewsDecided     SocialInternalReview[] @relation("InternalReviewDecidedBy")
   socialReportsMade  SocialReport[]         @relation("SocialReportGeneratedBy")
   socialReportsSent  SocialReport[]         @relation("SocialReportPublishedBy")
   approvalVersions   ApprovalVersion[]
   ownedCampaigns     Campaign[]
-  uploadedMedia      Media[]               @relation("MediaUploader")
+  uploadedMedia      Media[]                @relation("MediaUploader")
   mediaVersions      MediaVersion[]
   notifications      Notification[]
   auditLogs          AuditLog[]
   blogPosts          BlogPost[]
-  pageVersions       PageVersion[]         @relation("PageVersionAuthor")
+  pageVersions       PageVersion[]          @relation("PageVersionAuthor")
 
   socialAccountsConnected    SocialAccount[]           @relation("SocialAccountConnectedBy")
+  seoPropertiesCreated       SeoProperty[]             @relation("SeoPropertyCreatedBy")
   socialPendingConnections   SocialPendingConnection[]
   socialBrandProfilesUpdated SocialBrandProfile[]      @relation("SocialBrandProfileUpdatedBy")
   socialStrategiesUpdated    SocialStrategy[]          @relation("SocialStrategyUpdatedBy")
@@ -830,16 +831,22 @@ model Service {
 }
 
 model City {
-  id         String  @id @default(cuid())
-  slug       String  @unique
+  id         String   @id @default(cuid())
+  slug       String   @unique
   name       String
   state      String
-  country    String  @default("India")
+  country    String   @default("India")
+  /// The same country as a row, so local and international SEO can group by
+  /// it. Linked from `country` when the name is recognised (lib/geo/countries);
+  /// null when it is not — never guessed. The string stays for now: every
+  /// existing screen and the public site read it.
+  countryId  String?
+  countryRef Country? @relation("CityCountry", fields: [countryId], references: [id], onDelete: SetNull)
   latitude   Float?
   longitude  Float?
   population Int?
-  isActive   Boolean @default(true)
-  order      Int     @default(0)
+  isActive   Boolean  @default(true)
+  order      Int      @default(0)
 
   seoId String? @unique
   seo   Seo?    @relation("CitySeo", fields: [seoId], references: [id], onDelete: SetNull)
@@ -856,6 +863,26 @@ model City {
   popupEvents  PopupAnalytics[]
 
   @@index([isActive, order])
+  @@index([countryId])
+}
+
+/// A country something refers to — a city, an SEO property's default market.
+/// Rows are created when first needed, from ISO 3166-1 codes validated by
+/// lib/geo/countries; nothing here privileges one market.
+model Country {
+  id              String  @id @default(cuid())
+  /// ISO 3166-1 alpha-2, upper case.
+  code            String  @unique
+  name            String
+  /// BCP 47, e.g. "en", "ar". Optional: many countries have several.
+  defaultLanguage String?
+  isActive        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cities        City[]        @relation("CityCountry")
+  seoProperties SeoProperty[] @relation("SeoPropertyCountry")
 }
 
 // Service x City. Generated from the database — never hand-written pages.
@@ -1671,6 +1698,10 @@ model Client {
 
   status ClientStatus @default(ACTIVE)
 
+  /// The agency itself, so its own website can be an SEO property with tasks
+  /// and projects like any client's. At most one; created on first use.
+  isInternal Boolean @default(false)
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1702,6 +1733,7 @@ model Client {
   internalReviews          SocialInternalReview[]
   socialReports            SocialReport[]
   clientOccasions          ClientOccasion[]
+  seoProperties            SeoProperty[]
 
   @@index([deletedAt])
   @@index([ownerId])
@@ -1792,14 +1824,15 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks        ProjectTask[]
-  milestones   ProjectMilestone[]
-  comments     ProjectComment[]
-  timeEntries  TimeEntry[]
-  contentItems ContentCalendarItem[]
-  approvals    Approval[]
-  invoices     Invoice[]
-  messages     ClientMessage[]
+  tasks         ProjectTask[]
+  milestones    ProjectMilestone[]
+  comments      ProjectComment[]
+  timeEntries   TimeEntry[]
+  contentItems  ContentCalendarItem[]
+  approvals     Approval[]
+  invoices      Invoice[]
+  messages      ClientMessage[]
+  seoProperties SeoProperty[]
 
   @@index([clientId, status])
   @@index([managerId])
@@ -2856,13 +2889,13 @@ model SocialAccount {
   status SocialAccountStatus @default(CONNECTED)
 
   /// Encrypted. Read only by the provider adapter, never returned by a service.
-  accessToken    String?
-  refreshToken   String?
-  tokenExpiresAt DateTime?
+  accessToken      String?
+  refreshToken     String?
+  tokenExpiresAt   DateTime?
   /// The `tokenExpiresAt` people were last warned about. Keyed on the value, not
   /// a flag, so a reconnection (a new expiry) warns again and a repeat cron run
   /// for the same expiry does not.
-  expiryWarnedFor DateTime?
+  expiryWarnedFor  DateTime?
   /// The scopes the provider actually granted, so a missing permission is a
   /// diagnosable state rather than a mystery failure at publish time. Only
   /// what the platform reported — never the list that was requested.
@@ -2871,14 +2904,14 @@ model SocialAccount {
   /// an empty list reads as "not reported" rather than "granted nothing".
   scopesReportedAt DateTime?
 
-  lastSyncedAt  DateTime?
+  lastSyncedAt       DateTime?
   /// The last check, successful or not. The scheduled check waits a retry gap
   /// after a failed one rather than asking again every cron run.
   lastCheckAttemptAt DateTime?
-  lastSyncError String?
+  lastSyncError      String?
   /// Consecutive failures. Reset on success; used to surface a failing account
   /// before somebody notices their posts stopped going out.
-  failureCount  Int       @default(0)
+  failureCount       Int       @default(0)
 
   connectedById String?
   connectedBy   User?   @relation("SocialAccountConnectedBy", fields: [connectedById], references: [id], onDelete: SetNull)
@@ -3319,4 +3352,63 @@ model SocialExternalPost {
   @@unique([provider, externalPostId])
   @@index([clientId, publishedAt])
   @@index([accountId, publishedAt])
+}
+
+// ---------------------------------------------------------------------------
+// SEO Intelligence (docs/SEO-INTELLIGENCE-PLAN.md)
+// ---------------------------------------------------------------------------
+
+enum SeoProtocol {
+  HTTPS
+  HTTP
+}
+
+/// One website the agency analyses for a client. A client can have several;
+/// every SEO table hangs off this, and this hangs off a client, so one join
+/// scopes any query to the client it belongs to.
+model SeoProperty {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  /// Where "Create task" puts tasks when none is chosen. Optional: a property
+  /// can exist before any project does.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  /// Host only, lower case, no scheme or path: "example.com", "www.example.com".
+  domain      String
+  displayName String
+  protocol    SeoProtocol @default(HTTPS)
+
+  /// When ownership was confirmed by a connected Search Console property.
+  /// Null until then — never set by hand.
+  verifiedAt DateTime?
+
+  /// "sc-domain:example.com" or "https://example.com/". Set when connected.
+  gscSiteUrl    String?
+  /// "properties/123456789". Set when connected.
+  ga4PropertyId String?
+
+  defaultCountryId String?
+  defaultCountry   Country? @relation("SeoPropertyCountry", fields: [defaultCountryId], references: [id], onDelete: SetNull)
+  /// BCP 47, e.g. "en", "en-IN", "ar".
+  defaultLanguage  String   @default("en")
+  /// IANA, e.g. "Asia/Dubai". Search Console reports days in Pacific time;
+  /// this is how they are labelled for the client.
+  timezone         String   @default("UTC")
+
+  isActive Boolean @default(true)
+
+  createdById String?
+  createdBy   User?   @relation("SeoPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, domain])
+  @@index([clientId, isActive])
+  @@index([projectId])
+  @@index([defaultCountryId])
+  @@index([createdById])
 }

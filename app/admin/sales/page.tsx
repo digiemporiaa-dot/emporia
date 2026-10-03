@@ -19,7 +19,7 @@ export default async function SalesPage() {
     db.proposal.count({ where: { status: "ACCEPTED" } }),
     db.opportunity.count({ where: { stage: { notIn: ["WON", "LOST"] } } }),
     db.contract.count(),
-    db.client.count({ where: { deletedAt: null } }),
+    db.client.count({ where: { deletedAt: null, isInternal: false } }),
     db.catalogItem.count({ where: { isActive: true } }),
     db.proposal.aggregate({
       where: { status: { in: ["SENT", "VIEWED", "NEGOTIATION"] } },

@@ -1,4 +1,5 @@
 import "server-only";
+import { countryIdForName } from "@/lib/geo/country-rows";
 import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError } from "@/lib/errors";
@@ -74,13 +75,16 @@ export async function createCity(actor: Actor, input: CityInput) {
 
   const city = await withAudit(
     { actor, action: "CREATE", entityType: "City", entityId: input.slug },
-    (tx) =>
+    async (tx) =>
       tx.city.create({
         data: {
           name: input.name,
           slug: input.slug,
           state: input.state,
           country: input.country,
+          // Kept in step with the text, so local and international SEO can
+          // group by a real country. Unrecognised text clears it, never guesses.
+          countryId: await countryIdForName(tx, input.country),
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
           population: input.population ?? null,
@@ -102,7 +106,7 @@ export async function updateCity(actor: Actor, id: string, input: CityInput) {
 
   const city = await withAudit(
     { actor, action: "UPDATE", entityType: "City", entityId: id, before },
-    (tx) =>
+    async (tx) =>
       tx.city.update({
         where: { id },
         data: {
@@ -110,6 +114,9 @@ export async function updateCity(actor: Actor, id: string, input: CityInput) {
           slug: input.slug,
           state: input.state,
           country: input.country,
+          // Kept in step with the text, so local and international SEO can
+          // group by a real country. Unrecognised text clears it, never guesses.
+          countryId: await countryIdForName(tx, input.country),
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
           population: input.population ?? null,

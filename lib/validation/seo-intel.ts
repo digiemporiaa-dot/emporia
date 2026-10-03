@@ -1,0 +1,89 @@
+import { z } from "zod";
+import { isCountryCode } from "@/lib/geo/countries";
+import { parseSiteInput, UnsafeTargetError } from "@/lib/seo-intel/net/site-input";
+
+/** SEO Intelligence input validation. Shared by the forms and the server actions. */
+
+/** The agency's own website, as a choice in the "Whose website" select. */
+export const INTERNAL_OWNER = "INTERNAL";
+
+const id = z.string().trim().min(1).max(40);
+
+const optionalId = z
+  .string()
+  .trim()
+  .max(40)
+  .optional()
+  .transform((value) => (value ? value : null));
+
+function validTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validLanguage(value: string): boolean {
+  if (!/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(value)) return false;
+  try {
+    return Intl.getCanonicalLocales(value).length === 1;
+  } catch {
+    return false;
+  }
+}
+
+/** The fields both create and edit take. */
+const propertyFields = {
+  /** What was typed into "Website"; reduced to a host by `parseSiteInput`. */
+  website: z
+    .string()
+    .trim()
+    .max(300, "That address is too long.")
+    .transform((value, ctx) => {
+      try {
+        return parseSiteInput(value);
+      } catch (error) {
+        ctx.addIssue({ code: "custom", message: error instanceof UnsafeTargetError ? error.message : "That is not a valid domain." });
+        return z.NEVER;
+      }
+    }),
+  /** Used when the website was typed without a scheme. */
+  protocol: z.enum(["HTTPS", "HTTP"]).default("HTTPS"),
+  displayName: z.string().trim().min(2, "Give the property a name.").max(120, "That name is too long."),
+  projectId: optionalId,
+  defaultCountry: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .optional()
+    .transform((value) => (value ? value : null))
+    .refine((value) => value === null || isCountryCode(value), "Choose a country from the list."),
+  defaultLanguage: z
+    .string()
+    .trim()
+    .min(2, "Enter a language code, such as en or en-IN.")
+    .max(35)
+    .refine(validLanguage, "Enter a language code, such as en, en-IN or ar."),
+  timezone: z.string().trim().min(1, "Choose a time zone.").max(64).refine(validTimeZone, "Choose a time zone from the list."),
+  isActive: z.boolean().default(true),
+};
+
+export const seoPropertyCreateSchema = z.object({
+  /** A client id, or `INTERNAL` for the agency's own website. */
+  owner: z.union([z.literal(INTERNAL_OWNER), id], { message: "Choose whose website this is." }),
+  ...propertyFields,
+});
+
+/** The owner is fixed after creation: moving a property would move its history to another client. */
+export const seoPropertyUpdateSchema = z.object(propertyFields);
+
+export type SeoPropertyCreateInput = z.infer<typeof seoPropertyCreateSchema>;
+export type SeoPropertyUpdateInput = z.infer<typeof seoPropertyUpdateSchema>;
+
+export const seoPropertyListSchema = z.object({
+  client: z.string().trim().max(40).optional(),
+  status: z.enum(["active", "inactive", "all"]).default("active"),
+  q: z.string().trim().max(100).optional(),
+});

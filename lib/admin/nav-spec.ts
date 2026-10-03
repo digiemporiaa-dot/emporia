@@ -104,6 +104,11 @@ export const NAV: readonly NavSpec[] = [
     item: { kind: "link", href: "/admin/marketing", label: "Marketing", icon: "marketing" },
     permission: "popups.view",
     children: [
+      {
+        href: "/admin/marketing/seo",
+        label: "SEO Intelligence",
+        permission: "seo.intelligence.view",
+      },
       { href: "/admin/marketing/campaigns", label: "Campaigns", permission: "campaigns.view" },
       { href: "/admin/marketing/popups", label: "Popups", permission: "popups.view" },
       { href: "/admin/marketing/tracking", label: "Tracking", permission: "settings.view" },
