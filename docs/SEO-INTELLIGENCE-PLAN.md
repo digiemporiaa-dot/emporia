@@ -1,12 +1,13 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phase 1 built. Phase 2 (Search Console) is next.**
+**Status: Phases 1–2 built. Phase 3 (crawler, technical SEO, indexation) is next.**
 
 | Phase | State |
 | ----- | ----- |
 | 1 — Properties, countries, permissions, navigation | **Done** — 128 tests |
-| 2 — Search Console + Executive Overview | Next |
-| 3–11 | Planned, Part E |
+| 2 — Search Console + Executive Overview | **Done** — 133 tests |
+| 3 — Crawler, technical SEO, indexation | Next |
+| 4–11 | Planned, Part E |
 
 This is the mandatory audit step (CLAUDE.md §15) for the SEO Intelligence
 brief: what exists today, what the brief collides with, the data model and
@@ -277,3 +278,61 @@ manager reaches Marketing → SEO Intelligence without holding popups.
 property details, data-source status — no figures until a source is connected)
 and Websites (list with client/status/search filters, add, edit). Tabs appear
 only for sections that exist.
+
+---
+
+## Part G — Phase 2, as built
+
+**Credentials** (`IntegrationSetting` `seo.google`, `lib/seo-intel/google/`):
+an OAuth client (id + encrypted secret) and/or a service account (address,
+key id, encrypted private key). The settings view says only whether each is
+set and readable; the audit records ids and "changed", never a secret. The
+service account mints its own tokens (RS256 JWT bearer grant, `node:crypto`,
+no Google library), cached in memory until a minute before expiry and cleared
+when the key changes.
+
+**Connecting** (`gsc-connection.service.ts`, `/api/seo/google/connect` and
+`/callback`): the OAuth state is signed with a per-purpose key and bound to the
+starting browser by a cookie nonce — the shared `lib/security/signed-state`,
+which the social-account flow now uses too. After sign-in (or choosing the
+service account) the connection is `PENDING` until a Search Console property
+is chosen; the choice is re-checked against Google's live list, must not be
+`siteUnverifiedUser`, and must be the property's own domain
+(`lib/seo-intel/gsc-site.ts`) — so one client's Search Console can never feed
+another client's property. Choosing sets `verifiedAt`. OAuth tokens are
+encrypted, renewed under a per-connection advisory lock, and revoked at Google
+on disconnect; collected history is kept.
+
+**Sync** (`gsc-sync.service.ts`): a lease on the connection (one run per
+property, expires on its own); the plan (`sync-plan.ts`) re-reads the last 5
+days and backfills 30 days per run until 486 days are held. Each day is
+replaced whole in one transaction — totals, per device, per country (in
+`GscDailyTotal`, `""` meaning "all"), up to 5,000 queries and 5,000 pages. The
+cursor moves only over completed ranges. Credentials refused or access lost →
+the connection goes to `ERROR` with the reason; quota or outages leave it
+connected and the scheduler backs off (15 min doubling to 12 h). Rows older
+than Google keeps are pruned. Every run is a `SeoSyncRun`.
+
+**Read boundary** (`overview.service.ts`): `getSEOOverview` and `listGscRows`,
+aggregated in Postgres with impression-weighted positions. Periods
+(`periods.ts`) anchor on the latest day with data: latest day, 7 and 28 days,
+month-to-date vs the same days last month (clamped), and 28 days vs the same
+28 days 364 days earlier (weekday-aligned).
+
+**What changed** (`engine/changes.ts`): whole-site clicks, impressions, CTR
+and position; pages losing or gaining 30%+; pages whose impressions grew while
+CTR fell; queries entering or leaving the top 10; new and lost queries. Each
+insight carries severity, source, both date ranges, the entities and a link to
+the evidence. Thresholds are a parameter with documented defaults; Phase 10
+stores them per property and keeps these as history.
+
+**Screens**: Overview (period switch, KPIs, What changed, daily charts, top
+queries/pages, devices, countries), Search performance (queries/pages,
+server-side search, sort and pagination, filtered to a finding's entities),
+each website's Search Console page (connect, choose, sync now, disconnect,
+recent runs) and Settings.
+
+**Not in this phase, deliberately:** search appearance, query×page pairs (Phase
+5 needs them for cannibalization), GA4 sessions/conversions (Phase 9), indexed
+pages (Phase 3), the health score (needs several sources). Countries show
+Google's three-letter codes.

@@ -87,3 +87,29 @@ export const seoPropertyListSchema = z.object({
   status: z.enum(["active", "inactive", "all"]).default("active"),
   q: z.string().trim().max(100).optional(),
 });
+
+/**
+ * Settings → the agency's Google credentials for SEO. Secrets are write-only:
+ * blank keeps what is stored, the `remove…` flags clear it.
+ */
+export const seoGoogleSettingsSchema = z.object({
+  oauthClientId: z
+    .string()
+    .trim()
+    .max(200)
+    .transform((value) => value || null)
+    .refine((value) => value === null || /^[\w.-]+\.apps\.googleusercontent\.com$/.test(value), "That is not a Google OAuth client ID (it ends in .apps.googleusercontent.com)."),
+  oauthClientSecret: z.string().trim().max(200).default(""),
+  removeOAuth: z.boolean().default(false),
+  /** The whole service-account key file, pasted. */
+  serviceAccountJson: z.string().trim().max(10_000, "That key file is too large.").default(""),
+  removeServiceAccount: z.boolean().default(false),
+});
+
+export type SeoGoogleSettingsInput = z.infer<typeof seoGoogleSettingsSchema>;
+
+/** Choosing the Search Console site for a property after signing in. */
+export const gscSiteChoiceSchema = z.object({
+  propertyId: id,
+  siteUrl: z.string().trim().min(1).max(400),
+});
