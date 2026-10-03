@@ -149,7 +149,7 @@ export async function overview(actor: Actor, range: DateRange): Promise<Overview
       where: { ...leadWhere, status: { in: [...OPEN_STAGES] } },
       _sum: { budget: true },
     }),
-    db.client.count({ where: { deletedAt: null, status: "ACTIVE" } }),
+    db.client.count({ where: { deletedAt: null, status: "ACTIVE", isInternal: false } }),
     db.project.count({ where: { status: { in: ["PLANNING", "ACTIVE"] } } }),
     // Cancelled tasks are not outstanding work, so they are not "due" either.
     db.projectTask.count({

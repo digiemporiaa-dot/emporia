@@ -68,6 +68,11 @@ export default async function ClientsPage() {
                     >
                       {client.name}
                     </Link>
+                    {client.isInternal ? (
+                      <span className="ml-2 align-middle">
+                        <Badge tone="neutral">Our agency</Badge>
+                      </span>
+                    ) : null}
                   </TD>
                   <TD className="text-ink-muted">{client.industry ?? "—"}</TD>
                   <TD>

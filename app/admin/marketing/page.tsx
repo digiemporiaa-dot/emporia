@@ -25,8 +25,9 @@ export default async function MarketingPage() {
   // Tracking is settings, not a marketing entity of its own — it reuses the
   // settings permissions rather than inventing a parallel pair.
   const seesTracking = can(actor, "settings.view");
+  const seesSeo = can(actor, "seo.intelligence.view");
 
-  const [popups, active, submissions, campaigns, activeCampaigns, activeProviders] =
+  const [popups, active, submissions, campaigns, activeCampaigns, activeProviders, seoProperties] =
     await Promise.all([
     seesPopups ? db.popup.count() : Promise.resolve(0),
     seesPopups ? db.popup.count({ where: { isActive: true } }) : Promise.resolve(0),
@@ -44,6 +45,9 @@ export default async function MarketingPage() {
           where: { isEnabled: true, provider: { in: TAG_PROVIDERS } },
         })
       : Promise.resolve(0),
+    seesSeo
+      ? db.seoProperty.count({ where: { isActive: true, client: { deletedAt: null } } })
+      : Promise.resolve(0),
   ]);
 
   return (
@@ -54,6 +58,27 @@ export default async function MarketingPage() {
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2">
+        {seesSeo ? (
+          <Link href="/admin/marketing/seo" className="group">
+            <Card className="h-full transition-colors group-hover:border-navy-300">
+              <CardBody>
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="font-display text-lg text-navy-800 group-hover:text-brand-red">
+                    SEO Intelligence
+                  </h2>
+                  <span className="text-xs tabular-nums text-ink-subtle">
+                    {seoProperties} website{seoProperties === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-ink-subtle">
+                  Each client&apos;s websites, and what their search data says to do next. Figures come
+                  from connected sources only.
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
+        ) : null}
+
         {seesCampaigns ? (
           <Link href="/admin/marketing/campaigns" className="group">
             <Card className="h-full transition-colors group-hover:border-navy-300">
@@ -118,9 +143,9 @@ export default async function MarketingPage() {
         ) : null}
       </div>
 
-      {!seesPopups && !seesCampaigns && !seesTracking ? (
+      {!seesPopups && !seesCampaigns && !seesTracking && !seesSeo ? (
         <p className="text-sm text-ink-subtle">
-          Your role does not include campaigns, popups or tracking.
+          Your role does not include campaigns, popups, tracking or SEO Intelligence.
         </p>
       ) : null}
     </>

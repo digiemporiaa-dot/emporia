@@ -10,6 +10,7 @@ import {
 import { DEFAULT_TEMPLATES } from "../lib/email/templates.js";
 import { ensureHomepage } from "./ensure-homepage.js";
 import { migrateHomepage } from "./migrate-homepage.js";
+import { linkCityCountries } from "../lib/geo/country-rows.js";
 
 /**
  * Platform data the running code depends on.
@@ -36,6 +37,8 @@ import { migrateHomepage } from "./migrate-homepage.js";
  *   email templates   created if absent; only `variables` is refreshed
  *   automations       created if absent, and switched off
  *   homepage          created only when no `home` page exists at all
+ *   city countries    a city with no `countryId` is linked from its country
+ *                     name when recognised; nothing else about it changes
  *
  * The one thing that *removes* anything is the role reconciliation, and it
  * removes only from the nine `isSystem` roles this file creates. That is
@@ -397,6 +400,11 @@ export async function syncPlatform(prisma: PrismaClient): Promise<void> {
   await seedEmailTemplates(prisma);
   await seedAutomations(prisma);
   await seedOccasions(prisma);
+  const countries = await linkCityCountries(prisma);
+  console.log(
+    `  city countries: ${countries.linked} linked` +
+      (countries.unrecognised.length ? `; not recognised, left unlinked: ${countries.unrecognised.join(", ")}` : ""),
+  );
   console.log(`  ${await ensureHomepage(prisma)}`);
   // Additive and idempotent: it inserts the homepage bands that became section
   // types and touches nothing an editor has arranged (prisma/migrate-homepage).
