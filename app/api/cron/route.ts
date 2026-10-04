@@ -12,6 +12,7 @@ import {
 } from "@/lib/services/social-account.service";
 import { socialProvider } from "@/lib/social";
 import { syncDueGscProperties } from "@/lib/services/seo-intel/gsc-sync.service";
+import { advanceCrawls, startDueCrawls } from "@/lib/services/seo-intel/crawl.service";
 import { markOverdue } from "@/lib/services/invoice.service";
 import { billDueRetainers, sendPaymentReminders } from "@/lib/services/retainer.service";
 import { systemActor } from "@/lib/actor/types";
@@ -123,6 +124,17 @@ async function handle(request: Request): Promise<NextResponse> {
       cronLog.error({ err: seo.reason }, "search console sync failed");
     }
 
+    // Site crawls: start the weekly ones that are due, then work on running
+    // crawls for a bounded time. Never able to fail the run.
+    const crawlStart = await Promise.allSettled([startDueCrawls({ limit: 2 })]).then(([result]) => result);
+    if (crawlStart.status === "rejected") {
+      cronLog.error({ err: crawlStart.reason }, "starting scheduled crawls failed");
+    }
+    const crawl = await Promise.allSettled([advanceCrawls()]).then(([result]) => result);
+    if (crawl.status === "rejected") {
+      cronLog.error({ err: crawl.reason }, "advancing crawls failed");
+    }
+
     // Finance: mark unpaid invoices overdue, bill retainers that are due,
     // and remind clients about invoices coming due soon.
     const financeActor = systemActor({
@@ -196,6 +208,10 @@ async function handle(request: Request): Promise<NextResponse> {
       accountsChecked: accountSync.status === "fulfilled" ? accountSync.value : { checked: 0, failed: 0 },
       expiringWarned: expiring.status === "fulfilled" ? expiring.value.warned : 0,
       searchConsole: seo.status === "fulfilled" ? seo.value : { synced: 0, failed: 0 },
+      crawls: {
+        started: crawlStart.status === "fulfilled" ? crawlStart.value : 0,
+        ...(crawl.status === "fulfilled" ? crawl.value : { pages: 0, finished: 0, failed: 0 }),
+      },
       finance: {
         overdue: overdue.status === "fulfilled" ? overdue.value : 0,
         retainersRaised: retainers.status === "fulfilled" ? retainers.value.length : 0,
