@@ -24,7 +24,11 @@ export type ParsedPage = {
   imageCount: number;
   imagesMissingAlt: number;
   links: ParsedLink[];
+  /** Visible text, single-spaced, capped — for internal link suggestions only, never kept. */
+  text: string;
 };
+
+export const MAX_PAGE_TEXT = 20_000;
 
 const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "svg", "head", "title"]);
 const BLOCK = new Set(["p", "div", "li", "br", "h1", "h2", "h3", "h4", "h5", "h6", "td", "th", "tr", "section", "article", "header", "footer", "nav", "main", "aside", "blockquote", "pre"]);
@@ -203,6 +207,7 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
     imageCount,
     imagesMissingAlt,
     links: [...links.values()],
+    text: text.slice(0, MAX_PAGE_TEXT),
   };
 }
 
