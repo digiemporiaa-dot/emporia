@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { can, canAny, isSuperAdmin, requireOwnership, requirePermission, requirePortalActor, requireStaff } from "@/lib/auth/rbac";
 import { ForbiddenError, UnauthenticatedError } from "@/lib/errors";
-import type { Actor } from "@/lib/actor/types";
+import { systemActor, type Actor } from "@/lib/actor/types";
 import type { RoleNameLiteral } from "@/lib/auth/permissions";
 
 function actorWith(
@@ -104,6 +104,22 @@ describe("client isolation", () => {
     const broken = actorWith(null, [], { type: "CLIENT", clientId: null });
     expect(() => requireOwnership(broken, "client-a")).toThrow(ForbiddenError);
     expect(() => requirePortalActor(broken)).toThrow(ForbiddenError);
+  });
+});
+
+describe("systemActor permissions", () => {
+  it("has no permissions by default", () => {
+    const actor = systemActor();
+    expect(can(actor, "invoices.create")).toBe(false);
+    expect(() => requirePermission(actor, "invoices.create")).toThrow(ForbiddenError);
+  });
+
+  it("carries explicit permissions for cron jobs", () => {
+    const actor = systemActor({ permissions: ["invoices.create", "invoices.send"] });
+    expect(can(actor, "invoices.create")).toBe(true);
+    expect(can(actor, "invoices.send")).toBe(true);
+    expect(can(actor, "invoices.delete")).toBe(false);
+    expect(() => requirePermission(actor, "invoices.create")).not.toThrow();
   });
 });
 

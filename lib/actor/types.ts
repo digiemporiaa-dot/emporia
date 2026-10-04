@@ -38,7 +38,10 @@ export type PortalActor = Omit<Actor, "type" | "clientId"> & {
 export const SYSTEM_USER_ID = "system";
 
 /** Actor for automation, cron and seeding. Audited under its own identity. */
-export function systemActor(options?: { ip?: string | null }): Actor {
+export function systemActor(options?: {
+  ip?: string | null;
+  permissions?: readonly string[];
+}): Actor {
   return {
     userId: SYSTEM_USER_ID,
     name: "System",
@@ -47,7 +50,7 @@ export function systemActor(options?: { ip?: string | null }): Actor {
     roleName: null,
     roleId: null,
     clientId: null,
-    permissions: new Set<string>(),
+    permissions: new Set<string>(options?.permissions),
     ip: options?.ip ?? null,
     userAgent: "emporia/system",
   };
