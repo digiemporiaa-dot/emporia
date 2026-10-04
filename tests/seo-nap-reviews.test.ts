@@ -126,6 +126,8 @@ describe("review figures", () => {
       daysSinceLast: 2,
     });
     expect(reviewStats(reviews, now, { unansweredDays: 3, lowRating: 3 }).unanswered).toBe(0);
+    // At the low-rating limit counts as low.
+    expect(reviewStats([r(3, 1)], now, { unansweredDays: 30, lowRating: 3 }).unansweredLow).toBe(1);
     expect(reviewStats([r(5, 1, 2), r(5, 1, 6)], now, { unansweredDays: 30, lowRating: 3 }).medianReplyHours).toBe(4);
     expect(reviewStats([], now, { unansweredDays: 30, lowRating: 3 })).toMatchObject({ total: 0, recentAverage: null, allAverage: null, medianReplyHours: null, daysSinceLast: null });
   });
@@ -196,9 +198,12 @@ describe("Business Profile adapter: listing and reviews", () => {
 
   it("stops at the cap and says the read was incomplete", async () => {
     double.setReviews("locations/1001", Array.from({ length: 120 }, (_, i) => ({ reviewId: `c${i}`, starRating: "FIVE", createTime: "2026-09-01T00:00:00Z" })));
+    const before = double.requests.length;
     const page = await provider.listReviews(credentials, ref, 60);
     expect(page.reviews).toHaveLength(60);
     expect(page.complete).toBe(false);
+    // It stops asking once the cap is reached: two pages of 50, not all three.
+    expect(double.requests.length - before).toBe(2);
     expect((await provider.listReviews(credentials, ref, 120)).complete).toBe(true);
   });
 

@@ -208,6 +208,8 @@ describeDb("Local SEO", () => {
       expect(setup.cities.some((c) => c.cityId === pune)).toBe(true);
       const coverage = await localCoverage(viewer(), internalPropertyId, { cell: `${imported.id}:${pune}` });
       expect(coverage.selected).toMatchObject({ status: "draft", cms: { id: cmsPageId, status: "DRAFT" } });
+      // An unpublished CMS page is not offered as the page: it is not on the website.
+      expect(coverage.selected?.page).toBeNull();
 
       await db.serviceCityPage.update({ where: { id: cmsPageId }, data: { status: "PUBLISHED" } });
       const published = await localCoverage(viewer(), internalPropertyId, { cell: `${imported.id}:${pune}` });
