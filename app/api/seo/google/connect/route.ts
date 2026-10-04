@@ -30,7 +30,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const propertyId = new URL(request.url).searchParams.get("propertyId");
   if (!propertyId) return NextResponse.json({ error: "No website was named." }, { status: 400 });
 
-  const { state, nonce } = issueSeoState({ propertyId, source: "SEARCH_CONSOLE" });
+  const { state, nonce } = issueSeoState({ propertyId, source: "SEARCH_CONSOLE", via: "staff" });
   let authorizeUrl: string;
   try {
     authorizeUrl = await gscAuthorizationUrl(actor, propertyId, state);

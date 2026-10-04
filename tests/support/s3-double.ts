@@ -111,6 +111,8 @@ export class S3Double {
 
   async stop(): Promise<void> {
     if (!this.server) return;
+    // fetch keeps connections alive; close would otherwise wait for them.
+    this.server.closeAllConnections();
     await new Promise<void>((resolve, reject) => {
       this.server!.close((error) => (error ? reject(error) : resolve()));
     });

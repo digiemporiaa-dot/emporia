@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePortalActorPage } from "@/lib/actor/portal";
 import { dashboard } from "@/lib/services/portal.service";
+import { myOnboardingProgress } from "@/lib/services/onboarding.service";
+import { globals } from "@/lib/services/email.service";
 import { formatMoney } from "@/lib/money";
 import { HEALTH_LABEL } from "@/lib/projects/health";
 import { PROJECT_STATUS_LABEL } from "@/lib/projects/lifecycle";
@@ -14,7 +16,7 @@ const DATE = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", 
 
 export default async function PortalHome() {
   const actor = await requirePortalActorPage();
-  const data = await dashboard(actor);
+  const [data, setup, site] = await Promise.all([dashboard(actor), myOnboardingProgress(actor), globals()]);
 
   const stats = [
     {
@@ -54,6 +56,49 @@ export default async function PortalHome() {
           Working with us since {DATE.format(data.client.createdAt)}.
         </p>
       </header>
+
+      {!setup.complete ? (
+        <Card className="mb-5">
+          <CardBody className="space-y-4">
+            <div>
+              <h2 className="font-display text-xl text-navy-800">Welcome to {site.siteName} 👋</h2>
+              <p className="mt-1 text-sm text-ink-muted">Let&apos;s get your account ready.</p>
+            </div>
+            <ul className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+              {setup.steps
+                .filter((step) => step.state !== "not-applicable")
+                .map((step) => (
+                  <li key={step.step} className="flex items-center gap-2 text-sm">
+                    <span aria-hidden="true" className={step.state === "done" ? "text-success" : "text-ink-subtle"}>
+                      {step.state === "done" ? "✓" : "○"}
+                    </span>
+                    <span className={step.state === "done" ? "text-navy-800" : "text-ink-muted"}>{step.label}</span>
+                    <span className="sr-only">{step.state === "done" ? "(done)" : "(to do)"}</span>
+                  </li>
+                ))}
+            </ul>
+            <div>
+              <div className="flex items-baseline justify-between text-xs text-ink-muted">
+                <span>Account setup</span>
+                <span className="font-medium tabular-nums text-navy-800">{setup.percent}%</span>
+              </div>
+              <div
+                role="progressbar"
+                aria-label="Account setup"
+                aria-valuenow={setup.percent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="mt-1 h-2 overflow-hidden rounded-full bg-surface-sunken"
+              >
+                <div className="h-full rounded-full bg-navy-700" style={{ width: `${setup.percent}%` }} />
+              </div>
+            </div>
+            <Link href="/portal/onboarding" className="inline-flex items-center rounded-md bg-brand-red px-3.5 py-2 text-sm font-medium text-white hover:bg-red-600">
+              Continue setup
+            </Link>
+          </CardBody>
+        </Card>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

@@ -8,6 +8,7 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
+  ListChecks,
   Megaphone,
   MessageSquare,
   Paperclip,
@@ -36,6 +37,7 @@ const ICONS = {
   files: Paperclip,
   messages: MessageSquare,
   profile: UserRound,
+  setup: ListChecks,
 } as const;
 
 export type PortalNavItem = {

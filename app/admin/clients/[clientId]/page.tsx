@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Share2 } from "lucide-react";
+import { ListChecks, Share2 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { getClient } from "@/lib/services/sales.service";
 import { listPortalUsers } from "@/lib/services/portal-access.service";
 import { listMessages } from "@/lib/services/client-messages.service";
+import { getClientOnboarding } from "@/lib/services/onboarding.service";
 import { isAppError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
 import { STATUS_LABEL } from "@/lib/sales/lifecycle";
@@ -44,7 +45,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
     throw error;
   }
 
-  const [portalUsers, thread, projects] = await Promise.all([
+  const [portalUsers, thread, projects, onboarding] = await Promise.all([
     listPortalUsers(actor, client.id),
     listMessages(actor, client.id),
     db.project.findMany({
@@ -52,6 +53,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
       orderBy: { createdAt: "desc" },
       select: { id: true, name: true },
     }),
+    getClientOnboarding(actor, client.id).catch(() => null),
   ]);
 
   return (
@@ -67,6 +69,15 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
         <div className="mt-1.5 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl text-navy-800">{client.name}</h1>
           <Badge tone={TONE[client.status]}>{LABEL[client.status]}</Badge>
+          {onboarding ? (
+            <Link
+              href={`/admin/clients/${client.id}/onboarding`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-white px-3 text-xs text-navy-800 hover:border-navy-300 hover:bg-surface-muted"
+            >
+              <ListChecks size={13} aria-hidden="true" />
+              Onboarding · {onboarding.progress.percent}%
+            </Link>
+          ) : null}
           {can(actor, "social.view") ? (
             <Link
               href={`/admin/clients/${client.id}/social`}

@@ -215,12 +215,12 @@ describe("the service account", () => {
 
 describe("the OAuth state", () => {
   it("round-trips the property for the browser that started the flow", () => {
-    const { state, nonce } = issueSeoState({ propertyId: "prop-1", source: "SEARCH_CONSOLE" });
-    expect(readSeoState(state, nonce)).toMatchObject({ ok: true, value: { propertyId: "prop-1", source: "SEARCH_CONSOLE" } });
+    const { state, nonce } = issueSeoState({ propertyId: "prop-1", source: "SEARCH_CONSOLE", via: "staff" });
+    expect(readSeoState(state, nonce)).toMatchObject({ ok: true, value: { propertyId: "prop-1", source: "SEARCH_CONSOLE", via: "staff" } });
   });
 
   it("refuses a different browser, a tampered payload and a missing state", () => {
-    const { state, nonce } = issueSeoState({ propertyId: "prop-1", source: "SEARCH_CONSOLE" });
+    const { state, nonce } = issueSeoState({ propertyId: "prop-1", source: "SEARCH_CONSOLE", via: "staff" });
     expect(readSeoState(state, "someone-elses-nonce")).toEqual({ ok: false, reason: "nonce" });
     expect(readSeoState(state, null)).toEqual({ ok: false, reason: "nonce" });
     const [body, signature] = state.split(".") as [string, string];
@@ -241,7 +241,11 @@ describe("the OAuth state", () => {
   });
 
   it("checks the caller's own fields", () => {
-    const { state, nonce } = issueSignedState("seo-google-oauth", { propertyId: 5, source: "SEARCH_CONSOLE" });
+    const { state, nonce } = issueSignedState("seo-google-oauth", { propertyId: 5, source: "SEARCH_CONSOLE", via: "staff" });
     expect(readSeoState(state, nonce)).toEqual({ ok: false, reason: "malformed" });
+    const noSide = issueSignedState("seo-google-oauth", { propertyId: "p", source: "SEARCH_CONSOLE" });
+    expect(readSeoState(noSide.state, noSide.nonce)).toEqual({ ok: false, reason: "malformed" });
+    const oddSide = issueSignedState("seo-google-oauth", { propertyId: "p", source: "SEARCH_CONSOLE", via: "admin" });
+    expect(readSeoState(oddSide.state, oddSide.nonce)).toEqual({ ok: false, reason: "malformed" });
   });
 });

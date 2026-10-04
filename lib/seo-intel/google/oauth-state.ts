@@ -14,7 +14,12 @@ const MAX_AGE_MS = 10 * 60 * 1000;
 export const SEO_OAUTH_COOKIE = "emporia.seo.oauth";
 export const SEO_OAUTH_COOKIE_PATH = "/api/seo/google";
 
-export type SeoOAuthState = { propertyId: string; source: "SEARCH_CONSOLE" };
+/**
+ * `via` records which side started the flow, so the callback completes it
+ * under the same rules: a portal state is only ever completed by that
+ * client's own user, a staff state only by staff who may connect.
+ */
+export type SeoOAuthState = { propertyId: string; source: "SEARCH_CONSOLE"; via: "staff" | "portal" };
 
 export function issueSeoState(input: SeoOAuthState): { state: string; nonce: string } {
   return issueSignedState(PURPOSE, input);
@@ -26,6 +31,7 @@ export function readSeoState(
 ): { ok: true; value: SeoOAuthState } | { ok: false; reason: SignedStateFailure } {
   return readSignedState<SeoOAuthState>(PURPOSE, state, cookieNonce, {
     maxAgeMs: MAX_AGE_MS,
-    isPayload: (value) => typeof value["propertyId"] === "string" && value["source"] === "SEARCH_CONSOLE",
+    isPayload: (value) =>
+      typeof value["propertyId"] === "string" && value["source"] === "SEARCH_CONSOLE" && (value["via"] === "staff" || value["via"] === "portal"),
   });
 }

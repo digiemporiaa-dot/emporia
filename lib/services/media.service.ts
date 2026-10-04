@@ -43,7 +43,15 @@ import type {
 
 export async function presign(actor: Actor, input: PresignInput) {
   requirePermission(actor, "media.upload");
+  return presignUpload(actor, input);
+}
 
+/**
+ * The upload checks without the library permission — for a caller that has
+ * authorised the upload itself (a client adding their own brand assets). The
+ * type, size, opaque key and signed intent rules are exactly the same.
+ */
+export async function presignUpload(actor: Actor, input: PresignInput) {
   const type = allowedTypeFor(input.contentType);
   if (!type) throw new ValidationError("That file type is not supported.");
 
@@ -108,7 +116,11 @@ export async function presign(actor: Actor, input: PresignInput) {
  */
 export async function confirm(actor: Actor, uploadId: string) {
   requirePermission(actor, "media.upload");
+  return confirmUpload(actor, uploadId);
+}
 
+/** `confirm` without the library permission; the intent must still be the caller's own. */
+export async function confirmUpload(actor: Actor, uploadId: string) {
   const intent = decodeIntent(uploadId);
 
   // An intent signed for someone else is not usable, even though it is valid.
