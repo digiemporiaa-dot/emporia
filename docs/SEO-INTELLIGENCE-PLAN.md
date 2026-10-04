@@ -10,7 +10,7 @@
 | 4 — Keywords, rankings, opportunities | **Done** — 23 tests |
 | 5 — Content intelligence, internal links | **Done** — 19 tests |
 | 6–7 | Need a paid provider (D2) |
-| 8 — Local and international SEO | **Done** — TESTCOUNT tests |
+| 8 — Local and international SEO | **Done** — 63 tests |
 | 9 | Planned, Part E |
 | 10 — Opportunity engine, thresholds, Command Center | **Done** — 25 tests |
 | 11 | Planned, Part E |
