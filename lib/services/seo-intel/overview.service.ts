@@ -7,6 +7,8 @@ import { ctr, type GscMetrics } from "@/lib/seo-intel/normalize/gsc";
 import { eachDay, fromDbDate, toDbDate } from "@/lib/seo-intel/dates";
 import { percentChange, resolvePeriod, type DayRange, type ResolvedPeriod, type SeoPeriod } from "@/lib/seo-intel/periods";
 import { detectChanges, type ChangeInsight } from "@/lib/seo-intel/engine/changes";
+import { changeThresholds } from "@/lib/seo-intel/thresholds";
+import { thresholdsFor } from "@/lib/services/seo-intel/thresholds.service";
 import type { Actor } from "@/lib/actor/types";
 
 /**
@@ -197,7 +199,7 @@ export async function getSEOOverview(actor: Actor, propertyId: string, periodKey
           totals: { current, previous },
           pages: { current: pagesNow, previous: pagesBefore },
           queries: { current: queriesNow, previous: queriesBefore },
-        })
+        }, changeThresholds(await thresholdsFor(propertyId)))
       : [],
   };
 }

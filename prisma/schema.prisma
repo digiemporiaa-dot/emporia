@@ -535,6 +535,9 @@ model User {
   seoPropertiesCreated       SeoProperty[]             @relation("SeoPropertyCreatedBy")
   seoConnectionsMade         SeoConnection[]           @relation("SeoConnectionConnectedBy")
   crawlRunsStarted           CrawlRun[]                @relation("CrawlRunStartedBy")
+  seoThresholdsUpdated       SeoThreshold[]            @relation("SeoThresholdUpdatedBy")
+  seoOpportunitiesAssigned   SeoOpportunity[]          @relation("SeoOpportunityAssignee")
+  seoOpportunitiesDismissed  SeoOpportunity[]          @relation("SeoOpportunityDismissedBy")
   seoKeywordsAdded           SeoKeyword[]              @relation("SeoKeywordCreatedBy")
   businessProfilesUpdated    ClientBusinessProfile[]   @relation("BusinessProfileUpdatedBy")
   brandAssetsUploaded        ClientBrandAsset[]        @relation("BrandAssetUploadedBy")
@@ -1879,10 +1882,12 @@ model ProjectTask {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  dependencies ProjectTaskDependency[] @relation("DependentTask")
-  dependents   ProjectTaskDependency[] @relation("DependsOnTask")
-  comments     ProjectComment[]
-  timeEntries  TimeEntry[]
+  dependencies     ProjectTaskDependency[] @relation("DependentTask")
+  dependents       ProjectTaskDependency[] @relation("DependsOnTask")
+  comments         ProjectComment[]
+  timeEntries      TimeEntry[]
+  /// SEO opportunities this task was created from.
+  seoOpportunities SeoOpportunity[]
 
   @@index([projectId, status])
   @@index([assigneeId, dueAt])
@@ -3416,6 +3421,8 @@ model SeoProperty {
   /// When the scheduler next starts a crawl; null for manual-only or never run.
   nextCrawlAt    DateTime?
   lastCrawledAt  DateTime?
+  /// When the opportunity detector last ran for this website (daily).
+  lastDetectedAt DateTime?
 
   createdById String?
   createdBy   User?   @relation("SeoPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -3432,6 +3439,9 @@ model SeoProperty {
   urlInspections UrlInspection[]
   gscQueryPages  GscQueryPageDaily[]
   keywords       SeoKeyword[]
+  thresholds     SeoThreshold[]
+  opportunities  SeoOpportunity[]
+  changeEvents   SeoChangeEvent[]
 
   @@unique([clientId, domain])
   @@index([clientId, isActive])
@@ -3851,6 +3861,131 @@ model InternalLinkSuggestion {
   @@index([runId, impressions])
   @@index([targetPageId])
   @@index([sourcePageId])
+}
+
+// ---------------------------------------------------------------------------
+// SEO Intelligence — opportunity engine, thresholds, change history (Phase 10)
+// ---------------------------------------------------------------------------
+
+/// One rule setting. `propertyId` null = the agency default; a row for a
+/// website overrides that one value for it. Unknown keys are ignored when
+/// read; one row per scope and key is kept by the service under a lock.
+model SeoThreshold {
+  id         String       @id @default(cuid())
+  propertyId String?
+  property   SeoProperty? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  key        String
+  value      Float
+
+  updatedById String?
+  updatedBy   User?    @relation("SeoThresholdUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId, key])
+  @@index([updatedById])
+}
+
+enum SeoOpportunitySource {
+  KEYWORDS
+  CONTENT
+  TECHNICAL
+  INDEXATION
+  LINKS
+  CHANGES
+}
+
+enum SeoOpportunityStatus {
+  OPEN
+  TASK_CREATED
+  DONE
+  DISMISSED
+  /// The detector no longer finds it.
+  RESOLVED
+}
+
+enum SeoSeverity {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SeoEffort {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// A finding kept as work: detected daily, identified by a fingerprint so a
+/// re-detection updates rather than duplicates, and closed by the detector
+/// when its condition no longer holds.
+model SeoOpportunity {
+  id          String               @id @default(cuid())
+  propertyId  String
+  property    SeoProperty          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// Stable per finding, e.g. "content:decaying:https://…/page".
+  fingerprint String
+  source      SeoOpportunitySource
+  /// The rule, e.g. "keyword-near-top", "decaying", "technical:http-4xx".
+  type        String
+  title       String
+  url         String?
+  query       String?
+  /// The numbers the rule decided on, shown as evidence.
+  evidence    Json
+  /// Clicks (lost, missed or estimated), or pages affected for technical and
+  /// indexation findings — see `impactUnit`.
+  impact      Int
+  impactUnit  String               @default("clicks")
+  severity    SeoSeverity
+  effort      SeoEffort
+  status      SeoOpportunityStatus @default(OPEN)
+
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  dismissedAt     DateTime?
+  dismissedById   String?
+  dismissedBy     User?     @relation("SeoOpportunityDismissedBy", fields: [dismissedById], references: [id], onDelete: SetNull)
+  dismissReason   String?
+  /// Impact when dismissed; the opportunity reopens only if it doubles.
+  dismissedImpact Int?
+
+  assigneeId    String?
+  assignee      User?        @relation("SeoOpportunityAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  projectTaskId String?
+  projectTask   ProjectTask? @relation(fields: [projectTaskId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([propertyId, fingerprint])
+  @@index([propertyId, status, severity])
+  @@index([status, severity, impact])
+  @@index([assigneeId])
+  @@index([projectTaskId])
+  @@index([dismissedById])
+}
+
+/// A "What changed" finding as it was on the day detected, so the history
+/// survives the 28-day window moving on.
+model SeoChangeEvent {
+  id         String      @id @default(cuid())
+  propertyId String
+  property   SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  key        String
+  /// The last day of the period the change was measured over.
+  periodEnd  DateTime    @db.Date
+  severity   SeoSeverity
+  direction  String
+  title      String
+  entityType String
+  entityKeys String[]    @default([])
+  range      Json
+  detectedAt DateTime    @default(now())
+
+  @@unique([propertyId, key, periodEnd])
+  @@index([propertyId, detectedAt])
 }
 
 /// Google's own view of one URL, from the URL Inspection API. Latest result

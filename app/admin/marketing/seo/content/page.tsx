@@ -7,6 +7,7 @@ import { can, requirePermission } from "@/lib/auth/rbac";
 import { listProperties } from "@/lib/services/seo-intel/property.service";
 import { CONTENT_TYPES, contentFindings } from "@/lib/services/seo-intel/content.service";
 import type { ContentType, CrawlFacts, Finding } from "@/lib/seo-intel/engine/content";
+import type { Thresholds } from "@/lib/seo-intel/thresholds";
 import { Pagination } from "@/components/admin/pagination";
 import { Card, CardBody, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
 import { SeoHeader } from "../seo-header";
@@ -23,35 +24,40 @@ const paramsSchema = z.object({
 });
 const PAGE_SIZE = 50;
 
-const TYPE: Record<ContentType, { label: string; why: string; impact: string }> = {
-  decaying: {
-    label: "Decaying",
-    why: "Clicks fell in each of the last three 28-day blocks, by 25% or more overall, from a page that had at least 30 clicks a block.",
-    impact: "Clicks lost a block",
-  },
-  refresh: {
-    label: "Needs a refresh",
-    why: "Search demand held (impressions at least 80% of the first block) while the page slipped two or more places and did not recover — the usual sign of being overtaken.",
-    impact: "Clicks lost to the slip",
-  },
-  "low-ctr": {
-    label: "Low CTR",
-    why: "In the last 28 days the page earned under half the click-through rate this website gets at the same position. The title and description are usually the fix.",
-    impact: "Clicks missed",
-  },
-  potential: {
-    label: "High potential",
-    why: "Pages whose queries at positions 4–20 add up to the most extra clicks, each estimated from this website's own click-through rate by position.",
-    impact: "Extra clicks (est.)",
-  },
-  cannibalisation: {
-    label: "Possible cannibalisation",
-    why: "Two or more of the website's pages each take 20% or more of one query's impressions (50+ in 28 days). Sometimes intended; often one page should be the answer.",
-    impact: "Impressions on the weaker pages",
-  },
-};
-
 const pct = (value: number) => `${(value * 100).toFixed(1)}%`;
+const whole = (value: number) => `${Math.round(value * 100)}%`;
+
+/** Labels and explanations, the numbers taken from this website's thresholds. */
+function typeInfo(t: Thresholds): Record<ContentType, { label: string; why: string; impact: string }> {
+  return {
+    decaying: {
+      label: "Decaying",
+      why: `Clicks fell in each of the last three 28-day blocks, by ${whole(t["decay.minDrop"])} or more overall, from a page that had at least ${t["decay.minClicks"]} clicks a block.`,
+      impact: "Clicks lost a block",
+    },
+    refresh: {
+      label: "Needs a refresh",
+      why: `Search demand held (impressions at least ${whole(t["refresh.impressionsHeld"])} of a first block with ${t["refresh.minImpressions"]}+) while the page slipped ${t["refresh.minSlip"]} or more places and did not recover — the usual sign of being overtaken.`,
+      impact: "Clicks lost to the slip",
+    },
+    "low-ctr": {
+      label: "Low CTR",
+      why: `In the last 28 days the page earned under ${whole(t["lowCtr.share"])} of the click-through rate this website gets at the same position (${t["lowCtr.minImpressions"]}+ impressions). The title and description are usually the fix.`,
+      impact: "Clicks missed",
+    },
+    potential: {
+      label: "High potential",
+      why: "Pages whose queries at positions 4–20 add up to the most extra clicks, each estimated from this website's own click-through rate by position.",
+      impact: "Extra clicks (est.)",
+    },
+    cannibalisation: {
+      label: "Possible cannibalisation",
+      why: `Two or more of the website's pages each take ${whole(t["cannibal.minShare"])} or more of one query's impressions (${t["cannibal.minImpressions"]}+ in 28 days). Sometimes intended; often one page should be the answer.`,
+      impact: "Impressions on the weaker pages",
+    },
+  };
+}
+
 
 function CrawlNote({ crawl }: { crawl: CrawlFacts | null }) {
   if (!crawl) return <span className="block text-2xs text-ink-subtle">Not in the latest crawl</span>;
@@ -150,6 +156,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
   }
 
   const link = (type: ContentType) => `/admin/marketing/seo/content?property=${property.id}&type=${type}` as Route;
+  const TYPE = typeInfo(result.thresholds);
   const meta = TYPE[params.type];
   const needsHistory = (params.type === "decaying" || params.type === "refresh") && !result.historyComplete;
   const needsPairs = (params.type === "potential" || params.type === "cannibalisation") && !result.pairsSince;

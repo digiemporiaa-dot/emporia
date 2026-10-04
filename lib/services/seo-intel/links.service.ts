@@ -7,7 +7,8 @@ import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { fromDbDate, toDbDate } from "@/lib/seo-intel/dates";
 import { resolvePeriod } from "@/lib/seo-intel/periods";
 import { normalizeUrl } from "@/lib/seo-intel/crawler/url";
-import { OPPORTUNITY_MIN_IMPRESSIONS, opportunityBand } from "@/lib/seo-intel/engine/rankings";
+import { opportunityBand } from "@/lib/seo-intel/engine/rankings";
+import { thresholdsFor } from "@/lib/services/seo-intel/thresholds.service";
 import { suggestLinks, type LinkTarget } from "@/lib/seo-intel/engine/links";
 import type { Actor } from "@/lib/actor/types";
 
@@ -28,6 +29,7 @@ export async function buildLinkSuggestions(runId: string, propertyId: string): P
   const latest = await db.gscDailyTotal.aggregate({ where: { propertyId, device: "", country: "" }, _max: { date: true } });
   if (!latest._max.date) return null;
   const range = resolvePeriod("28d", fromDbDate(latest._max.date)).current;
+  const minImpressions = (await thresholdsFor(propertyId))["opportunities.minImpressions"];
   const between = Prisma.sql`date BETWEEN ${toDbDate(range.start)}::date AND ${toDbDate(range.end)}::date`;
 
   const [pairRows, pageRows, pages, links] = await Promise.all([
@@ -36,7 +38,7 @@ export async function buildLinkSuggestions(runId: string, propertyId: string): P
       FROM "GscQueryPageDaily"
       WHERE "propertyId" = ${propertyId} AND ${between}
       GROUP BY query, page
-      HAVING SUM(impressions) >= ${OPPORTUNITY_MIN_IMPRESSIONS}
+      HAVING SUM(impressions) >= ${minImpressions}
       ORDER BY SUM(impressions) DESC LIMIT 5000`),
     db.$queryRaw<SumRow[]>(Prisma.sql`
       SELECT page AS key, SUM(clicks) AS clicks, SUM(impressions) AS impressions, 0::float AS weighted

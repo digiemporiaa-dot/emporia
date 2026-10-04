@@ -101,7 +101,7 @@ export const CURVE_MIN_IMPRESSIONS = 200;
  * the rate of the position above, so noise never makes position 7 "better"
  * than position 4.
  */
-export function ownCtrCurve(rows: readonly CurveRow[]): (number | null)[] {
+export function ownCtrCurve(rows: readonly CurveRow[], minImpressions = CURVE_MIN_IMPRESSIONS): (number | null)[] {
   const clicks = new Array<number>(21).fill(0);
   const impressions = new Array<number>(21).fill(0);
   for (const row of rows) {
@@ -113,7 +113,7 @@ export function ownCtrCurve(rows: readonly CurveRow[]): (number | null)[] {
   const curve: (number | null)[] = [null];
   let cap = 1;
   for (let p = 1; p <= 20; p++) {
-    if (impressions[p]! < CURVE_MIN_IMPRESSIONS) {
+    if (impressions[p]! < minImpressions) {
       curve.push(null);
       continue;
     }
