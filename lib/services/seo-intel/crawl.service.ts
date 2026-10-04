@@ -15,6 +15,7 @@ import { parseSitemap } from "@/lib/seo-intel/crawler/sitemap";
 import { hasNoindex, parsePage } from "@/lib/seo-intel/crawler/parse";
 import { isLikelyNonHtml, isOnSite, normalizeUrl, robotsPath, siteHosts } from "@/lib/seo-intel/crawler/url";
 import { summarize, technicalFindings, type RulePage } from "@/lib/seo-intel/engine/technical";
+import { buildLinkSuggestions } from "@/lib/services/seo-intel/links.service";
 import type { CrawlIssueSeverity, CrawlPageSource } from "@/generated/prisma/enums";
 
 /**
@@ -147,6 +148,7 @@ export async function cancelCrawl(actor: Actor, runId: string, now = new Date())
         data: { status: "CANCELLED", finishedAt: now, lockedUntil: null },
       }).then(() => ({ status: "CANCELLED" })),
   );
+  await clearPageText(run.id);
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +365,8 @@ async function crawlPage(
       schemaTypes: parsed.schemaTypes,
       imageCount: parsed.imageCount,
       imagesMissingAlt: parsed.imagesMissingAlt,
+      // Kept only until the crawl is analysed (link suggestions), then cleared.
+      textContent: parsed.text || null,
       externalLinks: parsed.links.length - internal.length - (parsed.links.some((link) => link.url === page.url) ? 1 : 0),
       indexable: !noindex && (!parsed.canonical || parsed.canonical === page.url),
     },
@@ -450,7 +454,20 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
 
   // Cancelled while this chunk ran: leave it cancelled, unanalysed.
   const current = await db.crawlRun.findUnique({ where: { id: run.id }, select: { status: true } });
-  if (current?.status !== "RUNNING") return;
+  if (current?.status !== "RUNNING") {
+    await clearPageText(run.id);
+    return;
+  }
+
+  // Suggestions need the page text; whatever happens, the text goes afterwards.
+  let suggestionCount: number | null = null;
+  try {
+    suggestionCount = await buildLinkSuggestions(run.id, run.propertyId);
+  } catch (error) {
+    cLog.error({ err: error, runId: run.id }, "internal link suggestions failed");
+  } finally {
+    await clearPageText(run.id);
+  }
 
   await db.$transaction([
     db.crawlIssue.deleteMany({ where: { runId: run.id } }),
@@ -465,11 +482,16 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
     }),
     db.crawlRun.updateMany({
       where: { id: run.id, status: "RUNNING" },
-      data: { status: "SUCCEEDED", finishedAt: now, lockedUntil: null, pagesFetched: fetched, summary: summarize(findings) },
+      data: { status: "SUCCEEDED", finishedAt: now, lockedUntil: null, pagesFetched: fetched, summary: summarize(findings), suggestionCount },
     }),
     db.seoProperty.update({ where: { id: run.propertyId }, data: { lastCrawledAt: now } }),
   ]);
   await pruneCrawls(run.propertyId);
+}
+
+/** Page text exists only for analysis; no finished, cancelled or failed crawl keeps it. */
+async function clearPageText(runId: string): Promise<void> {
+  await db.crawlPage.updateMany({ where: { runId, textContent: { not: null } }, data: { textContent: null } });
 }
 
 async function pruneCrawls(propertyId: string): Promise<void> {
@@ -521,10 +543,17 @@ export async function advanceCrawls(options: CrawlWorkOptions & { limit?: number
   const now = options.now ?? new Date();
   const lockFree = [{ lockedUntil: null }, { lockedUntil: { lt: now } }];
 
-  await db.crawlRun.updateMany({
+  const stale = await db.crawlRun.findMany({
     where: { status: "RUNNING", startedAt: { lt: new Date(now.getTime() - MAX_RUN_AGE_MS) }, OR: lockFree },
-    data: { status: "FAILED", error: "The crawl did not finish within a day.", finishedAt: now, lockedUntil: null },
+    select: { id: true },
   });
+  for (const { id } of stale) {
+    await db.crawlRun.updateMany({
+      where: { id, status: "RUNNING" },
+      data: { status: "FAILED", error: "The crawl did not finish within a day.", finishedAt: now, lockedUntil: null },
+    });
+    await clearPageText(id);
+  }
 
   const runs = await db.crawlRun.findMany({
     where: { status: "RUNNING", OR: lockFree },
@@ -557,6 +586,7 @@ export async function advanceCrawls(options: CrawlWorkOptions & { limit?: number
           finishedAt: new Date(),
         },
       });
+      await clearPageText(id);
     } finally {
       await db.crawlRun.updateMany({ where: { id }, data: { lockedUntil: null } });
     }
@@ -570,7 +600,7 @@ export async function advanceCrawls(options: CrawlWorkOptions & { limit?: number
 
 const RUN_SELECT = {
   id: true, propertyId: true, trigger: true, status: true, startUrl: true, maxPages: true, robotsFound: true,
-  sitemapUrls: true, sitemaps: true, pagesFetched: true, limitReached: true, summary: true, error: true,
+  sitemapUrls: true, sitemaps: true, pagesFetched: true, limitReached: true, summary: true, suggestionCount: true, error: true,
   startedAt: true, finishedAt: true, startedBy: { select: { name: true } },
 } as const;
 

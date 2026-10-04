@@ -16,6 +16,8 @@ const TABS: readonly { href: Route; label: string; key: string; connectOnly?: bo
   { href: "/admin/marketing/seo/performance", label: "Search performance", key: "performance" },
   { href: "/admin/marketing/seo/keywords", label: "Keywords", key: "keywords" },
   { href: "/admin/marketing/seo/opportunities", label: "Opportunities", key: "opportunities" },
+  { href: "/admin/marketing/seo/content", label: "Content", key: "content" },
+  { href: "/admin/marketing/seo/links", label: "Internal links", key: "links" },
   { href: "/admin/marketing/seo/crawl", label: "Site crawl", key: "crawl" },
   { href: "/admin/marketing/seo/technical", label: "Technical SEO", key: "technical" },
   { href: "/admin/marketing/seo/indexation", label: "Indexation", key: "indexation" },

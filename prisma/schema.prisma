@@ -3693,16 +3693,19 @@ model CrawlRun {
   maxPages Int
 
   /// Whether robots.txt was found, and the text that was obeyed (capped).
-  robotsFound  Boolean?
-  robotsTxt    String?
+  robotsFound     Boolean?
+  robotsTxt       String?
   /// URLs read from the sitemap(s), and the sitemap addresses used.
-  sitemapUrls  Int      @default(0)
-  sitemaps     String[] @default([])
-  pagesFetched Int      @default(0)
+  sitemapUrls     Int      @default(0)
+  sitemaps        String[] @default([])
+  pagesFetched    Int      @default(0)
   /// The page limit stopped discovery before the site was exhausted.
-  limitReached Boolean  @default(false)
+  limitReached    Boolean  @default(false)
   /// Issue counts by severity once analysed: { "CRITICAL": 3, … }.
-  summary      Json?
+  summary         Json?
+  /// Internal link suggestions made when the crawl finished; null when
+  /// Search Console had no data to choose target pages from.
+  suggestionCount Int?
 
   lockedUntil DateTime?
   error       String?
@@ -3713,9 +3716,10 @@ model CrawlRun {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
-  pages  CrawlPage[]
-  links  CrawlLink[]
-  issues CrawlIssue[]
+  pages       CrawlPage[]
+  links       CrawlLink[]
+  issues      CrawlIssue[]
+  suggestions InternalLinkSuggestion[]
 
   @@index([propertyId, startedAt])
   @@index([status, lockedUntil])
@@ -3766,12 +3770,17 @@ model CrawlPage {
   /// Internal links pointing here, counted when the crawl finishes.
   inlinks   Int      @default(0)
 
+  /// Visible text (capped), kept only until the crawl is analysed, then cleared.
+  textContent String?
+
   error     String?
   fetchedAt DateTime?
 
-  linksOut CrawlLink[]  @relation("CrawlLinkFrom")
-  linksIn  CrawlLink[]  @relation("CrawlLinkTo")
-  issues   CrawlIssue[]
+  suggestedAsTarget InternalLinkSuggestion[] @relation("SuggestionTarget")
+  suggestedAsSource InternalLinkSuggestion[] @relation("SuggestionSource")
+  linksOut          CrawlLink[]              @relation("CrawlLinkFrom")
+  linksIn           CrawlLink[]              @relation("CrawlLinkTo")
+  issues            CrawlIssue[]
 
   @@unique([runId, url])
   @@index([runId, state])
@@ -3816,6 +3825,32 @@ model CrawlIssue {
   @@index([runId, rule])
   @@index([runId, severity])
   @@index([pageId])
+}
+
+/// "Link to this page from that one, with this text": a page ranking 4–20
+/// for a query, and a crawled page that mentions the query but does not link
+/// to it yet. Made when a crawl finishes.
+model InternalLinkSuggestion {
+  id           String    @id @default(cuid())
+  runId        String
+  run          CrawlRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  targetPageId String
+  targetPage   CrawlPage @relation("SuggestionTarget", fields: [targetPageId], references: [id], onDelete: Cascade)
+  sourcePageId String
+  sourcePage   CrawlPage @relation("SuggestionSource", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  /// The query the target ranks for, used as the suggested link text.
+  query        String
+  /// The sentence on the source page where the query appears.
+  snippet      String
+  /// The target's Search Console position and impressions for the query (28 days).
+  position     Float
+  impressions  Int
+  /// The source page's Search Console clicks (28 days), why it was preferred.
+  sourceClicks Int
+
+  @@index([runId, impressions])
+  @@index([targetPageId])
+  @@index([sourcePageId])
 }
 
 /// Google's own view of one URL, from the URL Inspection API. Latest result
