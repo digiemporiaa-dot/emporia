@@ -6,7 +6,7 @@ import { requireActorPage } from "@/lib/actor";
 import { can, requirePermission } from "@/lib/auth/rbac";
 import { listProperties } from "@/lib/services/seo-intel/property.service";
 import { keywordOpportunities } from "@/lib/services/seo-intel/keyword.service";
-import { OPPORTUNITY_MIN_IMPRESSIONS, TARGET_POSITION } from "@/lib/seo-intel/engine/rankings";
+import { TARGET_POSITION } from "@/lib/seo-intel/engine/rankings";
 import { Pagination } from "@/components/admin/pagination";
 import { Card, CardBody, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
 import { SeoHeader } from "../seo-header";
@@ -37,7 +37,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const property = properties.find((candidate) => candidate.id === params.property) ?? properties[0];
   const canManage = can(actor, "seo.intelligence.manage");
   const canConnect = can(actor, "seo.intelligence.connect");
-  const description = `Queries close to the top: positions 4–10, and page two (11–20), with at least ${OPPORTUNITY_MIN_IMPRESSIONS} impressions in the last 28 days. The extra clicks are an estimate calculated from this website's own click-through rate at each position.`;
+  const description = `Queries close to the top: positions 4–10, and page two (11–20), with enough impressions in the last 28 days (set in SEO thresholds). The extra clicks are an estimate calculated from this website's own click-through rate at each position.`;
 
   if (!property) {
     return (
@@ -81,7 +81,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     <>
       {header}
       <PropertyPicker id="opp-property" properties={properties} current={property.id} />
-      <p className="mb-3 text-2xs text-ink-subtle">{formatRange(result.range)}</p>
+      <p className="mb-3 text-2xs text-ink-subtle">{formatRange(result.range)} · at least {formatCount(result.minImpressions)} impressions</p>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Stat label="Positions 4–10" value={formatCount(result.counts["near-top"])} note={`Aimed at position ${TARGET_POSITION["near-top"]}: this site's CTR there is ${pct(target("near-top"))}`} />
@@ -169,7 +169,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       <details className="mt-5 rounded-lg border border-line bg-white px-4 py-3">
         <summary className="cursor-pointer text-xs font-medium text-navy-800">This website&apos;s click-through rate by position</summary>
         <p className="mt-2 text-2xs text-ink-subtle">
-          Clicks ÷ impressions of every query whose average position rounds to that position, last 28 days. Positions with under 200 impressions are left out; lower positions are capped at the rate above them.
+          Clicks ÷ impressions of every query whose average position rounds to that position, last 28 days. Positions with under {result.curveMinImpressions} impressions are left out; lower positions are capped at the rate above them.
         </p>
         <table className="mt-2 w-full max-w-md text-2xs">
           <thead>

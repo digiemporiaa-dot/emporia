@@ -242,3 +242,14 @@ export async function listIndexation(
   return paged(filtered.slice(skip, skip + take), filtered.length, page, perPage);
 }
 
+
+/** Disagreements between the crawl and Google, grouped, for the opportunity detector. Null when either side is missing. */
+export async function indexationConflicts(propertyId: string): Promise<{ conflict: Conflict; urls: string[] }[] | null> {
+  const connection = await db.seoConnection.findFirst({ where: { propertyId, source: "SEARCH_CONSOLE", status: "CONNECTED", externalId: { not: null } }, select: { id: true } });
+  if (!connection) return null;
+  const { runId, rows } = await joinedRows(propertyId);
+  if (!runId) return null;
+  const groups = new Map<Conflict, string[]>();
+  for (const row of rows) for (const conflict of row.conflicts) groups.set(conflict, [...(groups.get(conflict) ?? []), row.url]);
+  return [...groups.entries()].map(([conflict, urls]) => ({ conflict, urls }));
+}

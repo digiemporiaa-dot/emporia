@@ -22,6 +22,7 @@ import {
   type PageBlocks,
   type Pair,
 } from "@/lib/seo-intel/engine/content";
+import { thresholdsFor } from "@/lib/services/seo-intel/thresholds.service";
 import type { Actor } from "@/lib/actor/types";
 
 /**
@@ -76,9 +77,11 @@ async function crawlFacts(propertyId: string) {
   };
 }
 
-async function computeFindings(propertyId: string) {
+/** All five finding types for a website, with its thresholds. Shared by the screen and the opportunity detector. */
+export async function computeContentFindings(propertyId: string) {
   const latest = await latestDay(propertyId);
   if (!latest) return null;
+  const t = await thresholdsFor(propertyId);
   const blocks = contentBlocks(latest);
   const full = { start: blocks[0].start, end: blocks[2].end };
 
@@ -116,17 +119,18 @@ async function computeFindings(propertyId: string) {
   const pageList = [...pages.values()];
   const curve = ownCtrCurve(
     queryRows.map((row) => toBlock(row)).filter((row): row is Block & { position: number } => row.position !== null).map((row) => ({ position: row.position, clicks: row.clicks, impressions: row.impressions })),
+    t["curve.minImpressions"],
   );
   const pairs: Pair[] = pairRows
     .map((row) => ({ query: row.key, page: row.page, ...toBlock(row) }))
     .filter((row): row is Pair => row.position !== null);
 
   const findings: Record<ContentType, Finding[]> = {
-    decaying: byImpact(decaying(pageList, crawl.lookup)),
-    refresh: byImpact(needsRefresh(pageList, crawl.lookup)),
-    "low-ctr": byImpact(lowCtr(pageList, curve, crawl.lookup)),
+    decaying: byImpact(decaying(pageList, crawl.lookup, t)),
+    refresh: byImpact(needsRefresh(pageList, crawl.lookup, t)),
+    "low-ctr": byImpact(lowCtr(pageList, curve, crawl.lookup, t)),
     potential: byImpact(highPotential(pairs, curve, crawl.lookup)),
-    cannibalisation: byImpact(cannibalisation(pairs)),
+    cannibalisation: byImpact(cannibalisation(pairs, t)),
   };
   return {
     latest,
@@ -134,6 +138,7 @@ async function computeFindings(propertyId: string) {
     findings,
     crawledAt: crawl.crawledAt,
     pairsSince: pairsSince._min.date ? fromDbDate(pairsSince._min.date) : null,
+    thresholds: t,
   };
 }
 
@@ -145,7 +150,7 @@ export async function contentFindings(actor: Actor, propertyId: string, params: 
 
   const { page, perPage, skip, take } = toSkipTake(params);
   const type = params.type ?? "decaying";
-  const result = await computeFindings(propertyId);
+  const result = await computeContentFindings(propertyId);
   if (!result) return { hasData: false as const, type, counts: Object.fromEntries(CONTENT_TYPES.map((t) => [t, 0])) as Record<ContentType, number>, list: paged([] as Finding[], 0, page, perPage) };
 
   const counts = Object.fromEntries(CONTENT_TYPES.map((t) => [t, result.findings[t].length])) as Record<ContentType, number>;
@@ -158,6 +163,7 @@ export async function contentFindings(actor: Actor, propertyId: string, params: 
     blocks: result.blocks,
     crawledAt: result.crawledAt,
     pairsSince: result.pairsSince,
+    thresholds: result.thresholds,
     /** Whether the oldest block is fully covered by stored history; decay and refresh need it. */
     historyComplete: !!earliest._min.date && fromDbDate(earliest._min.date) <= result.blocks[0].start,
     list: paged(rows.slice(skip, skip + take), rows.length, page, perPage),

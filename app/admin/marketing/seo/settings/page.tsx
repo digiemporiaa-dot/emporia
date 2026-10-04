@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { requirePermission } from "@/lib/auth/rbac";
 import { getGoogleSettings } from "@/lib/services/seo-intel/google-settings.service";
@@ -27,6 +28,13 @@ export default async function SeoSettingsPage() {
           <GoogleSettingsForm settings={settings} />
         </CardBody>
       </Card>
+      <p className="mt-4 text-xs text-ink-muted">
+        What counts as a finding — minimum clicks, drops, shares — is set in{" "}
+        <Link href="/admin/marketing/seo/settings/thresholds" className="text-navy-800 underline underline-offset-2">
+          thresholds
+        </Link>
+        .
+      </p>
     </>
   );
 }

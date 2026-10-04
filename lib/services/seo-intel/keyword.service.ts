@@ -22,6 +22,7 @@ import {
   type Opportunity,
   type OpportunityBand,
 } from "@/lib/seo-intel/engine/rankings";
+import { thresholdsFor } from "@/lib/services/seo-intel/thresholds.service";
 import type { Actor } from "@/lib/actor/types";
 
 /**
@@ -330,24 +331,11 @@ export async function keywordSuggestions(actor: Actor, propertyId: string, param
 
 const OPPORTUNITY_POOL = 20_000;
 
-/**
- * Queries ranking 4–20 over the last 28 days with enough impressions, with an
- * estimate of the extra clicks from reaching the band's target position at
- * this website's own click-through rate. Tracked or not.
- */
-export async function keywordOpportunities(
-  actor: Actor,
-  propertyId: string,
-  params: Partial<PageParams> & { band?: OpportunityBand; trackedOnly?: boolean } = {},
-) {
-  requirePermission(actor, "seo.intelligence.view");
-  staffOnly(actor);
-  await assertProperty(propertyId);
+/** Every 4–20 opportunity for a website with its thresholds and CTR curve. Shared by the screen and the opportunity detector. */
+export async function computeKeywordOpportunities(propertyId: string) {
   const latest = await latestDay(propertyId);
-  const { page, perPage, skip, take } = toSkipTake(params);
-  type Row = Opportunity & { trackedId: string | null };
-  if (!latest) return { hasData: false as const, curve: [] as (number | null)[], counts: { "near-top": 0, "page-two": 0 }, list: paged([] as Row[], 0, page, perPage) };
-
+  if (!latest) return null;
+  const t = await thresholdsFor(propertyId);
   const range = resolvePeriod("28d", latest).current;
   const [rows, tracked] = await Promise.all([
     db.$queryRaw<SumRow[]>(Prisma.sql`
@@ -362,10 +350,39 @@ export async function keywordOpportunities(
   const inputs = rows
     .map((row) => ({ query: row.key, ...toMetrics(row) }))
     .filter((row): row is { query: string; clicks: number; impressions: number; position: number } => row.position !== null);
-  const curve = ownCtrCurve(inputs);
+  const curve = ownCtrCurve(inputs, t["curve.minImpressions"]);
   const trackedIds = new Map(tracked.map((row) => [row.keyword, row.id]));
-  const all: Row[] = findOpportunities(inputs, curve).map((row) => ({ ...row, trackedId: trackedIds.get(row.query) ?? null }));
+  const all = findOpportunities(inputs, curve, t["opportunities.minImpressions"]).map((row) => ({ ...row, trackedId: trackedIds.get(row.query) ?? null }));
+  return { range, curve, all, thresholds: t };
+}
+
+/**
+ * Queries ranking 4–20 over the last 28 days with enough impressions, with an
+ * estimate of the extra clicks from reaching the band's target position at
+ * this website's own click-through rate. Tracked or not.
+ */
+export async function keywordOpportunities(
+  actor: Actor,
+  propertyId: string,
+  params: Partial<PageParams> & { band?: OpportunityBand; trackedOnly?: boolean } = {},
+) {
+  requirePermission(actor, "seo.intelligence.view");
+  staffOnly(actor);
+  await assertProperty(propertyId);
+  const { page, perPage, skip, take } = toSkipTake(params);
+  type Row = Opportunity & { trackedId: string | null };
+  const computed = await computeKeywordOpportunities(propertyId);
+  if (!computed) return { hasData: false as const, curve: [] as (number | null)[], minImpressions: 0, counts: { "near-top": 0, "page-two": 0 }, list: paged([] as Row[], 0, page, perPage) };
+  const { range, curve, all, thresholds } = computed;
   const counts = { "near-top": all.filter((row) => row.band === "near-top").length, "page-two": all.filter((row) => row.band === "page-two").length };
   const filtered = all.filter((row) => (params.band ? row.band === params.band : true)).filter((row) => (params.trackedOnly ? row.trackedId !== null : true));
-  return { hasData: true as const, range, curve, counts, list: paged(filtered.slice(skip, skip + take), filtered.length, page, perPage) };
+  return {
+    hasData: true as const,
+    range,
+    curve,
+    minImpressions: thresholds["opportunities.minImpressions"],
+    curveMinImpressions: thresholds["curve.minImpressions"],
+    counts,
+    list: paged(filtered.slice(skip, skip + take), filtered.length, page, perPage),
+  };
 }

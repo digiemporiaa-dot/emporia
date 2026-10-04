@@ -1,4 +1,5 @@
 import { opportunityBand, TARGET_POSITION } from "@/lib/seo-intel/engine/rankings";
+import { DEFAULT_THRESHOLDS, type Thresholds } from "@/lib/seo-intel/thresholds";
 
 /**
  * Content intelligence over Search Console page data and the latest crawl.
@@ -12,15 +13,6 @@ export type Block = { clicks: number; impressions: number; position: number | nu
 export type PageBlocks = { url: string; blocks: [Block, Block, Block] };
 export type CrawlFacts = { title: string | null; description: string | null; indexable: boolean | null };
 
-export const DECAY_MIN_CLICKS = 30;
-export const DECAY_MIN_DROP = 0.25;
-export const REFRESH_MIN_IMPRESSIONS = 200;
-export const REFRESH_IMPRESSIONS_HELD = 0.8;
-export const REFRESH_MIN_SLIP = 2;
-export const LOW_CTR_MIN_IMPRESSIONS = 200;
-export const LOW_CTR_SHARE = 0.5;
-export const CANNIBAL_MIN_IMPRESSIONS = 50;
-export const CANNIBAL_MIN_SHARE = 0.2;
 export const POTENTIAL_MIN_PAIR_IMPRESSIONS = 10;
 export const POTENTIAL_MIN_CLICKS = 5;
 
@@ -36,13 +28,13 @@ export type Finding =
 const ctrOf = (block: Block) => (block.impressions > 0 ? block.clicks / block.impressions : 0);
 
 /** Clicks fell in each block, by 25%+ overall, from a page that had 30+ clicks a block. Impact: clicks lost per block. */
-export function decaying(pages: readonly PageBlocks[], crawl: (url: string) => CrawlFacts | null): Finding[] {
+export function decaying(pages: readonly PageBlocks[], crawl: (url: string) => CrawlFacts | null, t: Thresholds = DEFAULT_THRESHOLDS): Finding[] {
   const out: Finding[] = [];
   for (const { url, blocks } of pages) {
     const [a, b, c] = blocks.map((block) => block.clicks) as [number, number, number];
-    if (a < DECAY_MIN_CLICKS || !(a > b && b > c)) continue;
+    if (a < t["decay.minClicks"] || !(a > b && b > c)) continue;
     const drop = (a - c) / a;
-    if (drop < DECAY_MIN_DROP) continue;
+    if (drop < t["decay.minDrop"]) continue;
     out.push({ type: "decaying", url, impact: a - c, clicks: [a, b, c], drop, crawl: crawl(url) });
   }
   return out;
@@ -54,13 +46,13 @@ export function decaying(pages: readonly PageBlocks[], crawl: (url: string) => C
  * between — the pattern of content being overtaken. Impact: the clicks the
  * page would get at its old position's CTR minus what it gets now.
  */
-export function needsRefresh(pages: readonly PageBlocks[], crawl: (url: string) => CrawlFacts | null): Finding[] {
+export function needsRefresh(pages: readonly PageBlocks[], crawl: (url: string) => CrawlFacts | null, t: Thresholds = DEFAULT_THRESHOLDS): Finding[] {
   const out: Finding[] = [];
   for (const { url, blocks } of pages) {
     const [a, b, c] = blocks;
-    if (a.impressions < REFRESH_MIN_IMPRESSIONS || c.impressions < a.impressions * REFRESH_IMPRESSIONS_HELD) continue;
+    if (a.impressions < t["refresh.minImpressions"] || c.impressions < a.impressions * t["refresh.impressionsHeld"]) continue;
     if (a.position === null || b.position === null || c.position === null) continue;
-    if (!(a.position <= b.position && b.position <= c.position) || c.position - a.position < REFRESH_MIN_SLIP) continue;
+    if (!(a.position <= b.position && b.position <= c.position) || c.position - a.position < t["refresh.minSlip"]) continue;
     const impact = Math.max(0, Math.round(c.impressions * (ctrOf(a) - ctrOf(c))));
     out.push({ type: "refresh", url, impact, positions: [a.position, b.position, c.position], impressions: [a.impressions, b.impressions, c.impressions], crawl: crawl(url) });
   }
@@ -68,17 +60,17 @@ export function needsRefresh(pages: readonly PageBlocks[], crawl: (url: string) 
 }
 
 /** Last block: 200+ impressions, CTR under half of this site's own CTR at that position. Impact: clicks missed. */
-export function lowCtr(pages: readonly PageBlocks[], curve: readonly (number | null)[], crawl: (url: string) => CrawlFacts | null): Finding[] {
+export function lowCtr(pages: readonly PageBlocks[], curve: readonly (number | null)[], crawl: (url: string) => CrawlFacts | null, t: Thresholds = DEFAULT_THRESHOLDS): Finding[] {
   const out: Finding[] = [];
   for (const { url, blocks } of pages) {
     const last = blocks[2];
-    if (last.impressions < LOW_CTR_MIN_IMPRESSIONS || last.position === null) continue;
+    if (last.impressions < t["lowCtr.minImpressions"] || last.position === null) continue;
     const rounded = Math.round(last.position);
     if (rounded < 1 || rounded > 20) continue;
     const expected = curve[rounded];
     if (expected === null || expected === undefined || expected <= 0) continue;
     const ctr = ctrOf(last);
-    if (ctr >= expected * LOW_CTR_SHARE) continue;
+    if (ctr >= expected * t["lowCtr.share"]) continue;
     out.push({ type: "low-ctr", url, impact: Math.round(last.impressions * (expected - ctr)), position: last.position, ctr, expected, impressions: last.impressions, crawl: crawl(url) });
   }
   return out;
@@ -119,7 +111,7 @@ export function highPotential(pairs: readonly Pair[], curve: readonly (number | 
  * take 20%+ of them. "Possible": sometimes two pages for one query is right.
  * Impact: the impressions of every page but the strongest.
  */
-export function cannibalisation(pairs: readonly Pair[]): Finding[] {
+export function cannibalisation(pairs: readonly Pair[], t: Thresholds = DEFAULT_THRESHOLDS): Finding[] {
   const byQuery = new Map<string, Pair[]>();
   for (const pair of pairs) {
     const list = byQuery.get(pair.query) ?? [];
@@ -129,10 +121,10 @@ export function cannibalisation(pairs: readonly Pair[]): Finding[] {
   const out: Finding[] = [];
   for (const [query, list] of byQuery) {
     const total = list.reduce((sum, pair) => sum + pair.impressions, 0);
-    if (total < CANNIBAL_MIN_IMPRESSIONS) continue;
+    if (total < t["cannibal.minImpressions"]) continue;
     const pages = list
       .map((pair) => ({ url: pair.page, share: pair.impressions / total, position: pair.position, clicks: pair.clicks, impressions: pair.impressions }))
-      .filter((page) => page.share >= CANNIBAL_MIN_SHARE)
+      .filter((page) => page.share >= t["cannibal.minShare"])
       .sort((a, b) => b.impressions - a.impressions);
     if (pages.length < 2) continue;
     const impact = pages.slice(1).reduce((sum, page) => sum + page.impressions, 0);
