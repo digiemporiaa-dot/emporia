@@ -62,6 +62,7 @@ function fakeGsc(opts: { failAfterCalls?: number; error?: Error; clicks?: (day: 
         if (dims === "date,country") rows.push({ keys: [day, "ind"], clicks: c, impressions: c * 20, position: 8 });
         if (dims === "query") rows.push({ keys: ["seo agency"], clicks: c, impressions: c * 10, position: 4 }, { keys: ["marketing"], clicks: 0, impressions: 50, position: 15 });
         if (dims === "page") rows.push({ keys: ["https://site.example.org/services"], clicks: c, impressions: c * 20, position: 5 });
+        if (dims === "query,page") rows.push({ keys: ["seo agency", "https://site.example.org/services"], clicks: c, impressions: c * 10, position: 4 });
       }
       return rows;
     },
@@ -314,6 +315,8 @@ describeDb("SEO Search Console", () => {
       expect(await db.gscDailyTotal.count({ where: { propertyId: propA, country: "ind" } })).toBe(35);
       expect(await db.gscQueryDaily.count({ where: { propertyId: propA } })).toBe(70);
       expect(await db.gscPageDaily.count({ where: { propertyId: propA } })).toBe(35);
+      // Which page ranks for which query, one pair per day here.
+      expect(await db.gscQueryPageDaily.count({ where: { propertyId: propA, query: "seo agency", page: "https://site.example.org/services" } })).toBe(35);
 
       const connection = await db.seoConnection.findUniqueOrThrow({ where: { propertyId_source: { propertyId: propA, source: "SEARCH_CONSOLE" } } });
       expect(connection.dataThrough?.toISOString().slice(0, 10)).toBe(end);
@@ -328,6 +331,10 @@ describeDb("SEO Search Console", () => {
       await syncGscProperty(propA, { trigger: "SCHEDULED", provider, now });
       expect(await db.gscDailyTotal.count({ where: { propertyId: propA, device: "", country: "", date: toDbDate(end) } })).toBe(1);
       expect((await db.gscDailyTotal.findFirstOrThrow({ where: { propertyId: propA, device: "", country: "", date: toDbDate(end) } })).clicks).toBe(99);
+      // Query + page pairs have no unique key, so only replacing the day keeps them single.
+      const pairs = await db.gscQueryPageDaily.findMany({ where: { propertyId: propA, date: toDbDate(end) } });
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]?.clicks).toBe(99);
       // The second run walked one month further back.
       expect(await db.gscDailyTotal.count({ where: { propertyId: propA, device: "", country: "" } })).toBe(65);
     });
@@ -372,8 +379,8 @@ describeDb("SEO Search Console", () => {
 
     it("a quota stop part-way keeps what was written, stays connected, and resumes the same month next time", async () => {
       await connected(propA);
-      // Recent range: 3 range calls + 5 days × 2 detail calls = 13; then the backfill range fails.
-      const { provider } = fakeGsc({ failAfterCalls: 13 });
+      // Recent range: 3 range calls + 5 days × 3 detail calls = 18; then the backfill range fails.
+      const { provider } = fakeGsc({ failAfterCalls: 18 });
       const outcome = await syncGscProperty(propA, { trigger: "SCHEDULED", provider, now });
       expect(outcome).toMatchObject({ status: "PARTIAL", daysWritten: 5 });
       const connection = await db.seoConnection.findUniqueOrThrow({ where: { propertyId_source: { propertyId: propA, source: "SEARCH_CONSOLE" } } });

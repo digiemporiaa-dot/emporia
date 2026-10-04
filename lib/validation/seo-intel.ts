@@ -132,3 +132,24 @@ export const urlInspectSchema = z.object({
   propertyId: id,
   url: z.string().trim().url("That is not a web address.").max(2_000),
 });
+
+/** Tracking keywords: one per line, or comma separated. */
+export const keywordAddSchema = z.object({
+  propertyId: id,
+  keywords: z.string().max(20_000, "Paste at most 20,000 characters at once."),
+  tags: z.string().max(500).default(""),
+  source: z.enum(["MANUAL", "SEARCH_CONSOLE"]).default("MANUAL"),
+});
+
+/** Untracking keywords. */
+export const keywordRemoveSchema = z.object({
+  propertyId: id,
+  keywordIds: z.array(id).min(1, "Choose at least one keyword.").max(500),
+});
+
+/** Replacing one keyword's tags. */
+export const keywordTagsSchema = z.object({
+  propertyId: id,
+  keywordId: id,
+  tags: z.string().max(500).default(""),
+});

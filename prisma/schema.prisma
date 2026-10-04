@@ -535,6 +535,7 @@ model User {
   seoPropertiesCreated       SeoProperty[]             @relation("SeoPropertyCreatedBy")
   seoConnectionsMade         SeoConnection[]           @relation("SeoConnectionConnectedBy")
   crawlRunsStarted           CrawlRun[]                @relation("CrawlRunStartedBy")
+  seoKeywordsAdded           SeoKeyword[]              @relation("SeoKeywordCreatedBy")
   businessProfilesUpdated    ClientBusinessProfile[]   @relation("BusinessProfileUpdatedBy")
   brandAssetsUploaded        ClientBrandAsset[]        @relation("BrandAssetUploadedBy")
   socialPendingConnections   SocialPendingConnection[]
@@ -3429,6 +3430,8 @@ model SeoProperty {
   gscPages       GscPageDaily[]
   crawlRuns      CrawlRun[]
   urlInspections UrlInspection[]
+  gscQueryPages  GscQueryPageDaily[]
+  keywords       SeoKeyword[]
 
   @@unique([clientId, domain])
   @@index([clientId, isActive])
@@ -3594,6 +3597,54 @@ model GscPageDaily {
 
   @@unique([propertyId, date, page])
   @@index([propertyId, page])
+}
+
+/// One query on one page on one day: which URL ranks for which query. Up to
+/// 5,000 pairs a day (Google's top rows by clicks). Filled from Phase 4 on, so
+/// days synced earlier have none. No unique key: a day is replaced whole, and
+/// a query plus a URL can exceed what a btree key holds.
+model GscQueryPageDaily {
+  id          String      @id @default(cuid())
+  propertyId  String
+  property    SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  date        DateTime    @db.Date
+  query       String
+  page        String
+  clicks      Int
+  impressions Int
+  position    Float
+
+  @@index([propertyId, date])
+  @@index([propertyId, query])
+}
+
+enum SeoKeywordSource {
+  /// Typed or pasted by staff.
+  MANUAL
+  /// Picked from the queries Search Console reports.
+  SEARCH_CONSOLE
+}
+
+/// A keyword the agency tracks for a website. Its positions are not copied:
+/// they are read from the Search Console query tables, so they are exactly
+/// what Google reported and cover whatever history is held.
+model SeoKeyword {
+  id         String           @id @default(cuid())
+  propertyId String
+  property   SeoProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// Lower case, single spaces — the form Search Console reports queries in.
+  keyword    String
+  /// Free grouping: a service, a city, a campaign.
+  tags       String[]         @default([])
+  source     SeoKeywordSource @default(MANUAL)
+
+  createdById String?
+  createdBy   User?    @relation("SeoKeywordCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@unique([propertyId, keyword])
+  @@index([propertyId, createdAt])
+  @@index([createdById])
 }
 
 // ---------------------------------------------------------------------------

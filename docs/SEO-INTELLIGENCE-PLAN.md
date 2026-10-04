@@ -1,14 +1,15 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–3 built. Phase 4 (keywords and rank snapshots) is next.**
+**Status: Phases 1–4 built. Phase 5 (content intelligence and internal links) is next.**
 
 | Phase | State |
 | ----- | ----- |
 | 1 — Properties, countries, permissions, navigation | **Done** — 128 tests |
 | 2 — Search Console + Executive Overview | **Done** — 133 tests |
 | 3 — Crawler, technical SEO, indexation | **Done** — 52 tests |
-| 4 — Keywords, rank snapshots | Next |
-| 5–11 | Planned, Part E |
+| 4 — Keywords, rankings, opportunities | **Done** — 23 tests |
+| 5 — Content intelligence, internal links | Next |
+| 6–11 | Planned, Part E |
 
 This is the mandatory audit step (CLAUDE.md §15) for the SEO Intelligence
 brief: what exists today, what the brief collides with, the data model and
@@ -406,3 +407,48 @@ with Inspect). Crawl settings are on the website form.
 checking, crawl-to-crawl diffs as their own view (Phase 10's change
 detection), Core Web Vitals (Phase 11), and the Page-indexing report, which is
 not in Google's API.
+
+---
+
+## Part I — Phase 4, as built
+
+**Decisions (2026-10-04):** store query + page pairs (top 5,000 a day), 500
+tracked keywords per website, opportunities need 50+ impressions in 28 days,
+staff choose what to track (Search Console queries are suggestions).
+
+**Models** (migration `seo_keywords`, additive only): `GscQueryPageDaily` —
+which page ranks for which query, filled by the sync from now on (days synced
+earlier have none, and screens say from when pages are known); `SeoKeyword` —
+keyword (lower case, single spaces), tags, source (typed or picked from
+Search Console). No rank snapshot table: positions are read from the stored
+Search Console rows for the period asked, so a keyword added today shows the
+history already held. `RankSnapshot`/volume/difficulty wait for a provider.
+
+**Engine** (`engine/rankings.ts`, pure): keyword and tag parsing; bands by
+rounded average position (top 3 / 10 / 20); movement against the previous
+period with moves under half a place counted as steady, new/lost, and the best
+band entered or left; the website's own CTR by position (clicks ÷ impressions
+of queries rounding to each position 1–20, 200+ impressions to count, capped
+so a lower position never beats a higher one); opportunities at positions
+4–10 (aimed at 3) and 11–20 (aimed at 8) with extra clicks = impressions ×
+(own CTR at target − current CTR), no estimate where the site lacks data.
+
+**Service** (`keyword.service.ts`): add (cap enforced under an advisory lock,
+duplicates counted, audited), untrack, retag; tracked list for 7 or 28 days
+with filters, tags, search and sorting; keyword detail (90 days of daily
+positions and clicks, ranking pages); suggestions (untracked queries by
+impressions, paged in SQL, search wildcards escaped); opportunities over the
+top 20,000 queries. Staff-only and scoped through the property's client.
+
+**Providers**: `RankProvider` (exact rank, volume, difficulty, CPC as a
+decimal string) with `rankProvider()` returning none — screens say so.
+
+**Screens**: Keywords (stats, filters with counts, period, tags, sort,
+search, add, untrack selected), keyword detail (position chart with the axis
+running from 1 at the top, clicks chart, ranking pages, tags), Suggestions
+(tick and track with tags) and Opportunities (bands, tracked-only, estimate
+explained, the site's CTR curve as a table).
+
+**Not in this phase, deliberately:** country/device per keyword (the stored
+query rows are site-wide), exact ranks and market data (D2), cannibalisation
+(Phase 5, now possible with the pairs).
