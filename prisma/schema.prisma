@@ -534,6 +534,7 @@ model User {
   socialAccountsConnected    SocialAccount[]           @relation("SocialAccountConnectedBy")
   seoPropertiesCreated       SeoProperty[]             @relation("SeoPropertyCreatedBy")
   seoConnectionsMade         SeoConnection[]           @relation("SeoConnectionConnectedBy")
+  crawlRunsStarted           CrawlRun[]                @relation("CrawlRunStartedBy")
   businessProfilesUpdated    ClientBusinessProfile[]   @relation("BusinessProfileUpdatedBy")
   brandAssetsUploaded        ClientBrandAsset[]        @relation("BrandAssetUploadedBy")
   socialPendingConnections   SocialPendingConnection[]
@@ -3408,23 +3409,38 @@ model SeoProperty {
 
   isActive Boolean @default(true)
 
+  /// Most pages one crawl fetches. 500 by default, at most 5,000.
+  crawlMaxPages  Int               @default(500)
+  crawlFrequency SeoCrawlFrequency @default(WEEKLY)
+  /// When the scheduler next starts a crawl; null for manual-only or never run.
+  nextCrawlAt    DateTime?
+  lastCrawledAt  DateTime?
+
   createdById String?
   createdBy   User?   @relation("SeoPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  connections SeoConnection[]
-  syncRuns    SeoSyncRun[]
-  gscTotals   GscDailyTotal[]
-  gscQueries  GscQueryDaily[]
-  gscPages    GscPageDaily[]
+  connections    SeoConnection[]
+  syncRuns       SeoSyncRun[]
+  gscTotals      GscDailyTotal[]
+  gscQueries     GscQueryDaily[]
+  gscPages       GscPageDaily[]
+  crawlRuns      CrawlRun[]
+  urlInspections UrlInspection[]
 
   @@unique([clientId, domain])
   @@index([clientId, isActive])
   @@index([projectId])
   @@index([defaultCountryId])
   @@index([createdById])
+  @@index([isActive, nextCrawlAt])
+}
+
+enum SeoCrawlFrequency {
+  MANUAL
+  WEEKLY
 }
 
 enum SeoDataSource {
@@ -3578,6 +3594,207 @@ model GscPageDaily {
 
   @@unique([propertyId, date, page])
   @@index([propertyId, page])
+}
+
+// ---------------------------------------------------------------------------
+// SEO Intelligence — crawler, technical SEO, indexation (Phase 3)
+// ---------------------------------------------------------------------------
+
+enum CrawlStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum CrawlPageState {
+  /// Found, not fetched yet. The run's frontier.
+  QUEUED
+  FETCHED
+  /// robots.txt disallows it; never requested.
+  BLOCKED
+  /// Request failed: timeout, refused, unsafe address, too large.
+  ERROR
+}
+
+enum CrawlPageSource {
+  START
+  LINK
+  SITEMAP
+}
+
+enum CrawlIssueSeverity {
+  CRITICAL
+  WARNING
+  NOTICE
+}
+
+/// One crawl of a property's site. Pages are fetched a chunk per scheduler
+/// run; `lockedUntil` keeps two runs from working the same crawl at once.
+model CrawlRun {
+  id         String         @id @default(cuid())
+  propertyId String
+  property   SeoProperty    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  trigger    SeoSyncTrigger
+  status     CrawlStatus    @default(RUNNING)
+
+  startUrl String
+  maxPages Int
+
+  /// Whether robots.txt was found, and the text that was obeyed (capped).
+  robotsFound  Boolean?
+  robotsTxt    String?
+  /// URLs read from the sitemap(s), and the sitemap addresses used.
+  sitemapUrls  Int      @default(0)
+  sitemaps     String[] @default([])
+  pagesFetched Int      @default(0)
+  /// The page limit stopped discovery before the site was exhausted.
+  limitReached Boolean  @default(false)
+  /// Issue counts by severity once analysed: { "CRITICAL": 3, … }.
+  summary      Json?
+
+  lockedUntil DateTime?
+  error       String?
+
+  startedById String?
+  startedBy   User?   @relation("CrawlRunStartedBy", fields: [startedById], references: [id], onDelete: SetNull)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  pages  CrawlPage[]
+  links  CrawlLink[]
+  issues CrawlIssue[]
+
+  @@index([propertyId, startedAt])
+  @@index([status, lockedUntil])
+  @@index([startedById])
+}
+
+/// A URL in one crawl: queued, then fetched (or blocked, or failed). Only HTML
+/// pages on the property's own host are parsed.
+model CrawlPage {
+  id     String          @id @default(cuid())
+  runId  String
+  run    CrawlRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// Normalised: lower-case host, no fragment, default port dropped.
+  url    String
+  depth  Int
+  source CrawlPageSource
+  state  CrawlPageState  @default(QUEUED)
+
+  statusCode  Int?
+  /// Where a 3xx pointed, resolved to an absolute URL.
+  redirectTo  String?
+  contentType String?
+  responseMs  Int?
+  bytes       Int?
+
+  canonical        String?
+  metaRobots       String?
+  xRobotsTag       String?
+  title            String?
+  description      String?
+  h1               String?
+  h1Count          Int?
+  h2Count          Int?
+  wordCount        Int?
+  /// Hash of the visible text, for exact-duplicate detection.
+  contentHash      String?
+  lang             String?
+  /// [{ "lang": "en-IN", "href": "https://…" }]
+  hreflang         Json?
+  schemaTypes      String[] @default([])
+  imageCount       Int?
+  imagesMissingAlt Int?
+  externalLinks    Int?
+
+  inSitemap Boolean  @default(false)
+  /// 200, HTML, not noindex, canonical to itself (or none). Null until fetched.
+  indexable Boolean?
+  /// Internal links pointing here, counted when the crawl finishes.
+  inlinks   Int      @default(0)
+
+  error     String?
+  fetchedAt DateTime?
+
+  linksOut CrawlLink[]  @relation("CrawlLinkFrom")
+  linksIn  CrawlLink[]  @relation("CrawlLinkTo")
+  issues   CrawlIssue[]
+
+  @@unique([runId, url])
+  @@index([runId, state])
+  @@index([runId, statusCode])
+  @@index([runId, contentHash])
+}
+
+/// An internal link between two pages of one crawl. External links are only
+/// counted on the page, never stored or followed.
+model CrawlLink {
+  id         String     @id @default(cuid())
+  runId      String
+  run        CrawlRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  fromPageId String
+  fromPage   CrawlPage  @relation("CrawlLinkFrom", fields: [fromPageId], references: [id], onDelete: Cascade)
+  toUrl      String
+  /// Resolved when the crawl finishes; null when the target was never fetched.
+  toPageId   String?
+  toPage     CrawlPage? @relation("CrawlLinkTo", fields: [toPageId], references: [id], onDelete: SetNull)
+  anchor     String?
+  nofollow   Boolean    @default(false)
+
+  @@unique([fromPageId, toUrl])
+  @@index([runId, toUrl])
+  @@index([toPageId])
+}
+
+/// A technical finding from one crawl, written by the rules in
+/// lib/seo-intel/engine/technical.ts when the crawl finishes.
+model CrawlIssue {
+  id       String             @id @default(cuid())
+  runId    String
+  run      CrawlRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  pageId   String?
+  page     CrawlPage?         @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  /// Rule key, e.g. "title-missing", "redirect-chain".
+  rule     String
+  severity CrawlIssueSeverity
+  /// Evidence for the finding: the duplicate's URL, the chain, the value.
+  detail   Json?
+
+  @@index([runId, rule])
+  @@index([runId, severity])
+  @@index([pageId])
+}
+
+/// Google's own view of one URL, from the URL Inspection API. Latest result
+/// per URL; inspections are limited to 2,000 a day per Search Console site.
+model UrlInspection {
+  id         String      @id @default(cuid())
+  propertyId String
+  property   SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url        String
+
+  /// PASS, PARTIAL, FAIL, NEUTRAL — Google's verdict.
+  verdict         String?
+  /// Google's wording, e.g. "Submitted and indexed", "Crawled - currently not indexed".
+  coverageState   String?
+  indexingState   String?
+  robotsTxtState  String?
+  pageFetchState  String?
+  googleCanonical String?
+  userCanonical   String?
+  lastCrawlTime   DateTime?
+  crawledAs       String?
+  /// Sitemaps Google says list this URL.
+  sitemaps        String[]  @default([])
+
+  error       String?
+  inspectedAt DateTime @default(now())
+
+  @@unique([propertyId, url])
+  @@index([propertyId, inspectedAt])
+  @@index([propertyId, coverageState])
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,8 @@ export default async function EditSeoPropertyPage({ params }: { params: Promise<
               projectId: property.project?.id ?? null,
               defaultCountry: property.defaultCountry?.code ?? null,
               defaultLanguage: property.defaultLanguage,
+              crawlMaxPages: property.crawlMaxPages,
+              crawlFrequency: property.crawlFrequency,
               timezone: property.timezone,
               isActive: property.isActive,
             }}

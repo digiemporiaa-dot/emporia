@@ -41,3 +41,9 @@ export interface SearchConsoleProvider {
   listSites(): Promise<GscSite[]>;
   query(input: GscQueryInput): Promise<GscRawRow[]>;
 }
+
+/** Search Console's URL Inspection: Google's own view of one URL. */
+export interface UrlInspectionProvider {
+  /** The raw `inspectionResult`; normalised before anything stores it. */
+  inspect(input: { siteUrl: string; url: string; languageCode?: string }): Promise<unknown>;
+}

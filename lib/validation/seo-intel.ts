@@ -68,6 +68,13 @@ const propertyFields = {
     .refine(validLanguage, "Enter a language code, such as en, en-IN or ar."),
   timezone: z.string().trim().min(1, "Choose a time zone.").max(64).refine(validTimeZone, "Choose a time zone from the list."),
   isActive: z.boolean().default(true),
+  crawlMaxPages: z.coerce
+    .number({ message: "Enter a number of pages." })
+    .int("Enter a whole number of pages.")
+    .min(10, "Crawl at least 10 pages.")
+    .max(5_000, "At most 5,000 pages per crawl.")
+    .default(500),
+  crawlFrequency: z.enum(["WEEKLY", "MANUAL"], { message: "Choose how often to crawl." }).default("WEEKLY"),
 };
 
 export const seoPropertyCreateSchema = z.object({
@@ -112,4 +119,16 @@ export type SeoGoogleSettingsInput = z.infer<typeof seoGoogleSettingsSchema>;
 export const gscSiteChoiceSchema = z.object({
   propertyId: id,
   siteUrl: z.string().trim().min(1).max(400),
+});
+
+/** Starting a crawl of one website. */
+export const crawlStartSchema = z.object({ propertyId: id });
+
+/** Cancelling a running crawl. */
+export const crawlCancelSchema = z.object({ propertyId: id, runId: id });
+
+/** Asking Google about one crawled URL. */
+export const urlInspectSchema = z.object({
+  propertyId: id,
+  url: z.string().trim().url("That is not a web address.").max(2_000),
 });
