@@ -35,6 +35,7 @@ const syncLog = log("seo-sync");
 /** Per-day caps. Google returns the top rows by clicks; beyond this the tail is left out and the run says so. */
 export const GSC_QUERY_ROWS_PER_DAY = 5_000;
 export const GSC_PAGE_ROWS_PER_DAY = 5_000;
+export const GSC_QUERY_PAGE_ROWS_PER_DAY = 5_000;
 const COUNTRY_ROWS_PER_RANGE = 100_000;
 const LEASE_MS = 15 * 60_000;
 /** How long a connection waits between scheduled syncs once its history is complete. */
@@ -50,6 +51,7 @@ type DayRows = {
   countries: NormalizedRow[];
   queries: NormalizedRow[];
   pages: NormalizedRow[];
+  pairs: NormalizedRow[];
 };
 
 async function fetchRange(provider: SearchConsoleProvider, siteUrl: string, range: SyncRange) {
@@ -64,7 +66,7 @@ async function fetchRange(provider: SearchConsoleProvider, siteUrl: string, rang
   const day = (date: string) => {
     let entry = byDay.get(date);
     if (!entry) {
-      entry = { totals: [], devices: [], countries: [], queries: [], pages: [] };
+      entry = { totals: [], devices: [], countries: [], queries: [], pages: [], pairs: [] };
       byDay.set(date, entry);
     }
     return entry;
@@ -84,13 +86,21 @@ async function fetchRange(provider: SearchConsoleProvider, siteUrl: string, rang
 
 async function fetchDayDetail(provider: SearchConsoleProvider, siteUrl: string, date: string) {
   const base = { siteUrl, startDate: date, endDate: date };
-  const [queries, pages] = await Promise.all([
+  const [queries, pages, pairs] = await Promise.all([
     queryAll(provider, { ...base, dimensions: ["query"] }, GSC_QUERY_ROWS_PER_DAY),
     queryAll(provider, { ...base, dimensions: ["page"] }, GSC_PAGE_ROWS_PER_DAY),
+    queryAll(provider, { ...base, dimensions: ["query", "page"] }, GSC_QUERY_PAGE_ROWS_PER_DAY),
   ]);
   const q = normalizeGscRows(queries.rows, ["query"]);
   const p = normalizeGscRows(pages.rows, ["page"]);
-  return { queries: q.rows, pages: p.rows, dropped: q.dropped + p.dropped, truncated: queries.truncated || pages.truncated };
+  const qp = normalizeGscRows(pairs.rows, ["query", "page"]);
+  return {
+    queries: q.rows,
+    pages: p.rows,
+    pairs: qp.rows,
+    dropped: q.dropped + p.dropped + qp.dropped,
+    truncated: queries.truncated || pages.truncated || pairs.truncated,
+  };
 }
 
 /** Replace one day's rows for a property in one transaction. Returns rows written. */
@@ -101,6 +111,7 @@ async function writeDay(propertyId: string, date: string, rows: DayRows): Promis
     await tx.gscDailyTotal.deleteMany({ where: { propertyId, date: day } });
     await tx.gscQueryDaily.deleteMany({ where: { propertyId, date: day } });
     await tx.gscPageDaily.deleteMany({ where: { propertyId, date: day } });
+    await tx.gscQueryPageDaily.deleteMany({ where: { propertyId, date: day } });
     await tx.gscDailyTotal.createMany({
       data: [
         ...rows.totals.map((row) => ({ propertyId, date: day, device: "", country: "", ...metric(row) })),
@@ -121,8 +132,13 @@ async function writeDay(propertyId: string, date: string, rows: DayRows): Promis
         skipDuplicates: true,
       });
     }
+    if (rows.pairs.length) {
+      await tx.gscQueryPageDaily.createMany({
+        data: rows.pairs.map((row) => ({ propertyId, date: day, query: row.query as string, page: row.page as string, ...metric(row) })),
+      });
+    }
   }, { timeout: 60_000 });
-  return rows.totals.length + rows.devices.length + rows.countries.length + rows.queries.length + rows.pages.length;
+  return rows.totals.length + rows.devices.length + rows.countries.length + rows.queries.length + rows.pages.length + rows.pairs.length;
 }
 
 /**
@@ -186,6 +202,7 @@ export async function syncGscProperty(
           const detail = await fetchDayDetail(provider, siteUrl, date);
           rows.queries = detail.queries;
           rows.pages = detail.pages;
+          rows.pairs = detail.pairs;
           dropped += detail.dropped;
           truncated ||= detail.truncated;
         }
@@ -201,6 +218,7 @@ export async function syncGscProperty(
     await db.gscDailyTotal.deleteMany({ where: { propertyId, date: { lt: oldest } } });
     await db.gscQueryDaily.deleteMany({ where: { propertyId, date: { lt: oldest } } });
     await db.gscPageDaily.deleteMany({ where: { propertyId, date: { lt: oldest } } });
+    await db.gscQueryPageDaily.deleteMany({ where: { propertyId, date: { lt: oldest } } });
   } catch (caught) {
     needsPerson = caught instanceof SeoCredentialsError || caught instanceof SeoAccessError;
     error =

@@ -47,3 +47,19 @@ export interface UrlInspectionProvider {
   /** The raw `inspectionResult`; normalised before anything stores it. */
   inspect(input: { siteUrl: string; url: string; languageCode?: string }): Promise<unknown>;
 }
+
+/** An exact rank checked by a provider for one keyword. */
+export type RankResult = { keyword: string; position: number | null; url: string | null; serpFeatures: string[] };
+/** Keyword market data; money stays a decimal string. */
+export type KeywordMarketResult = { keyword: string; volume: number | null; difficulty: number | null; cpc: string | null };
+
+/**
+ * Exact daily ranks, search volume, difficulty and CPC. These need a paid
+ * provider (decision D2: none configured), so every screen says "not
+ * configured" until an implementation is added here.
+ */
+export interface RankProvider {
+  readonly name: string;
+  positions(keywords: readonly string[], options: { country: string; device: "desktop" | "mobile" }): Promise<RankResult[]>;
+  market(keywords: readonly string[], options: { country: string }): Promise<KeywordMarketResult[]>;
+}
