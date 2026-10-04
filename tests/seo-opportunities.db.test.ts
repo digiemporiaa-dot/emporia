@@ -128,7 +128,11 @@ describeDb("SEO opportunities", () => {
     await detectOpportunities(propertyId);
     expect((await db.seoOpportunity.findUniqueOrThrow({ where: { id: technical.id } })).status).toBe("DISMISSED");
 
-    await db.crawlIssue.createMany({ data: [{ runId, pageId, rule: "http-4xx", severity: "CRITICAL" }, { runId, pageId, rule: "http-4xx", severity: "CRITICAL" }] });
+    // Growing, but not yet double the impact when dismissed (2): stays dismissed.
+    await db.crawlIssue.create({ data: { runId, pageId, rule: "http-4xx", severity: "CRITICAL" } });
+    await detectOpportunities(propertyId);
+    expect(await db.seoOpportunity.findUniqueOrThrow({ where: { id: technical.id } })).toMatchObject({ status: "DISMISSED", impact: 3 });
+    await db.crawlIssue.create({ data: { runId, pageId, rule: "http-4xx", severity: "CRITICAL" } });
     await detectOpportunities(propertyId);
     const reopened = await db.seoOpportunity.findUniqueOrThrow({ where: { id: technical.id } });
     expect(reopened).toMatchObject({ status: "OPEN", impact: 4, dismissReason: null });
@@ -145,6 +149,14 @@ describeDb("SEO opportunities", () => {
     expect(stored.description).toContain(U("/blog/a"));
     expect(await db.seoOpportunity.findUniqueOrThrow({ where: { id: decay.id } })).toMatchObject({ status: "TASK_CREATED", projectTaskId: task.id, assigneeId: staffId });
     await expect(createTaskFromOpportunity(manager(), decay.id, { projectId: projectA })).rejects.toThrow(ValidationError);
+    // Came back after resolving, while its task is still open: no second task.
+    await db.seoOpportunity.update({ where: { id: decay.id }, data: { status: "OPEN" } });
+    await expect(createTaskFromOpportunity(manager(), decay.id, { projectId: projectA })).rejects.toThrow(/still open/);
+    // Once that task is done, a new one may be made.
+    await db.projectTask.update({ where: { id: task.id }, data: { status: "DONE" } });
+    const second = await createTaskFromOpportunity(manager(), decay.id, { projectId: projectA });
+    expect(second.id).not.toBe(task.id);
+    expect((await db.seoOpportunity.findUniqueOrThrow({ where: { id: decay.id } })).projectTaskId).toBe(second.id);
   });
 
   it("resolves what a source that ran no longer finds, keeping the task", async () => {

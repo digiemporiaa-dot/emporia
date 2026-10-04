@@ -1,6 +1,6 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–5 built. Phase 6 (SERP provider and competitors) needs decision D2 revisited; Phase 8 (local and international SEO) can go next without a provider.**
+**Status: Phases 1–5 and 10 built. Phases 6–7 need a paid provider (D2); 8, 9 and 11 can go next without one (9 needs the Google Analytics Data API enabled).**
 
 | Phase | State |
 | ----- | ----- |
@@ -9,7 +9,9 @@
 | 3 — Crawler, technical SEO, indexation | **Done** — 52 tests |
 | 4 — Keywords, rankings, opportunities | **Done** — 23 tests |
 | 5 — Content intelligence, internal links | **Done** — 19 tests |
-| 6–11 | Planned, Part E |
+| 6–9 | Planned, Part E |
+| 10 — Opportunity engine, thresholds, Command Center | **Done** — 25 tests |
+| 11 | Planned, Part E |
 
 This is the mandatory audit step (CLAUDE.md §15) for the SEO Intelligence
 brief: what exists today, what the brief collides with, the data model and
@@ -495,3 +497,55 @@ source uses, plus the most and least linked indexable pages).
 **Not in this phase, deliberately:** mapping findings to CMS entities for the
 agency's own site (needs a URL → entity resolver), automatic link insertion,
 and task creation from findings (Phase 10).
+
+---
+
+## Part K — Phase 10, as built
+
+**Decisions (2026-10-04):** thresholds are agency defaults with per-website
+overrides; a dismissed opportunity comes back only if its impact doubles;
+detection runs daily; the top 25 keyword opportunities per website go to the
+Command Center.
+
+**Thresholds** (`lib/seo-intel/thresholds.ts`, `thresholds.service.ts`,
+`SeoThreshold`): every number the Keyword, Content and What-changed rules use
+is a registered setting with a label, unit, default and range. Reads merge
+defaults ← agency ← website, ignoring unknown keys and clamping stored values;
+saves refuse out-of-range values, a blank clears a setting, one row per scope
+and key is kept under an advisory lock, and every save is audited. Website
+overrides need `seo.intelligence.manage`; agency defaults need
+`seo.intelligence.connect`. The Content, Opportunities, Internal-link and
+Overview code reads the merged values, so screens and the detector agree, and
+the explanations on screen print the actual numbers.
+
+**Engine** (`engine/opportunities.ts`, pure): candidates from keyword
+opportunities (capped), the five content findings (50 per type), technical
+rules with critical or warning findings (one per rule, pages affected),
+indexation disagreements, internal-link suggestions and What-changed drops
+(high and medium, down only). Each has a stable fingerprint, an impact with
+its unit (clicks, impressions, pages, links, or an alert), a severity (clicks:
+high from 50, medium from 10; critical technical and unindexed indexable
+pages high) and an effort label. `reconcile` creates new findings, refreshes
+open ones, reopens resolved or done ones that return, keeps dismissed ones
+unless their impact has doubled, and resolves open ones no longer found —
+only for sources that ran, so a missing data source never reads as "fixed".
+
+**Detection** (`opportunity.service.ts`): daily per website from the
+scheduler (two per run), or Detect now (3 per website per 10 minutes). Each
+source is tried separately; a failure skips that source. What changed is
+also stored as dated `SeoChangeEvent` rows.
+
+**Acting**: assign, mark done, dismiss with a reason, reopen, and create a
+project task — only in a project of the website's own client, through the
+project service (so `tasks.create`, `tasks.assign` and project visibility
+apply), with the evidence in the description and priority from severity. All
+audited; all need `seo.opportunities.manage`.
+
+**Screens**: Command Center (all websites, filters by website, status,
+source, severity, effort, assignee and text; worst first; per-website open
+counts; Detect now) and Settings → Thresholds (agency or website scope,
+inherited values shown in each field).
+
+**Not in this phase, deliberately:** notifications or automations on new
+high-severity opportunities, history charts of change events (Phase 11), and
+portal visibility of opportunities (D4: admin only for now).

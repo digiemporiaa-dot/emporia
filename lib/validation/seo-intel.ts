@@ -153,3 +153,20 @@ export const keywordTagsSchema = z.object({
   keywordId: id,
   tags: z.string().max(500).default(""),
 });
+
+/** Command Center actions. */
+export const opportunityIdSchema = z.object({ opportunityId: id });
+export const opportunityDismissSchema = z.object({ opportunityId: id, reason: z.string().trim().max(500).default("") });
+export const opportunityAssignSchema = z.object({ opportunityId: id, assigneeId: optionalId });
+export const opportunityTaskSchema = z.object({
+  opportunityId: id,
+  projectId: id,
+  assigneeId: optionalId,
+  dueAt: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? new Date(`${value}T00:00:00Z`) : null))
+    .refine((value) => value === null || !Number.isNaN(value.getTime()), "Enter a valid date."),
+});
+export const detectNowSchema = z.object({ propertyId: id });

@@ -2,7 +2,8 @@ import "server-only";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { can, requirePermission } from "@/lib/auth/rbac";
-import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { ForbiddenError, NotFoundError, RateLimitedError, ValidationError } from "@/lib/errors";
+import { checkRateLimit } from "@/lib/utils/rate-limit";
 import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { log } from "@/lib/logger";
 import { record, withAudit } from "@/lib/services/audit.service";
@@ -378,7 +379,11 @@ export async function createTaskFromOpportunity(
   requirePermission(actor, "seo.opportunities.manage");
   staffOnly(actor);
   const row = await opportunityFor(id);
-  if (row.projectTaskId) throw new ValidationError("A task already exists for this opportunity.");
+  // A finding that came back may get a new task once its old one is finished.
+  if (row.projectTaskId) {
+    const existing = await db.projectTask.findUnique({ where: { id: row.projectTaskId }, select: { status: true } });
+    if (existing && existing.status !== "DONE" && existing.status !== "CANCELLED") throw new ValidationError("A task for this opportunity is still open.");
+  }
   if (row.status !== "OPEN") throw new ValidationError("Only open opportunities can become tasks.");
   const project = await db.project.findFirst({ where: { id: input.projectId }, select: { clientId: true } });
   if (!project || project.clientId !== row.property.clientId) throw new ValidationError("Choose a project of this website's client.");
@@ -415,4 +420,17 @@ export async function taskTargets(actor: Actor, propertyId: string) {
     db.user.findMany({ where: { type: "STAFF", status: "ACTIVE" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   return { defaultProjectId: property.projectId, projects, staff };
+}
+
+/** "Detect now" from the screen. Rate limited per website: detection reads a lot. */
+export async function detectNow(actor: Actor, propertyId: string) {
+  requirePermission(actor, "seo.opportunities.manage");
+  staffOnly(actor);
+  const property = await db.seoProperty.findFirst({ where: { id: propertyId, client: { deletedAt: null } }, select: { id: true } });
+  if (!property) throw new NotFoundError("That website was not found.");
+  const limit = await checkRateLimit(`seo-detect:${propertyId}`, { limit: 3, windowMs: 10 * 60_000 });
+  if (!limit.allowed) throw new RateLimitedError(limit.retryAfterSeconds, "Opportunities were just detected for this website. Try again in a few minutes.");
+  const result = await detectOpportunities(propertyId);
+  await record({ actor, action: "UPDATE", entityType: "SeoProperty", entityId: propertyId, after: { detected: result } });
+  return result;
 }

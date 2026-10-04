@@ -59,7 +59,8 @@ export async function saveThresholds(actor: Actor, propertyId: string | null, va
     if (value === null || value === undefined) continue;
     const def = THRESHOLD_DEFS[key];
     if (!Number.isFinite(value) || value < def.min || value > def.max) {
-      throw new ValidationError(`${def.label} must be between ${def.min} and ${def.max}.`, { field: key });
+      const fmt = (n: number) => (def.unit === "percent" ? `${+(n * 100).toFixed(2)}%` : `${n}`);
+      throw new ValidationError(`${def.label} must be between ${fmt(def.min)} and ${fmt(def.max)}.`, { field: key });
     }
   }
   if (propertyId) {
