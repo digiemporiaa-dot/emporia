@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, readdirSync } from "node:fs";
+import { afterEach, describe, expect, it } from "vitest";
+import { resetEnvCache } from "@/lib/config/env";
 import {
+  generateInvoicePdf,
+  isPdfAvailable,
+  PdfUnavailableError,
   renderInvoiceHtml,
   type InvoiceData,
   type ClientProfile,
@@ -177,4 +182,39 @@ describe("invoice PDF HTML", () => {
     expect(html).toContain("<html");
     expect(html).toContain("</html>");
   });
+});
+
+/** Playwright's Chromium in dev containers, or whatever CHROMIUM_PATH names. */
+function localChromium(): string | null {
+  if (process.env["CHROMIUM_PATH"]) return process.env["CHROMIUM_PATH"];
+  const root = "/opt/pw-browsers";
+  if (!existsSync(root)) return null;
+  const dir = readdirSync(root).find((name) => /^chromium-\d+$/.test(name));
+  const path = dir ? `${root}/${dir}/chrome-linux/chrome` : null;
+  return path && existsSync(path) ? path : null;
+}
+
+describe("invoice PDF generation", () => {
+  const original = process.env["CHROMIUM_PATH"];
+  afterEach(() => {
+    if (original === undefined) delete process.env["CHROMIUM_PATH"];
+    else process.env["CHROMIUM_PATH"] = original;
+    resetEnvCache();
+  });
+
+  it("refuses honestly when no browser is installed", async () => {
+    process.env["CHROMIUM_PATH"] = "/nonexistent/chromium";
+    resetEnvCache();
+    expect(isPdfAvailable()).toBe(false);
+    await expect(generateInvoicePdf(invoice(), profile, agency)).rejects.toThrow(PdfUnavailableError);
+  });
+
+  const chromium = localChromium();
+  it.skipIf(!chromium)("renders a real PDF", async () => {
+    process.env["CHROMIUM_PATH"] = chromium!;
+    resetEnvCache();
+    const pdf = await generateInvoicePdf(invoice(), profile, agency);
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.length).toBeGreaterThan(1000);
+  }, 30_000);
 });

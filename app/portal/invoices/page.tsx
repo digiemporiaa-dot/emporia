@@ -4,6 +4,7 @@ import { listInvoices, listPayments } from "@/lib/services/portal.service";
 import { isPaymentsConfigured } from "@/lib/payments";
 import { formatMoney } from "@/lib/money";
 import { INVOICE_STATUS_LABEL, isOutstanding } from "@/lib/finance/invoice";
+import { isPdfAvailable } from "@/lib/finance/invoice-pdf";
 import { siteDefaults } from "@/lib/seo/defaults";
 import {
   Badge,
@@ -53,6 +54,7 @@ export default async function PortalInvoicesPage() {
   // gateway configured the column is not rendered rather than showing a button
   // that cannot work.
   const canPayOnline = isPaymentsConfigured();
+  const pdfAvailable = isPdfAvailable();
 
   // The business name checkout shows the payer, taken from site settings so it
   // is not hard-coded in a client component.
@@ -114,14 +116,16 @@ export default async function PortalInvoicesPage() {
                   </TD>
                   <TD className="text-right">
                     <span className="inline-flex items-center gap-2">
-                      <a
-                        href={`/api/invoices/${invoice.id}/pdf`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
-                      >
-                        PDF
-                      </a>
+                      {pdfAvailable ? (
+                        <a
+                          href={`/api/invoices/${invoice.id}/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
+                        >
+                          PDF
+                        </a>
+                      ) : null}
                       {canPayOnline && isOutstanding(invoice.status) ? (
                         <PayInvoiceButton
                           invoiceId={invoice.id}

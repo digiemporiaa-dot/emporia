@@ -1,11 +1,40 @@
 import "server-only";
 import { execFile } from "node:child_process";
-import { writeFile, readFile, unlink, mkdtemp } from "node:fs/promises";
+import { accessSync, constants } from "node:fs";
+import { writeFile, readFile, rm, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { env } from "@/lib/config/env";
 import { formatMoney } from "@/lib/money";
 
-const CHROMIUM = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const DEFAULT_CHROMIUM = ["/usr/bin/chromium", "/usr/bin/chromium-browser"];
+
+export class PdfUnavailableError extends Error {
+  constructor() {
+    super("No headless Chromium is installed, so invoice PDFs cannot be generated.");
+    this.name = "PdfUnavailableError";
+  }
+}
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The configured browser if it exists, else the Debian package's, else null. */
+export function chromiumPath(): string | null {
+  const configured = env().CHROMIUM_PATH?.trim();
+  const candidates = configured ? [configured] : DEFAULT_CHROMIUM;
+  return candidates.find(isExecutable) ?? null;
+}
+
+export function isPdfAvailable(): boolean {
+  return chromiumPath() !== null;
+}
 
 const DATE = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
@@ -313,15 +342,22 @@ ${
 // PDF generation via headless Chromium
 // -------------------------------------------------------------------------
 
-function chromiumPdf(htmlPath: string, pdfPath: string): Promise<void> {
+function chromiumPdf(
+  chromium: string,
+  dir: string,
+  htmlPath: string,
+  pdfPath: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(
-      CHROMIUM,
+      chromium,
       [
         "--headless",
         "--disable-gpu",
         "--no-sandbox",
         "--disable-dev-shm-usage",
+        // The runner's user has no writable home; keep the profile with the job.
+        `--user-data-dir=${join(dir, "profile")}`,
         `--print-to-pdf=${pdfPath}`,
         "--no-pdf-header-footer",
         htmlPath,
@@ -340,6 +376,9 @@ export async function generateInvoicePdf(
   clientProfile: ClientProfile | null,
   agency: AgencyInfo,
 ): Promise<Buffer> {
+  const chromium = chromiumPath();
+  if (!chromium) throw new PdfUnavailableError();
+
   const html = renderInvoiceHtml(invoice, clientProfile, agency);
 
   const dir = await mkdtemp(join(tmpdir(), "inv-"));
@@ -348,10 +387,9 @@ export async function generateInvoicePdf(
 
   try {
     await writeFile(htmlPath, html, "utf-8");
-    await chromiumPdf(htmlPath, pdfPath);
+    await chromiumPdf(chromium, dir, htmlPath, pdfPath);
     return await readFile(pdfPath);
   } finally {
-    await unlink(htmlPath).catch(() => {});
-    await unlink(pdfPath).catch(() => {});
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }

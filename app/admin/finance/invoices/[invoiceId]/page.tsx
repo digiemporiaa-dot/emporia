@@ -8,6 +8,7 @@ import { getInvoice } from "@/lib/services/invoice.service";
 import { isAppError } from "@/lib/errors";
 import { formatMoney } from "@/lib/money";
 import { isEditable } from "@/lib/finance/invoice";
+import { isPdfAvailable } from "@/lib/finance/invoice-pdf";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
 import {
   GATEWAY_LABEL,
@@ -75,14 +76,16 @@ export default async function InvoicePage({
         <div className="mt-1.5 flex flex-wrap items-center gap-3">
           <h1 className="font-mono text-2xl text-navy-800">{invoice.number}</h1>
           <InvoiceStatusBadge status={invoice.status} />
-          <a
-            href={`/api/invoices/${invoice.id}/pdf`}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-navy-800 hover:bg-surface-sunken"
-          >
-            Download PDF
-          </a>
+          {isPdfAvailable() ? (
+            <a
+              href={`/api/invoices/${invoice.id}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs font-medium text-navy-800 hover:bg-surface-sunken"
+            >
+              Download PDF
+            </a>
+          ) : null}
         </div>
         <p className="mt-1.5 text-xs text-ink-subtle">
           {invoice.client.name}
