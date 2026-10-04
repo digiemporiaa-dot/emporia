@@ -80,17 +80,15 @@ export default async function PortalInvoicesPage() {
               <TH className="text-right">Paid</TH>
               <TH className="text-right">Outstanding</TH>
               <TH>Status</TH>
-              {canPayOnline ? (
-                <TH className="text-right">
-                  <span className="sr-only">Pay</span>
-                </TH>
-              ) : null}
+              <TH className="text-right">
+                <span className="sr-only">Actions</span>
+              </TH>
             </TR>
           </THead>
           <TBody>
             {invoices.length === 0 ? (
               <TableEmpty
-                colSpan={canPayOnline ? 8 : 7}
+                colSpan={8}
                 title="No invoices yet"
                 description="Invoices appear here as soon as they are issued."
               />
@@ -114,17 +112,25 @@ export default async function PortalInvoicesPage() {
                       {INVOICE_STATUS_LABEL[invoice.status]}
                     </Badge>
                   </TD>
-                  {canPayOnline ? (
-                    <TD className="text-right">
-                      {isOutstanding(invoice.status) ? (
+                  <TD className="text-right">
+                    <span className="inline-flex items-center gap-2">
+                      <a
+                        href={`/api/invoices/${invoice.id}/pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-navy-800 underline underline-offset-2 hover:text-brand-red"
+                      >
+                        PDF
+                      </a>
+                      {canPayOnline && isOutstanding(invoice.status) ? (
                         <PayInvoiceButton
                           invoiceId={invoice.id}
                           invoiceNumber={invoice.number}
                           businessName={siteName}
                         />
                       ) : null}
-                    </TD>
-                  ) : null}
+                    </span>
+                  </TD>
                 </TR>
               ))
             )}
