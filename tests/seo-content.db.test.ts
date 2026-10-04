@@ -157,4 +157,14 @@ describeDb("SEO content and internal links", () => {
     expect(cannibal.list.rows[0]).toMatchObject({ type: "cannibalisation", query: "dubai seo", impressions: 140 });
     expect(cannibal.counts).toMatchObject({ decaying: 1, cannibalisation: 1 });
   });
+
+  it("hides a deleted client's findings and suggestions", async () => {
+    await db.client.update({ where: { id: clientId }, data: { deletedAt: new Date() } });
+    try {
+      await expect(contentFindings(manager(), propertyId)).rejects.toThrow(/not found/);
+      await expect(listLinkSuggestions(manager(), propertyId)).rejects.toThrow(/not found/);
+    } finally {
+      await db.client.update({ where: { id: clientId }, data: { deletedAt: null } });
+    }
+  });
 });

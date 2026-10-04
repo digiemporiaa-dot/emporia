@@ -1,6 +1,6 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–4 built. Phase 5 (content intelligence and internal links) is next.**
+**Status: Phases 1–5 built. Phase 6 (SERP provider and competitors) needs decision D2 revisited; Phase 8 (local and international SEO) can go next without a provider.**
 
 | Phase | State |
 | ----- | ----- |
@@ -8,7 +8,7 @@
 | 2 — Search Console + Executive Overview | **Done** — 133 tests |
 | 3 — Crawler, technical SEO, indexation | **Done** — 52 tests |
 | 4 — Keywords, rankings, opportunities | **Done** — 23 tests |
-| 5 — Content intelligence, internal links | Next |
+| 5 — Content intelligence, internal links | **Done** — 19 tests |
 | 6–11 | Planned, Part E |
 
 This is the mandatory audit step (CLAUDE.md §15) for the SEO Intelligence
@@ -452,3 +452,46 @@ explained, the site's CTR curve as a table).
 **Not in this phase, deliberately:** country/device per keyword (the stored
 query rows are site-wide), exact ranks and market data (D2), cannibalisation
 (Phase 5, now possible with the pairs).
+
+---
+
+## Part J — Phase 5, as built
+
+**Decisions (2026-10-04):** decay = three falling 28-day blocks (25%+ down,
+30+ clicks a block to start); cannibalisation = two or more pages each with
+20%+ of a query's impressions (50+ in 28 days); low CTR = under half of the
+site's own CTR at that position (200+ impressions); page text kept only while
+a crawl is analysed.
+
+**Content rules** (`engine/content.ts`, pure, computed on read by
+`content.service.ts` from the three 28-day blocks ending on the latest day
+with data): decaying pages; refresh candidates (impressions held at 80%+ of a
+200+ first block, position slipping 2+ places without recovering); low CTR
+against the Phase 4 curve; high-potential pages (the page's queries at 4–20,
+estimated the Phase 4 way); possible cannibalisation. Each finding carries its
+numbers and an impact in clicks (lost, missed or estimated) that orders the
+list; pages show their title and description from the latest crawl. Screens
+warn when history does not cover the three blocks, or when query + page pairs
+have not been collected yet.
+
+**Internal link suggestions** (`engine/links.ts`, `links.service.ts`): when a
+crawl finishes, targets are pages ranking 4–20 for a query with 50+
+impressions (from the pairs, matched to crawled indexable pages); sources are
+other indexable pages whose text contains the query as a phrase (word index
+first, then a boundary-aware phrase match, case and width insensitive) and do
+not link to the target yet; the query is the link text; sources with more
+Search Console clicks first; at most 100 targets, 3 queries per page and 5
+sources per target. Stored as `InternalLinkSuggestion` per crawl;
+`CrawlRun.suggestionCount` is null without Search Console.
+
+**Page text** (`CrawlPage.textContent`, at most 20,000 characters): written
+while the crawl runs and cleared when it finishes, is cancelled, fails or is
+failed as stale — nothing keeps it.
+
+**Screens**: Content (five finding types with counts, evidence and impact)
+and Internal links (suggestions grouped by target with the sentence each
+source uses, plus the most and least linked indexable pages).
+
+**Not in this phase, deliberately:** mapping findings to CMS entities for the
+agency's own site (needs a URL → entity resolver), automatic link insertion,
+and task creation from findings (Phase 10).

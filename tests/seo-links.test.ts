@@ -16,6 +16,7 @@ describe("internal link suggestions", () => {
         source("/blog/d", "Our seo agency dubai guide.", 99), // already links
         source("/seo", "Our seo agency dubai page."), // the target itself
         source("/blog/e", "seo agency dubaiwide coverage"), // inside a longer word
+        source("/blog/f", "seo matters. the xseo agency dubai network"), // has every word, but the phrase starts inside a longer word
       ],
       new Set(["/blog/d\n/seo"]),
     );

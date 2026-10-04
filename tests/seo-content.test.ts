@@ -71,6 +71,7 @@ describe("high potential pages", () => {
         { query: "b", page: "/p", clicks: 0, impressions: 300, position: 14 }, // 300 × 0.03 = 9
         { query: "c", page: "/p", clicks: 0, impressions: 9, position: 6 }, // too few impressions
         { query: "d", page: "/q", clicks: 50, impressions: 100, position: 2 }, // already top 3
+        { query: "f", page: "/q", clicks: 0, impressions: 500, position: 2 }, // top 3 with poor CTR: still not this finding
         { query: "e", page: "/r", clicks: 0, impressions: 40, position: 12 }, // 40 × 0.03 = 1, under 5
       ],
       curve,
