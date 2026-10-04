@@ -6,6 +6,8 @@ import { ToastProvider } from "@/components/ui";
 import { PortalNav, type PortalNavItem } from "@/components/portal/nav";
 import { SignOutButton } from "@/components/admin/sign-out";
 import { signOutAction } from "@/app/admin/actions";
+import { myOnboardingProgress } from "@/lib/services/onboarding.service";
+import type { PortalActor } from "@/lib/actor/types";
 
 export const metadata: Metadata = {
   title: { default: "Portal", template: "%s · Emporia portal" },
@@ -28,7 +30,7 @@ export default async function PortalLayout({ children }: { children: React.React
   if (!actor) redirect("/auth/login?redirectTo=/portal");
   if (actor.type !== "CLIENT" || !actor.clientId) redirect("/admin");
 
-  const [client, pendingApprovals, unreadMessages] = await Promise.all([
+  const [client, pendingApprovals, unreadMessages, setup] = await Promise.all([
     db.client.findFirst({
       where: { id: actor.clientId, deletedAt: null },
       select: { name: true },
@@ -37,13 +39,21 @@ export default async function PortalLayout({ children }: { children: React.React
     db.clientMessage.count({
       where: { clientId: actor.clientId, fromClient: false, readAt: null },
     }),
+    myOnboardingProgress(actor as PortalActor).catch(() => null),
   ]);
+  const setupLeft = setup ? setup.applicable - setup.done : 0;
 
   // A portal account whose client has been removed has nothing to show.
   if (!client) redirect("/auth/login");
 
   const items: PortalNavItem[] = [
     { href: "/portal", label: "Overview", icon: "dashboard" },
+    {
+      href: "/portal/onboarding",
+      label: "Account setup",
+      icon: "setup",
+      ...(setupLeft > 0 ? { badge: setupLeft } : {}),
+    },
     { href: "/portal/projects", label: "Projects", icon: "projects" },
     { href: "/portal/content", label: "Content", icon: "content" },
     {

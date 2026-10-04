@@ -95,6 +95,15 @@ export async function getGscConnection(actor: Actor, propertyId: string): Promis
 export async function gscAuthorizationUrl(actor: Actor, propertyId: string, state: string): Promise<string> {
   requirePermission(actor, "seo.intelligence.connect");
   staffOnly(actor);
+  return gscAuthorizationUrlFor(propertyId, state);
+}
+
+/**
+ * The same, without the staff checks — for a caller that has already
+ * established who may act on this property (the client portal, for its own
+ * client's website).
+ */
+export async function gscAuthorizationUrlFor(propertyId: string, state: string): Promise<string> {
   await propertyFor(propertyId);
   return googleAuthorizationUrl(await oauthConfig(), state, seoGoogleCallbackUrl());
 }
@@ -103,6 +112,15 @@ export async function gscAuthorizationUrl(actor: Actor, propertyId: string, stat
 export async function completeGscOAuth(actor: Actor, propertyId: string, code: string): Promise<void> {
   requirePermission(actor, "seo.intelligence.connect");
   staffOnly(actor);
+  return completeGscOAuthFor(actor, propertyId, code);
+}
+
+/**
+ * The same, without the staff checks — for a caller that has already
+ * established who may act on this property (the client portal, for its own
+ * client's website).
+ */
+export async function completeGscOAuthFor(actor: Actor, propertyId: string, code: string): Promise<void> {
   await propertyFor(propertyId);
 
   const config = await oauthConfig();
@@ -131,7 +149,7 @@ export async function completeGscOAuth(actor: Actor, propertyId: string, code: s
     permissionLevel: null,
     lastSyncError: null,
     failureCount: 0,
-    connectedById: actor.type === "STAFF" ? actor.userId : null,
+    connectedById: actor.type === "SYSTEM" ? null : actor.userId,
   };
 
   await db.$transaction(async (tx) => {
@@ -168,7 +186,7 @@ export async function connectGscWithServiceAccount(actor: Actor, propertyId: str
     permissionLevel: null,
     lastSyncError: null,
     failureCount: 0,
-    connectedById: actor.type === "STAFF" ? actor.userId : null,
+    connectedById: actor.type === "SYSTEM" ? null : actor.userId,
   };
   await db.$transaction(async (tx) => {
     await tx.seoConnection.upsert({
@@ -257,6 +275,15 @@ export type SiteOption = GscSite & { matches: boolean; usable: boolean };
 export async function listGscSites(actor: Actor, propertyId: string): Promise<SiteOption[]> {
   requirePermission(actor, "seo.intelligence.connect");
   staffOnly(actor);
+  return listGscSitesFor(propertyId);
+}
+
+/**
+ * The same, without the staff checks — for a caller that has already
+ * established who may act on this property (the client portal, for its own
+ * client's website).
+ */
+export async function listGscSitesFor(propertyId: string): Promise<SiteOption[]> {
   const property = await propertyFor(propertyId);
   const connection = await connectionOf(propertyId);
   const sites = await searchConsoleFor(connection).listSites();
@@ -277,6 +304,15 @@ export async function listGscSites(actor: Actor, propertyId: string): Promise<Si
 export async function chooseGscSite(actor: Actor, propertyId: string, siteUrl: string): Promise<void> {
   requirePermission(actor, "seo.intelligence.connect");
   staffOnly(actor);
+  return chooseGscSiteFor(actor, propertyId, siteUrl);
+}
+
+/**
+ * The same, without the staff checks — for a caller that has already
+ * established who may act on this property (the client portal, for its own
+ * client's website).
+ */
+export async function chooseGscSiteFor(actor: Actor, propertyId: string, siteUrl: string): Promise<void> {
   const property = await propertyFor(propertyId);
   const connection = await connectionOf(propertyId);
   const site = (await searchConsoleFor(connection).listSites()).find((candidate) => candidate.siteUrl === siteUrl);

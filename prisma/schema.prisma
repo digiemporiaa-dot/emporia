@@ -534,6 +534,8 @@ model User {
   socialAccountsConnected    SocialAccount[]           @relation("SocialAccountConnectedBy")
   seoPropertiesCreated       SeoProperty[]             @relation("SeoPropertyCreatedBy")
   seoConnectionsMade         SeoConnection[]           @relation("SeoConnectionConnectedBy")
+  businessProfilesUpdated    ClientBusinessProfile[]   @relation("BusinessProfileUpdatedBy")
+  brandAssetsUploaded        ClientBrandAsset[]        @relation("BrandAssetUploadedBy")
   socialPendingConnections   SocialPendingConnection[]
   socialBrandProfilesUpdated SocialBrandProfile[]      @relation("SocialBrandProfileUpdatedBy")
   socialStrategiesUpdated    SocialStrategy[]          @relation("SocialStrategyUpdatedBy")
@@ -1735,6 +1737,9 @@ model Client {
   socialReports            SocialReport[]
   clientOccasions          ClientOccasion[]
   seoProperties            SeoProperty[]
+  businessProfile          ClientBusinessProfile?
+  onboarding               ClientOnboarding?
+  brandAssets              ClientBrandAsset[]
 
   @@index([deletedAt])
   @@index([ownerId])
@@ -2515,6 +2520,8 @@ model Media {
   socialAccountAvatars SocialAccount[]   @relation("SocialAccountAvatar")
   socialPostMedia      SocialPostMedia[] @relation("SocialPostMedia")
   socialPostThumbnails SocialPostMedia[] @relation("SocialPostThumbnail")
+
+  clientBrandAsset ClientBrandAsset?
 
   @@index([folderId])
   @@index([type])
@@ -3571,4 +3578,117 @@ model GscPageDaily {
 
   @@unique([propertyId, date, page])
   @@index([propertyId, page])
+}
+
+// ---------------------------------------------------------------------------
+// Client onboarding (docs/CLIENT-ONBOARDING-PLAN.md)
+// ---------------------------------------------------------------------------
+
+enum WebsitePlatform {
+  WORDPRESS
+  SHOPIFY
+  WIX
+  SQUARESPACE
+  WEBFLOW
+  CUSTOM
+  OTHER
+}
+
+enum BrandAssetKind {
+  LOGO
+  GUIDELINES
+  OTHER
+}
+
+enum OnboardingStep {
+  COMPANY
+  BRAND
+  WEBSITE
+  ANALYTICS
+  SEARCH_CONSOLE
+  SOCIAL
+  BUSINESS
+}
+
+/// Durable facts about a client's business. Filled in during onboarding,
+/// kept current afterwards, and the source Local SEO will read NAP from.
+model ClientBusinessProfile {
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  legalName    String?
+  taxId        String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  region       String?
+  postalCode   String?
+  /// ISO 3166-1 alpha-2.
+  countryCode  String?
+
+  publicPhone       String?
+  publicEmail       String?
+  /// { "mon": [{ "open": "09:00", "close": "18:00" }], … } — validated on write.
+  hours             Json?
+  serviceAreas      String[] @default([])
+  googleBusinessUrl String?
+
+  updatedById String?
+  updatedBy   User?   @relation("BusinessProfileUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedById])
+}
+
+/// The setup a new client works through in the portal. Completion is derived
+/// from real data (lib/onboarding/steps.ts), never ticked by hand; staff may
+/// only mark a step not applicable.
+model ClientOnboarding {
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /// No passwords, ever: the client adds the agency as a user on their site
+  /// and confirms it here.
+  websitePlatform          WebsitePlatform?
+  websiteLoginUrl          String?
+  websiteNotes             String?
+  websiteAccessConfirmedAt DateTime?
+
+  /// "123456789". Data is read in SEO Intelligence Phase 9; until then this
+  /// records that access was given.
+  ga4PropertyId        String?
+  ga4AccessConfirmedAt DateTime?
+
+  /// [{ "platform": "INSTAGRAM", "handle": "@acme" }] — what the client says
+  /// they have; staff connect them.
+  socialProfiles Json @default("[]")
+
+  notApplicable OnboardingStep[] @default([])
+  /// The first time every applicable step was complete.
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A file a client uploaded about their brand.
+model ClientBrandAsset {
+  id       String         @id @default(cuid())
+  clientId String
+  client   Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  mediaId  String         @unique
+  media    Media          @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  kind     BrandAssetKind
+
+  uploadedById String?
+  uploadedBy   User?   @relation("BrandAssetUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId, kind])
+  @@index([uploadedById])
 }
