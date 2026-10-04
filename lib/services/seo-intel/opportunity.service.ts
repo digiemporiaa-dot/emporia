@@ -15,12 +15,22 @@ import { computeKeywordOpportunities } from "@/lib/services/seo-intel/keyword.se
 import { computeContentFindings, CONTENT_TYPES } from "@/lib/services/seo-intel/content.service";
 import { indexationConflicts } from "@/lib/services/seo-intel/indexation.service";
 import { getSEOOverview } from "@/lib/services/seo-intel/overview.service";
+import { computeCoverage } from "@/lib/services/seo-intel/local.service";
+import { computeNap } from "@/lib/services/seo-intel/nap.service";
+import { computeInternational } from "@/lib/services/seo-intel/international.service";
+import { REVIEW_SYNC_INTERVAL_MS } from "@/lib/services/seo-intel/reviews.service";
+import { reviewStats } from "@/lib/seo-intel/engine/reviews";
+import { countryName } from "@/lib/geo/countries";
 import {
   fromChanges,
   fromContent,
   fromIndexation,
+  fromInternational,
   fromKeywords,
   fromLinks,
+  fromLocal,
+  fromNap,
+  fromReviews,
   fromTechnical,
   reconcile,
   type Candidate,
@@ -77,6 +87,77 @@ async function linkGroups(propertyId: string) {
   return [...groups.values()];
 }
 
+/**
+ * Local coverage counts as run only with a finished crawl, Search Console
+ * data and both lists filled: without demand figures a gap cannot be judged,
+ * so nothing stored may be resolved.
+ */
+async function localCandidates(propertyId: string, minImpressions: number): Promise<Candidate[] | null> {
+  const coverage = await computeCoverage(propertyId);
+  if (!coverage.run || !coverage.range || !coverage.services.length || !coverage.cities.length) return null;
+  const serviceName = new Map(coverage.services.map((s) => [s.id, s.name]));
+  const cityName = new Map(coverage.cities.map((c) => [c.cityId, c.name]));
+  return fromLocal(
+    coverage.cells.map((cell) => ({
+      serviceId: cell.serviceId,
+      serviceName: serviceName.get(cell.serviceId) ?? "",
+      cityId: cell.cityId,
+      cityName: cityName.get(cell.cityId) ?? "",
+      status: cell.status,
+      url: cell.page?.url ?? null,
+      demand: cell.demand,
+    })),
+    minImpressions,
+  );
+}
+
+/** Needs a business profile with an address or phone; the site half also needs a crawl. */
+async function napCandidates(propertyId: string): Promise<Candidate[] | null> {
+  const nap = await computeNap(propertyId);
+  if (!nap.profileReady || !nap.report) return null;
+  const report = nap.report;
+  return fromNap({
+    hasCrawl: !!nap.run,
+    hasAddress: !!(nap.truth.street || nap.truth.locality || nap.truth.postalCode),
+    schemaPages: report.schemaPages,
+    schemaMismatches: report.schemaMismatches,
+    incompletePages: [...new Set(report.incomplete.filter((row) => row.required.length).map((row) => row.url))],
+    phoneOnSite: report.phoneOnSite,
+    listings: nap.listings.map((listing, i) => ({ id: listing.id, name: listing.name, mismatches: report.listing[i]?.mismatches ?? [] })),
+  });
+}
+
+/**
+ * Runs only when every connected location of the client was read within two
+ * sync intervals — a location Google would not answer for must not have its
+ * findings resolved.
+ */
+async function reviewCandidates(propertyId: string, now: Date, t: Awaited<ReturnType<typeof thresholdsFor>>): Promise<Candidate[] | null> {
+  const property = await db.seoProperty.findUnique({ where: { id: propertyId }, select: { clientId: true } });
+  if (!property) return null;
+  const accounts = await db.socialAccount.findMany({
+    where: { clientId: property.clientId, provider: "GOOGLE_BUSINESS_PROFILE", status: "CONNECTED" },
+    select: { id: true, name: true, gbpListing: { select: { lastSyncedAt: true } } },
+  });
+  const fresh = new Date(now.getTime() - 2 * REVIEW_SYNC_INTERVAL_MS);
+  if (!accounts.length || accounts.some((a) => !a.gbpListing?.lastSyncedAt || a.gbpListing.lastSyncedAt < fresh)) return null;
+  const options = { unansweredDays: t["reviews.unansweredDays"], lowRating: t["reviews.lowRating"], quietDays: t["reviews.quietDays"] };
+  const locations = [];
+  for (const account of accounts) {
+    const reviews = await db.gbpReview.findMany({ where: { socialAccountId: account.id }, select: { rating: true, createdAt: true, replyComment: true, repliedAt: true } });
+    const stats = reviewStats(reviews, now, options);
+    locations.push({ id: account.id, name: account.name, unanswered: stats.unanswered, unansweredLow: stats.unansweredLow, daysSinceLast: stats.daysSinceLast });
+  }
+  return fromReviews(locations, options);
+}
+
+/** Needs a crawl (to know the versions) and Search Console (to know the traffic). */
+async function internationalCandidates(propertyId: string): Promise<Candidate[] | null> {
+  const analysis = await computeInternational(propertyId);
+  if (!analysis.run || !analysis.period) return null;
+  return fromInternational(analysis.missing.map((row) => ({ ...row, name: countryName(row.country) ?? row.country })));
+}
+
 /** Run every source for one website and reconcile the stored list. */
 export async function detectOpportunities(propertyId: string, now = new Date()) {
   const t = await thresholdsFor(propertyId);
@@ -115,6 +196,10 @@ export async function detectOpportunities(propertyId: string, now = new Date()) 
     const groups = await linkGroups(propertyId);
     return groups ? fromLinks(groups) : null;
   });
+  await attempt("LOCAL", () => localCandidates(propertyId, t["local.gapMinImpressions"]));
+  await attempt("NAP", () => napCandidates(propertyId));
+  await attempt("REVIEWS", () => reviewCandidates(propertyId, now, t));
+  await attempt("INTERNATIONAL", () => internationalCandidates(propertyId));
   await attempt("CHANGES", async () => {
     const overview = await getSEOOverview(systemActor({ permissions: ["seo.intelligence.view"] }), propertyId, "28d");
     if (overview.state !== "ready") return null;

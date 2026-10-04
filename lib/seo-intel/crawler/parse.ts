@@ -21,6 +21,10 @@ export type ParsedPage = {
   wordCount: number;
   contentHash: string | null;
   schemaTypes: string[];
+  /** Business entities from JSON-LD, for NAP and local schema checks. */
+  localBusiness: BusinessEntity[];
+  /** `tel:` link targets, as written, deduplicated. */
+  phones: string[];
   imageCount: number;
   imagesMissingAlt: number;
   links: ParsedLink[];
@@ -28,7 +32,37 @@ export type ParsedPage = {
   text: string;
 };
 
+export type BusinessAddress = { street: string | null; locality: string | null; region: string | null; postalCode: string | null; country: string | null };
+
+export type BusinessEntity = {
+  types: string[];
+  name: string | null;
+  telephone: string | null;
+  /** A PostalAddress, or a plain string address kept in `street`. */
+  address: BusinessAddress | null;
+  hasGeo: boolean;
+  hasHours: boolean;
+  url: string | null;
+};
+
 export const MAX_PAGE_TEXT = 20_000;
+const MAX_ENTITIES = 5;
+const MAX_PHONES = 10;
+
+/**
+ * Direct LocalBusiness subtypes in schema.org plus the common deeper ones.
+ * Anything else counts as a business entity only when it carries an address.
+ */
+export const LOCAL_BUSINESS_TYPES = new Set([
+  "LocalBusiness", "AnimalShelter", "ArchiveOrganization", "AutomotiveBusiness", "ChildCare", "Dentist",
+  "DryCleaningOrLaundry", "EmergencyService", "EmploymentAgency", "EntertainmentBusiness", "FinancialService",
+  "FoodEstablishment", "GovernmentOffice", "HealthAndBeautyBusiness", "HomeAndConstructionBusiness", "InternetCafe",
+  "LegalService", "Library", "LodgingBusiness", "MedicalBusiness", "ProfessionalService", "RadioStation",
+  "RealEstateAgent", "RecyclingCenter", "SelfStorage", "ShoppingCenter", "SportsActivityLocation", "Store",
+  "TelevisionStation", "TouristInformationCenter", "TravelAgency", "AccountingService", "Attorney", "AutoRepair",
+  "Bakery", "BeautySalon", "Cafe", "CafeOrCoffeeShop", "Electrician", "GeneralContractor", "HairSalon", "Hotel",
+  "InsuranceAgency", "Locksmith", "MedicalClinic", "Notary", "Physician", "Plumber", "Restaurant", "RoofingContractor",
+]);
 
 const SKIP_TEXT = new Set(["script", "style", "noscript", "template", "svg", "head", "title"]);
 const BLOCK = new Set(["p", "div", "li", "br", "h1", "h2", "h3", "h4", "h5", "h6", "td", "th", "tr", "section", "article", "header", "footer", "nav", "main", "aside", "blockquote", "pre"]);
@@ -61,6 +95,61 @@ function collectTypes(value: unknown, into: Set<string>, depth = 0): void {
   }
 }
 
+function str(value: unknown): string | null {
+  if (typeof value === "string") return cap(value, 300);
+  if (typeof value === "number") return String(value);
+  return null;
+}
+
+function typesOf(record: Record<string, unknown>): string[] {
+  const type = record["@type"];
+  if (typeof type === "string") return [type];
+  if (Array.isArray(type)) return type.filter((t): t is string => typeof t === "string");
+  return [];
+}
+
+function addressOf(value: unknown): BusinessAddress | null {
+  if (Array.isArray(value)) return addressOf(value[0]);
+  if (typeof value === "string") return value.trim() ? { street: cap(value, 300), locality: null, region: null, postalCode: null, country: null } : null;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const country = record["addressCountry"];
+  const address = {
+    street: str(record["streetAddress"]),
+    locality: str(record["addressLocality"]),
+    region: str(record["addressRegion"]),
+    postalCode: str(record["postalCode"]),
+    country: str(country) ?? (country && typeof country === "object" ? str((country as Record<string, unknown>)["name"]) : null),
+  };
+  return Object.values(address).some(Boolean) ? address : null;
+}
+
+/** Business entities in JSON-LD, following `@graph` and nesting like `collectTypes`. */
+function collectBusinesses(value: unknown, into: BusinessEntity[], depth = 0): void {
+  if (depth > 6 || value === null || typeof value !== "object" || into.length >= MAX_ENTITIES) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectBusinesses(item, into, depth + 1);
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const types = typesOf(record);
+  const address = addressOf(record["address"]);
+  if (types.length && (types.some((type) => LOCAL_BUSINESS_TYPES.has(type)) || address)) {
+    into.push({
+      types: types.slice(0, 5),
+      name: str(record["name"]),
+      telephone: str(record["telephone"]),
+      address,
+      hasGeo: !!record["geo"] && typeof record["geo"] === "object",
+      hasHours: !!(record["openingHoursSpecification"] || record["openingHours"]),
+      url: str(record["url"]),
+    });
+  }
+  for (const [key, child] of Object.entries(record)) {
+    if (key !== "@context" && key !== "address" && key !== "geo") collectBusinesses(child, into, depth + 1);
+  }
+}
+
 export function parsePage(html: string, pageUrl: string): ParsedPage {
   let base = pageUrl;
   let title: string | null = null;
@@ -75,6 +164,8 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
   let h1Count = 0;
   let h2Count = 0;
   const types = new Set<string>();
+  const businesses: BusinessEntity[] = [];
+  const phones = new Set<string>();
   let jsonLd: string | null = null;
   let imageCount = 0;
   let imagesMissingAlt = 0;
@@ -131,6 +222,16 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
             break;
           case "a": {
             const href = attrs["href"];
+            if (href && /^\s*tel:/i.test(href) && phones.size < MAX_PHONES) {
+              let phone = href.trim().slice(4);
+              try {
+                phone = decodeURIComponent(phone);
+              } catch {
+                // Kept as written.
+              }
+              phone = phone.trim().slice(0, 40);
+              if (phone) phones.add(phone);
+            }
             const target = href ? normalizeUrl(href, base) : null;
             const rel = (attrs["rel"] ?? "").toLowerCase();
             anchor = target ? { href: target, nofollow: /\bnofollow\b/.test(rel), text: "" } : null;
@@ -169,7 +270,9 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
         }
         if (tag === "script" && jsonLd !== null) {
           try {
-            collectTypes(JSON.parse(jsonLd), types);
+            const data: unknown = JSON.parse(jsonLd);
+            collectTypes(data, types);
+            collectBusinesses(data, businesses);
           } catch {
             // Invalid JSON-LD is not structured data; nothing to record.
           }
@@ -204,6 +307,8 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
     wordCount: words.length,
     contentHash: text ? createHash("sha256").update(text.toLowerCase()).digest("hex") : null,
     schemaTypes: [...types].slice(0, 50),
+    localBusiness: businesses,
+    phones: [...phones],
     imageCount,
     imagesMissingAlt,
     links: [...links.values()],

@@ -22,6 +22,8 @@ const TABS: readonly { href: Route; label: string; key: string; connectOnly?: bo
   { href: "/admin/marketing/seo/crawl", label: "Site crawl", key: "crawl" },
   { href: "/admin/marketing/seo/technical", label: "Technical SEO", key: "technical" },
   { href: "/admin/marketing/seo/indexation", label: "Indexation", key: "indexation" },
+  { href: "/admin/marketing/seo/local", label: "Local SEO", key: "local" },
+  { href: "/admin/marketing/seo/international", label: "International", key: "international" },
   { href: "/admin/marketing/seo/properties", label: "Websites", key: "properties" },
   { href: "/admin/marketing/seo/settings", label: "Settings", key: "settings", connectOnly: true },
 ];

@@ -1,3 +1,5 @@
+import { areLocaleVariants, checkHreflang, primaryLanguage } from "@/lib/seo-intel/engine/international";
+
 /**
  * Technical SEO rules over one finished crawl. Pure: the crawl service loads
  * the pages, this decides what is wrong, the service stores the findings.
@@ -32,6 +34,13 @@ export type RuleKey =
   | "slow-response"
   | "images-missing-alt"
   | "hreflang-no-return"
+  | "hreflang-invalid"
+  | "hreflang-duplicate-code"
+  | "hreflang-no-self"
+  | "hreflang-to-broken"
+  | "hreflang-canonical-conflict"
+  | "hreflang-lang-mismatch"
+  | "country-duplicate"
   | "blocked-by-robots"
   | "lang-missing";
 
@@ -59,6 +68,13 @@ export const RULES: Record<RuleKey, { severity: Severity; title: string; why: st
   "slow-response": { severity: "NOTICE", title: "Slow server response", why: "The HTML took over 1.5 seconds to arrive, before anything else on the page loaded." },
   "images-missing-alt": { severity: "NOTICE", title: "Images without alt text", why: "Images with no alt attribute are invisible to screen readers and to image search." },
   "hreflang-no-return": { severity: "WARNING", title: "Hreflang without a return link", why: "This page names an alternate language version that does not name it back, so Google ignores the pair." },
+  "hreflang-invalid": { severity: "WARNING", title: "Invalid hreflang code", why: "Google only reads ISO 639-1 languages with an optional ISO 3166-1 country (en, en-GB) or x-default. Other codes are ignored." },
+  "hreflang-duplicate-code": { severity: "WARNING", title: "Hreflang code used twice", why: "The same language or country code points to two different URLs, so Google cannot tell which one to show." },
+  "hreflang-no-self": { severity: "NOTICE", title: "Hreflang does not include the page itself", why: "Each page in a language set should list itself too; without it the set is incomplete." },
+  "hreflang-to-broken": { severity: "WARNING", title: "Hreflang points to a page that does not load or is noindex", why: "Alternate versions must load directly and be indexable, or Google drops them from the set." },
+  "hreflang-canonical-conflict": { severity: "WARNING", title: "Hreflang and canonical disagree", why: "Hreflang should only connect canonical URLs. A page that names another URL as canonical, or an alternate that does, sends Google mixed signals." },
+  "hreflang-lang-mismatch": { severity: "NOTICE", title: "Page language differs from its hreflang", why: "The <html lang> attribute names a different language from the one the page's own hreflang entry declares." },
+  "country-duplicate": { severity: "WARNING", title: "Country versions with identical content and no hreflang", why: "The same page under different country or language paths, with no hreflang linking them. Google treats them as duplicates and may show the wrong country's page." },
   "blocked-by-robots": { severity: "NOTICE", title: "Blocked by robots.txt", why: "Linked or listed, but robots.txt stops crawlers reading it. Fine if intended." },
   "lang-missing": { severity: "NOTICE", title: "No language declared", why: "The <html> element has no lang attribute." },
 };
@@ -194,6 +210,7 @@ export function technicalFindings(pages: RulePage[], links: RuleLink[]): Finding
         findings.push(find("hreflang-no-return", page.url, { alternate: alternate.href, lang: alternate.lang }));
       }
     }
+    if (page.hreflang.length) findings.push(...hreflangFindings(page, byUrl));
   }
 
   const indexable = pages.filter(isIndexable);
@@ -203,14 +220,88 @@ export function technicalFindings(pages: RulePage[], links: RuleLink[]): Finding
     ["content-duplicate", (page: RulePage) => page.contentHash],
   ] as const) {
     for (const group of duplicates(indexable, key)) {
-      const urls = group.map((page) => page.url);
       for (const page of group) {
-        findings.push(find(rule, page.url, { duplicates: urls.filter((url) => url !== page.url).slice(0, 10), count: group.length }));
+        if (rule === "content-duplicate") {
+          findings.push(...contentDuplicateFindings(page, group));
+          continue;
+        }
+        // Versions tied together by hreflang may share a title or description.
+        const others = group.filter((other) => other !== page && !linkedByHreflang(page, other)).map((other) => other.url);
+        if (others.length) findings.push(find(rule, page.url, { duplicates: others.slice(0, 10), count: others.length + 1 }));
       }
     }
   }
 
   return findings;
+}
+
+const linkedByHreflang = (a: RulePage, b: RulePage) =>
+  a.hreflang.some((entry) => entry.href === b.url) || b.hreflang.some((entry) => entry.href === a.url);
+
+/**
+ * Identical text is fine between versions that hreflang ties together;
+ * between locale-path versions it does not tie, it is a country duplicate;
+ * anywhere else it is plain duplicate content.
+ */
+function contentDuplicateFindings(page: RulePage, group: RulePage[]): Finding[] {
+  const plain: string[] = [];
+  const country: string[] = [];
+  for (const other of group) {
+    if (other === page || linkedByHreflang(page, other)) continue;
+    if (areLocaleVariants(page.url, other.url)) country.push(other.url);
+    else plain.push(other.url);
+  }
+  const out: Finding[] = [];
+  if (plain.length) out.push(find("content-duplicate", page.url, { duplicates: plain.slice(0, 10), count: plain.length + 1 }));
+  if (country.length) out.push(find("country-duplicate", page.url, { versions: country.slice(0, 10), count: country.length + 1 }));
+  return out;
+}
+
+/** Hreflang checks for one indexable-or-not HTML page that declares a set. */
+function hreflangFindings(page: RulePage, byUrl: Map<string, RulePage>): Finding[] {
+  const out: Finding[] = [];
+  const invalid: { lang: string; reason: string }[] = [];
+  const targets = new Map<string, Set<string>>();
+  for (const entry of page.hreflang) {
+    const code = checkHreflang(entry.lang);
+    if (!code.ok) invalid.push({ lang: entry.lang, reason: code.reason });
+    const set = targets.get(entry.lang) ?? new Set<string>();
+    set.add(entry.href);
+    targets.set(entry.lang, set);
+  }
+  if (invalid.length) out.push(find("hreflang-invalid", page.url, { codes: invalid.slice(0, 10) }));
+
+  const repeated = [...targets].filter(([, hrefs]) => hrefs.size > 1).map(([lang, hrefs]) => ({ lang, urls: [...hrefs].slice(0, 5) }));
+  if (repeated.length) out.push(find("hreflang-duplicate-code", page.url, { codes: repeated.slice(0, 10) }));
+
+  const self = page.hreflang.filter((entry) => entry.href === page.url);
+  if (!self.length) out.push(find("hreflang-no-self", page.url));
+
+  const broken: { url: string; lang: string; problem: string }[] = [];
+  const otherCanonical: { url: string; canonical: string }[] = [];
+  for (const entry of page.hreflang) {
+    if (entry.href === page.url) continue;
+    const other = byUrl.get(entry.href);
+    if (!other || other.state === "QUEUED" || other.state === "BLOCKED") continue;
+    if (other.state === "ERROR") broken.push({ url: entry.href, lang: entry.lang, problem: "could not be fetched" });
+    else if (other.statusCode !== null && other.statusCode >= 300 && other.statusCode < 400) broken.push({ url: entry.href, lang: entry.lang, problem: "redirects" });
+    else if (other.statusCode !== 200) broken.push({ url: entry.href, lang: entry.lang, problem: `returns ${other.statusCode}` });
+    else if (other.noindex) broken.push({ url: entry.href, lang: entry.lang, problem: "is noindex" });
+    else if (other.canonical && other.canonical !== other.url) otherCanonical.push({ url: entry.href, canonical: other.canonical });
+  }
+  if (broken.length) out.push(find("hreflang-to-broken", page.url, { alternates: broken.slice(0, 10) }));
+
+  const ownCanonical = page.canonical && page.canonical !== page.url ? page.canonical : null;
+  if (ownCanonical || otherCanonical.length) {
+    out.push(find("hreflang-canonical-conflict", page.url, { canonical: ownCanonical, alternates: otherCanonical.slice(0, 10) }));
+  }
+
+  const declared = self.map((entry) => checkHreflang(entry.lang)).find((code) => code.ok && !code.xDefault);
+  const htmlLanguage = primaryLanguage(page.lang);
+  if (declared && declared.ok && !declared.xDefault && htmlLanguage && htmlLanguage !== declared.language) {
+    out.push(find("hreflang-lang-mismatch", page.url, { lang: page.lang, hreflang: declared.language }));
+  }
+  return out;
 }
 
 /** Counts by severity, for the run summary. */

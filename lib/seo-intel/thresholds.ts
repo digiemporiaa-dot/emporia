@@ -8,7 +8,7 @@ import { DEFAULT_CHANGE_THRESHOLDS, type ChangeThresholds } from "@/lib/seo-inte
  * screens always agree. Percentages are stored as fractions (0.25 = 25%).
  */
 
-type Unit = "clicks" | "impressions" | "percent" | "places" | "count";
+type Unit = "clicks" | "impressions" | "percent" | "places" | "count" | "days" | "stars";
 type Def = { group: string; label: string; help: string; unit: Unit; default: number; min: number; max: number };
 
 export const THRESHOLD_DEFS = {
@@ -32,6 +32,12 @@ export const THRESHOLD_DEFS = {
   "changes.pageLossPct": { group: "What changed", label: "Page traffic loss", help: "A page lost traffic when its clicks fell by at least this much…", unit: "percent", default: DEFAULT_CHANGE_THRESHOLDS.pageLossPct, min: 0.05, max: 1 },
   "changes.pageMinClicks": { group: "What changed", label: "Page loss: starting clicks", help: "…from at least this many clicks.", unit: "clicks", default: DEFAULT_CHANGE_THRESHOLDS.pageMinClicks, min: 1, max: 1_000_000 },
   "changes.queryMinImpressions": { group: "What changed", label: "Query: impressions to count as ranking", help: "Impressions a query needs to enter or leave the top 10.", unit: "impressions", default: DEFAULT_CHANGE_THRESHOLDS.queryMinImpressions, min: 1, max: 1_000_000 },
+  "local.gapMinImpressions": { group: "Local", label: "Coverage gap: minimum impressions", help: "28-day impressions for queries naming a service and a city before a missing page counts as a gap worth acting on.", unit: "impressions", default: 50, min: 1, max: 1_000_000 },
+  "reviews.unansweredDays": { group: "Local", label: "Unanswered reviews: look-back", help: "Reviews from the last this many days without a reply are flagged.", unit: "days", default: 30, min: 1, max: 365 },
+  "reviews.lowRating": { group: "Local", label: "Unanswered reviews: low rating", help: "An unanswered review at or below this many stars makes the finding high severity.", unit: "stars", default: 3, min: 1, max: 5 },
+  "reviews.quietDays": { group: "Local", label: "No new reviews for", help: "Flag a listing that has had no new review for this many days.", unit: "days", default: 60, min: 7, max: 730 },
+  "intl.minShare": { group: "International", label: "Missing country version: share of clicks", help: "A country must send at least this share of clicks to a multi-country site with no version for it.", unit: "percent", default: 0.05, min: 0.005, max: 1 },
+  "intl.minClicks": { group: "International", label: "Missing country version: minimum clicks", help: "…and at least this many clicks in 28 days.", unit: "clicks", default: 20, min: 1, max: 1_000_000 },
 } as const satisfies Record<string, Def>;
 
 export type ThresholdKey = keyof typeof THRESHOLD_DEFS;

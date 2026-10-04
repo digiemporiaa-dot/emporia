@@ -90,7 +90,8 @@ describeDb("SEO opportunities", () => {
 
   it("detects from every source that has data, and records what changed", async () => {
     const result = await detectOpportunities(propertyId, new Date("2026-10-01T06:00:00Z"));
-    expect(result.sources.sort()).toEqual(["CHANGES", "CONTENT", "KEYWORDS", "TECHNICAL"]);
+    // International runs on any crawled website with Search Console data; local, NAP and reviews need their own setup.
+    expect(result.sources.sort()).toEqual(["CHANGES", "CONTENT", "INTERNATIONAL", "KEYWORDS", "TECHNICAL"]);
     const rows = await mine();
     const prints = rows.map((row) => row.fingerprint);
     expect(prints).toContain(`content:decaying:${U("/blog/a")}`);

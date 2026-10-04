@@ -92,6 +92,38 @@ type Location = {
   metadata?: { canOperateLocalPost?: unknown; mapsUri?: unknown };
 };
 
+/** The listing as Google holds it, for local SEO's name, address and phone checks. */
+export type GbpListingProfile = {
+  title: string | null;
+  address: { lines: string[]; locality: string | null; region: string | null; postalCode: string | null; country: string | null } | null;
+  phone: string | null;
+  website: string | null;
+};
+
+export type GbpReviewRow = {
+  externalId: string;
+  rating: number;
+  comment: string | null;
+  reviewerName: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  replyComment: string | null;
+  repliedAt: Date | null;
+};
+
+export type GbpReviewPage = {
+  reviews: GbpReviewRow[];
+  averageRating: number | null;
+  totalReviewCount: number | null;
+  /** False when there were more reviews than `maxReviews`. */
+  complete: boolean;
+};
+
+const STARS: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
+const LISTING_MASK = "name,title,storefrontAddress,phoneNumbers,websiteUri";
+/** Google's largest review page. */
+const REVIEW_PAGE = 50;
+
 type GoogleError = { error?: { code?: unknown; status?: unknown; message?: unknown } };
 
 export class GoogleBusinessProvider implements SocialProviderAdapter {
@@ -342,6 +374,73 @@ export class GoogleBusinessProvider implements SocialProviderAdapter {
   }
 
   // -------------------------------------------------------------------------
+  // Local SEO (read only)
+  // -------------------------------------------------------------------------
+
+  /** Title, address, phone and website, from the Business Information API. */
+  async getListing(credentials: ProviderCredentials, account: AccountRef): Promise<GbpListingProfile> {
+    if (!LOCATION_ID.test(account.externalId)) throw new ValidationError("That is not a Business Profile location.");
+    const url = new URL(`${this.infoApi}/${account.externalId}`);
+    url.searchParams.set("readMask", LISTING_MASK);
+    const response = await this.fetch(url.toString(), { headers: this.auth(credentials) });
+    if (!response.ok) throw await this.error(response, "read the business listing");
+    const json = (await response.json()) as {
+      title?: unknown;
+      storefrontAddress?: { addressLines?: unknown; locality?: unknown; administrativeArea?: unknown; postalCode?: unknown; regionCode?: unknown };
+      phoneNumbers?: { primaryPhone?: unknown };
+      websiteUri?: unknown;
+    };
+    const address = json.storefrontAddress;
+    const lines = Array.isArray(address?.addressLines) ? address.addressLines.filter((line): line is string => typeof line === "string") : [];
+    return {
+      title: text(json.title),
+      address: address
+        ? { lines, locality: text(address.locality), region: text(address.administrativeArea), postalCode: text(address.postalCode), country: text(address.regionCode) }
+        : null,
+      phone: text(json.phoneNumbers?.primaryPhone),
+      website: text(json.websiteUri),
+    };
+  }
+
+  /**
+   * The location's reviews, newest first, up to `maxReviews`. Reviews are
+   * still only in the v4 API, addressed through the location's account.
+   */
+  async listReviews(credentials: ProviderCredentials, account: AccountRef, maxReviews = 2_000): Promise<GbpReviewPage> {
+    if (!account.externalParentId) {
+      throw new ValidationError("This location is missing its Google account. Reconnect it.");
+    }
+    const base = `${this.postsApi}/${account.externalParentId}/${account.externalId}/reviews`;
+    const reviews: GbpReviewRow[] = [];
+    let averageRating: number | null = null;
+    let totalReviewCount: number | null = null;
+    let token: string | null = null;
+    let complete = true;
+    for (;;) {
+      const url = new URL(base);
+      url.searchParams.set("pageSize", String(REVIEW_PAGE));
+      url.searchParams.set("orderBy", "updateTime desc");
+      if (token) url.searchParams.set("pageToken", token);
+      const response = await this.fetch(url.toString(), { headers: this.auth(credentials) });
+      if (!response.ok) throw await this.error(response, "list the location's reviews");
+      const json = (await response.json()) as { reviews?: unknown; averageRating?: unknown; totalReviewCount?: unknown; nextPageToken?: unknown };
+      if (typeof json.averageRating === "number") averageRating = json.averageRating;
+      if (typeof json.totalReviewCount === "number") totalReviewCount = json.totalReviewCount;
+      for (const raw of Array.isArray(json.reviews) ? json.reviews : []) {
+        const row = toReview(raw);
+        if (row) reviews.push(row);
+      }
+      token = typeof json.nextPageToken === "string" && json.nextPageToken ? json.nextPageToken : null;
+      if (!token) break;
+      if (reviews.length >= maxReviews) {
+        complete = false;
+        break;
+      }
+    }
+    return { reviews: reviews.slice(0, maxReviews), averageRating, totalReviewCount, complete: complete && reviews.length <= maxReviews };
+  }
+
+  // -------------------------------------------------------------------------
   // Plumbing
   // -------------------------------------------------------------------------
 
@@ -468,6 +567,35 @@ export class GoogleBusinessProvider implements SocialProviderAdapter {
     }
     return new ValidationError(`Google refused to ${what} (${response.status}).`);
   }
+}
+
+function toReview(raw: unknown): GbpReviewRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const review = raw as {
+    reviewId?: unknown;
+    name?: unknown;
+    reviewer?: { displayName?: unknown; isAnonymous?: unknown };
+    starRating?: unknown;
+    comment?: unknown;
+    createTime?: unknown;
+    updateTime?: unknown;
+    reviewReply?: { comment?: unknown; updateTime?: unknown };
+  };
+  const id = text(review.reviewId) ?? text(review.name)?.split("/").pop() ?? null;
+  const rating = typeof review.starRating === "string" ? STARS[review.starRating] : undefined;
+  const createdAt = parsePlatformTime(review.createTime);
+  if (!id || !rating || !createdAt) return null;
+  const reply = text(review.reviewReply?.comment);
+  return {
+    externalId: id.slice(0, 200),
+    rating,
+    comment: text(review.comment)?.slice(0, 4_000) ?? null,
+    reviewerName: review.reviewer?.isAnonymous === true ? null : (text(review.reviewer?.displayName)?.slice(0, 200) ?? null),
+    createdAt,
+    updatedAt: parsePlatformTime(review.updateTime) ?? createdAt,
+    replyComment: reply?.slice(0, 4_000) ?? null,
+    repliedAt: reply ? (parsePlatformTime(review.reviewReply?.updateTime) ?? null) : null,
+  };
 }
 
 function redact(url: string): string {
