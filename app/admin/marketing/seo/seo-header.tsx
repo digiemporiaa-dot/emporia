@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils/cn";
 const TABS: readonly { href: Route; label: string; key: string; connectOnly?: boolean }[] = [
   { href: "/admin/marketing/seo", label: "Overview", key: "overview" },
   { href: "/admin/marketing/seo/performance", label: "Search performance", key: "performance" },
+  { href: "/admin/marketing/seo/keywords", label: "Keywords", key: "keywords" },
+  { href: "/admin/marketing/seo/opportunities", label: "Opportunities", key: "opportunities" },
   { href: "/admin/marketing/seo/crawl", label: "Site crawl", key: "crawl" },
   { href: "/admin/marketing/seo/technical", label: "Technical SEO", key: "technical" },
   { href: "/admin/marketing/seo/indexation", label: "Indexation", key: "indexation" },

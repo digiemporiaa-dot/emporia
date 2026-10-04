@@ -7,7 +7,17 @@ import { log } from "@/lib/logger";
 import { saveGoogleSettings } from "@/lib/services/seo-intel/google-settings.service";
 import { chooseGscSite, disconnectGsc, connectGscWithServiceAccount } from "@/lib/services/seo-intel/gsc-connection.service";
 import { syncGscNow } from "@/lib/services/seo-intel/gsc-sync.service";
-import { crawlCancelSchema, crawlStartSchema, gscSiteChoiceSchema, seoGoogleSettingsSchema, urlInspectSchema } from "@/lib/validation/seo-intel";
+import {
+  crawlCancelSchema,
+  crawlStartSchema,
+  gscSiteChoiceSchema,
+  keywordAddSchema,
+  keywordRemoveSchema,
+  keywordTagsSchema,
+  seoGoogleSettingsSchema,
+  urlInspectSchema,
+} from "@/lib/validation/seo-intel";
+import { addKeywords, removeKeywords, setKeywordTags } from "@/lib/services/seo-intel/keyword.service";
 import { cancelCrawl, startCrawl } from "@/lib/services/seo-intel/crawl.service";
 import { inspectUrlNow } from "@/lib/services/seo-intel/indexation.service";
 
@@ -149,6 +159,61 @@ export async function inspectUrlAction(_prev: SeoActionState, formData: FormData
     const result = await inspectUrlNow(actor, parsed.data.propertyId, parsed.data.url);
     refreshCrawl(parsed.data.propertyId);
     return { ok: true, data: { message: result?.coverageState ? `Google: ${result.coverageState}.` : "Google did not return a status; see the row for the reason." } };
+  } catch (error) {
+    return toActionFailure(error);
+  }
+}
+
+function refreshKeywords() {
+  revalidatePath("/admin/marketing/seo/keywords", "layout");
+  revalidatePath("/admin/marketing/seo/opportunities");
+}
+
+/** Track keywords: a pasted list in `keywords`, or the ticked `pick` boxes from a suggestions table. */
+export async function addKeywordsAction(_prev: SeoActionState, formData: FormData): Promise<SeoActionState> {
+  try {
+    const actor = await requireActor();
+    const picked = formData.getAll("pick").filter((value): value is string => typeof value === "string");
+    const typed = formData.get("keywords");
+    const parsed = keywordAddSchema.safeParse({
+      propertyId: formData.get("propertyId"),
+      keywords: typeof typed === "string" && typed.trim() ? typed : picked.join("\n"),
+      tags: formData.get("tags") ?? "",
+      source: formData.get("source") ?? "MANUAL",
+    });
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check the keywords." };
+    const result = await addKeywords(actor, parsed.data.propertyId, parsed.data);
+    refreshKeywords();
+    const parts = [`Tracking ${result.added} new keyword${result.added === 1 ? "" : "s"}.`];
+    if (result.alreadyTracked) parts.push(`${result.alreadyTracked} already tracked.`);
+    if (result.rejected.length) parts.push(`${result.rejected.length} skipped: over 200 characters.`);
+    return { ok: true, data: { message: parts.join(" ") } };
+  } catch (error) {
+    return toActionFailure(error);
+  }
+}
+
+export async function removeKeywordsAction(_prev: SeoActionState, formData: FormData): Promise<SeoActionState> {
+  try {
+    const actor = await requireActor();
+    const parsed = keywordRemoveSchema.safeParse({ propertyId: formData.get("propertyId"), keywordIds: formData.getAll("keywordIds") });
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Choose keywords to untrack." };
+    const removed = await removeKeywords(actor, parsed.data.propertyId, parsed.data.keywordIds);
+    refreshKeywords();
+    return { ok: true, data: { message: `Stopped tracking ${removed} keyword${removed === 1 ? "" : "s"}. Search Console history is kept.` } };
+  } catch (error) {
+    return toActionFailure(error);
+  }
+}
+
+export async function setKeywordTagsAction(_prev: SeoActionState, formData: FormData): Promise<SeoActionState> {
+  try {
+    const actor = await requireActor();
+    const parsed = keywordTagsSchema.safeParse(Object.fromEntries(formData.entries()));
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "Check the tags." };
+    const tags = await setKeywordTags(actor, parsed.data.propertyId, parsed.data.keywordId, parsed.data.tags);
+    refreshKeywords();
+    return { ok: true, data: { message: tags.length ? `Tags: ${tags.join(", ")}.` : "Tags cleared." } };
   } catch (error) {
     return toActionFailure(error);
   }

@@ -163,6 +163,11 @@ describeDb("SEO keywords", () => {
 
   it("retags and untracks", async () => {
     const keyword = await db.seoKeyword.findFirstOrThrow({ where: { propertyId, keyword: "ppc dubai" } });
+    // Another website's id cannot reach this website's keyword.
+    const other = await db.seoProperty.create({ data: { clientId, domain: `other-${TAG}.example.com`, displayName: "Other", crawlFrequency: "MANUAL" }, select: { id: true } });
+    await expect(removeKeywords(manager(), other.id, [keyword.id])).rejects.toThrow(NotFoundError);
+    await expect(setKeywordTags(manager(), other.id, keyword.id, "x")).rejects.toThrow(NotFoundError);
+    expect(await db.seoKeyword.count({ where: { id: keyword.id } })).toBe(1);
     expect(await setKeywordTags(manager(), propertyId, keyword.id, "Paid, Dubai")).toEqual(["paid", "dubai"]);
     await expect(removeKeywords(viewer(), propertyId, [keyword.id])).rejects.toThrow(ForbiddenError);
     expect(await removeKeywords(manager(), propertyId, [keyword.id])).toBe(1);

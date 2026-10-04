@@ -395,7 +395,10 @@ encrypted with `AUTH_SECRET`. Set up either or both:
 
 Data arrives through the scheduler (`/api/cron`, §4): each run syncs up to two
 websites, re-reading the last five days and filling history a month at a time
-until it reaches the 16 months Google keeps. A busy installation with many
+until it reaches the 16 months Google keeps. Each day stores totals, devices,
+countries, the top 5,000 queries, the top 5,000 pages, and the top 5,000
+query + page pairs (which page ranks for which query; days synced before
+this was added have none). A busy installation with many
 websites needs the cron at least every 15 minutes for history to fill
 promptly. **Sync now** on a website's Search Console page runs one sync
 immediately (three per website per ten minutes).

@@ -32,7 +32,20 @@ export type TrendDatum = { day: string; value: number | null };
  * A daily line with an area wash, a crosshair that snaps to the nearest day,
  * and the same readout on keyboard focus (arrow keys) as on hover.
  */
-export function TrendChart({ title, data }: { title: string; data: readonly TrendDatum[] }) {
+export function TrendChart({
+  title,
+  data,
+  variant = "count",
+  emptyText = "No platform reported this in the period.",
+}: {
+  title: string;
+  data: readonly TrendDatum[];
+  /** "position": a rank where 1 is best — the axis runs from 1 at the top, values are averages, nothing is summed. */
+  variant?: "count" | "position";
+  emptyText?: string;
+}) {
+  const isPosition = variant === "position";
+  const format = (v: number) => (isPosition ? v.toFixed(1) : COUNT.format(v));
   const id = React.useId();
   const [active, setActive] = React.useState<number | null>(null);
   const width = 560;
@@ -42,10 +55,11 @@ export function TrendChart({ title, data }: { title: string; data: readonly Tren
   const innerH = height - pad.top - pad.bottom;
 
   const values = data.map((d) => d.value).filter((v): v is number => v !== null);
-  const min = Math.min(0, ...values);
-  const max = niceMax(Math.max(0, ...values));
+  const min = isPosition ? 1 : Math.min(0, ...values);
+  const max = isPosition ? Math.max(niceMax(Math.max(...values, 2)), 2) : niceMax(Math.max(0, ...values));
   const x = (i: number) => pad.left + (data.length <= 1 ? innerW / 2 : (i / (data.length - 1)) * innerW);
-  const y = (v: number) => pad.top + innerH - ((v - min) / (max - min || 1)) * innerH;
+  const y = (v: number) =>
+    isPosition ? pad.top + ((v - min) / (max - min || 1)) * innerH : pad.top + innerH - ((v - min) / (max - min || 1)) * innerH;
 
   // Split at nulls, so an unreported day is a gap in the line.
   const segments: { i: number; v: number }[][] = [];
@@ -84,12 +98,16 @@ export function TrendChart({ title, data }: { title: string; data: readonly Tren
       <figcaption className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium text-navy-800">{title}</span>
         <span className="text-2xs text-ink-subtle">
-          {reported === 0 ? "Not reported" : `${COUNT.format(total)} over the period · ${reported} of ${data.length} days reported`}
+          {reported === 0
+            ? "Not reported"
+            : isPosition
+              ? `${reported} of ${data.length} days reported · 1 is the top`
+              : `${COUNT.format(total)} over the period · ${reported} of ${data.length} days reported`}
         </span>
       </figcaption>
       {reported === 0 ? (
         <p className="mt-2 rounded-md border border-dashed border-line-strong px-3 py-8 text-center text-2xs text-ink-subtle">
-          No platform reported this in the period.
+          {emptyText}
         </p>
       ) : (
         <div className="relative mt-2">
@@ -109,7 +127,7 @@ export function TrendChart({ title, data }: { title: string; data: readonly Tren
               <g key={t}>
                 <line x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} stroke={GRID} strokeWidth={1} />
                 <text x={pad.left - 6} y={y(t) + 3} textAnchor="end" fontSize={10} fill="var(--color-ink-subtle)">
-                  {COUNT.format(Math.round(t))}
+                  {isPosition ? Math.round(t) : COUNT.format(Math.round(t))}
                 </text>
               </g>
             ))}
@@ -120,7 +138,7 @@ export function TrendChart({ title, data }: { title: string; data: readonly Tren
             ))}
             {segments.map((segment, s) => (
               <g key={s}>
-                {segment.length > 1 ? (
+                {segment.length > 1 && !isPosition ? (
                   <path
                     d={`M${x(segment[0]!.i)},${y(Math.max(min, 0))} ${segment.map((p) => `L${x(p.i)},${y(p.v)}`).join(" ")} L${x(segment[segment.length - 1]!.i)},${y(Math.max(min, 0))} Z`}
                     fill={WASH}
@@ -156,7 +174,7 @@ export function TrendChart({ title, data }: { title: string; data: readonly Tren
             {point ? (
               <>
                 <span className="block text-sm font-semibold tabular-nums text-navy-800">
-                  {point.value === null ? "Not reported" : COUNT.format(point.value)}
+                  {point.value === null ? "Not reported" : format(point.value)}
                 </span>
                 <span className="text-ink-subtle">{DAY.format(new Date(`${point.day}T00:00:00Z`))}</span>
               </>
@@ -178,7 +196,7 @@ export function TrendChart({ title, data }: { title: string; data: readonly Tren
               {data.map((d) => (
                 <tr key={d.day} className="border-t border-line">
                   <td className="py-0.5">{DAY.format(new Date(`${d.day}T00:00:00Z`))}</td>
-                  <td className="py-0.5 text-right tabular-nums">{d.value === null ? "Not reported" : COUNT.format(d.value)}</td>
+                  <td className="py-0.5 text-right tabular-nums">{d.value === null ? "Not reported" : format(d.value)}</td>
                 </tr>
               ))}
             </tbody>

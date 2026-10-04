@@ -331,6 +331,10 @@ describeDb("SEO Search Console", () => {
       await syncGscProperty(propA, { trigger: "SCHEDULED", provider, now });
       expect(await db.gscDailyTotal.count({ where: { propertyId: propA, device: "", country: "", date: toDbDate(end) } })).toBe(1);
       expect((await db.gscDailyTotal.findFirstOrThrow({ where: { propertyId: propA, device: "", country: "", date: toDbDate(end) } })).clicks).toBe(99);
+      // Query + page pairs have no unique key, so only replacing the day keeps them single.
+      const pairs = await db.gscQueryPageDaily.findMany({ where: { propertyId: propA, date: toDbDate(end) } });
+      expect(pairs).toHaveLength(1);
+      expect(pairs[0]?.clicks).toBe(99);
       // The second run walked one month further back.
       expect(await db.gscDailyTotal.count({ where: { propertyId: propA, device: "", country: "" } })).toBe(65);
     });

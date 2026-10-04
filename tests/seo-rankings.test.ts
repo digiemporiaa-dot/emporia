@@ -3,6 +3,7 @@ import {
   bandOf,
   findOpportunities,
   movementOf,
+  opportunityBand,
   normalizeKeyword,
   ownCtrCurve,
   parseKeywordList,
@@ -94,6 +95,16 @@ describe("own CTR curve and opportunities", () => {
     // 1000 × (0.10 − 0.01) = 90; 400 × (0.02 − 0) = 8
     expect(found[0]).toMatchObject({ band: "near-top", extraClicks: 90 });
     expect(found[1]).toMatchObject({ band: "page-two", extraClicks: 8 });
+  });
+
+  it("splits the bands on rounded position", () => {
+    expect(opportunityBand(3.4)).toBeNull();
+    expect(opportunityBand(3.5)).toBe("near-top");
+    expect(opportunityBand(10.4)).toBe("near-top");
+    expect(opportunityBand(10.5)).toBe("page-two");
+    expect(opportunityBand(20.4)).toBe("page-two");
+    expect(opportunityBand(20.5)).toBeNull();
+    expect(opportunityBand(null)).toBeNull();
   });
 
   it("gives no estimate rather than a guess when the site has no data at the target", () => {
