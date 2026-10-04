@@ -11,7 +11,7 @@ import { GoogleSearchConsole, GSC_SCOPE } from "@/lib/seo-intel/providers/gsc";
 import { SeoCredentialsError } from "@/lib/seo-intel/providers/errors";
 import { siteMatchesDomain } from "@/lib/seo-intel/gsc-site";
 import type { Actor } from "@/lib/actor/types";
-import type { GscSite, SearchConsoleProvider } from "@/lib/seo-intel/providers/types";
+import type { GscSite, SearchConsoleProvider, UrlInspectionProvider } from "@/lib/seo-intel/providers/types";
 import type { SeoConnection } from "@/generated/prisma/client";
 
 /**
@@ -251,7 +251,7 @@ async function oauthAccessToken(connectionId: string): Promise<string> {
 }
 
 /** The provider for a stored connection, whichever way it authenticates. */
-export function searchConsoleFor(connection: Pick<SeoConnection, "id" | "method">): SearchConsoleProvider {
+export function searchConsoleFor(connection: Pick<SeoConnection, "id" | "method">): SearchConsoleProvider & UrlInspectionProvider {
   const token =
     connection.method === "OAUTH"
       ? () => oauthAccessToken(connection.id)

@@ -13,6 +13,7 @@ import {
 import { socialProvider } from "@/lib/social";
 import { syncDueGscProperties } from "@/lib/services/seo-intel/gsc-sync.service";
 import { advanceCrawls, startDueCrawls } from "@/lib/services/seo-intel/crawl.service";
+import { inspectDueUrls } from "@/lib/services/seo-intel/indexation.service";
 import { markOverdue } from "@/lib/services/invoice.service";
 import { billDueRetainers, sendPaymentReminders } from "@/lib/services/retainer.service";
 import { systemActor } from "@/lib/actor/types";
@@ -134,6 +135,11 @@ async function handle(request: Request): Promise<NextResponse> {
     if (crawl.status === "rejected") {
       cronLog.error({ err: crawl.reason }, "advancing crawls failed");
     }
+    // Google's own index status for a rotating sample of crawled URLs.
+    const inspection = await Promise.allSettled([inspectDueUrls()]).then(([result]) => result);
+    if (inspection.status === "rejected") {
+      cronLog.error({ err: inspection.reason }, "URL inspection failed");
+    }
 
     // Finance: mark unpaid invoices overdue, bill retainers that are due,
     // and remind clients about invoices coming due soon.
@@ -212,6 +218,7 @@ async function handle(request: Request): Promise<NextResponse> {
         started: crawlStart.status === "fulfilled" ? crawlStart.value : 0,
         ...(crawl.status === "fulfilled" ? crawl.value : { pages: 0, finished: 0, failed: 0 }),
       },
+      urlInspections: inspection.status === "fulfilled" ? inspection.value.inspected : 0,
       finance: {
         overdue: overdue.status === "fulfilled" ? overdue.value : 0,
         retainersRaised: retainers.status === "fulfilled" ? retainers.value.length : 0,

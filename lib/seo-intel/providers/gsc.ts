@@ -1,4 +1,4 @@
-import type { GscQueryInput, GscRawRow, GscSite, SearchConsoleProvider } from "@/lib/seo-intel/providers/types";
+import type { GscQueryInput, GscRawRow, GscSite, SearchConsoleProvider, UrlInspectionProvider } from "@/lib/seo-intel/providers/types";
 import { SeoAccessError, SeoCredentialsError, SeoProviderError, SeoRateLimitError } from "@/lib/seo-intel/providers/errors";
 
 /**
@@ -58,12 +58,26 @@ async function call(fetcher: Fetch, token: string, url: string, init: RequestIni
   }
 }
 
-export class GoogleSearchConsole implements SearchConsoleProvider {
+export const URL_INSPECTION_API = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect";
+/** Google's quota is 2,000 inspections a day per site; this leaves headroom for people using Search Console directly. */
+export const INSPECTIONS_PER_DAY = 200;
+
+export class GoogleSearchConsole implements SearchConsoleProvider, UrlInspectionProvider {
   constructor(
     private readonly token: () => Promise<string>,
     private readonly fetcher: Fetch = fetch,
     private readonly api: string = GSC_API,
+    private readonly inspectionApi: string = URL_INSPECTION_API,
   ) {}
+
+  async inspect(input: { siteUrl: string; url: string; languageCode?: string }): Promise<unknown> {
+    const body = (await call(this.fetcher, await this.token(), this.inspectionApi, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inspectionUrl: input.url, siteUrl: input.siteUrl, languageCode: input.languageCode ?? "en-US" }),
+    })) as { inspectionResult?: unknown };
+    return body?.inspectionResult ?? null;
+  }
 
   async listSites(): Promise<GscSite[]> {
     const body = (await call(this.fetcher, await this.token(), `${this.api}/sites`)) as { siteEntry?: unknown };
