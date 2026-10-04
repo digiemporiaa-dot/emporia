@@ -233,11 +233,18 @@ export async function billDueRetainers(actor: Actor, now = new Date()) {
   return raised;
 }
 
+/** At most one reminder per invoice in this many days, however often the scheduler runs. */
+export const REMINDER_INTERVAL_DAYS = 3;
+
 /**
  * Remind clients about invoices that are due soon or already late.
  *
  * Returns what was attempted; each send is logged by the email service, so a
  * failure is visible there rather than swallowed here.
+ *
+ * Any logged attempt inside the interval counts, failed ones included: a broken
+ * mailer must not write a failed row per invoice on every scheduler run. A
+ * failed reminder is retried from the email log.
  */
 export async function sendPaymentReminders(actor: Actor, withinDays = 3, now = new Date()) {
   requirePermission(actor, "invoices.send");
@@ -245,11 +252,27 @@ export async function sendPaymentReminders(actor: Actor, withinDays = 3, now = n
   const horizon = new Date(now);
   horizon.setDate(horizon.getDate() + withinDays);
 
+  const since = new Date(now);
+  since.setDate(since.getDate() - REMINDER_INTERVAL_DAYS);
+
+  const recent = await db.emailLog.findMany({
+    where: {
+      templateKey: "PAYMENT_REMINDER",
+      entityType: "Invoice",
+      entityId: { not: null },
+      createdAt: { gte: since },
+    },
+    select: { entityId: true },
+    distinct: ["entityId"],
+  });
+  const reminded = recent.flatMap((row) => (row.entityId ? [row.entityId] : []));
+
   const invoices = await db.invoice.findMany({
     where: {
       deletedAt: null,
       status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
       dueAt: { lte: horizon },
+      id: { notIn: reminded },
     },
     select: { id: true, number: true },
     take: 200,

@@ -46,9 +46,13 @@ ENV NODE_ENV=production \
 # image ships neither curl nor wget, so Coolify's `curl -f .../api/health`
 # probe exits 127 and the container is marked unhealthy while it is serving
 # perfectly well (docs/DEPLOYMENT.md §4).
+#
+# chromium renders invoice PDFs (lib/finance/invoice-pdf.ts); the fonts give it
+# glyphs to print with, ₹ included. Without them PDF links are hidden.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl chromium fonts-dejavu-core fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs nextjs

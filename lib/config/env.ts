@@ -81,6 +81,9 @@ const envSchema = z.object({
    */
   CRON_SECRET: z.string().min(24, "CRON_SECRET must be at least 24 characters").optional(),
 
+  /** Headless Chromium used to render invoice PDFs. The Docker image sets it. */
+  CHROMIUM_PATH: z.string().optional(),
+
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 
   // Seed credentials. Never hardcoded (docs/BUILD-PLAN.md, Seed data).

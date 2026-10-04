@@ -189,14 +189,25 @@ to leave a password in the environment.
       account whose access runs out within a week and can't be renewed.
       Typically that's a LinkedIn token. The warning is sent once per expiry
       date.
+   7. Syncs Search Console for up to two websites.
+   8. Marks sent and part-paid invoices overdue once their due date passes.
+   9. Raises a draft invoice for each active retainer whose billing date has
+      come, and moves its next billing date on. Drafts are reviewed and sent by
+      staff; nothing is emailed to the client at this step.
+   10. Emails a payment reminder for invoices due within three days or already
+       overdue, at most once every three days per invoice. A failed send
+       counts too, so a broken mailer does not retry every five minutes; resend
+       it from the email log once the mailer is fixed.
 
-   The JSON response reports each step's counts, including `accountsChecked`
-   and `expiringWarned`.
+   The JSON response reports each step's counts, including `accountsChecked`,
+   `expiringWarned` and `finance` (`overdue`, `retainersRaised`,
+   `remindersSent`).
 
    Without this job, `publishAt`, `unpublishAt` and a post's scheduled time
    are recorded but never acted on. Metrics are never collected, accounts are
    only checked when someone presses Sync now, and nobody is warned before an
-   account's access runs out. Everything else in the
+   account's access runs out. Overdue marking, retainer billing and reminders
+   only happen from the buttons under Admin → Finance. Everything else in the
    application is unaffected.
 
 ### What happens on every deploy
@@ -566,18 +577,18 @@ executes at all — a missing binary exits 127, which reads as a failed check.
 Stated plainly rather than papered over.
 
 - **The container image has not been built or run in the development
-  environment.** No Docker daemon is available there
-  (`/var/run/docker.sock` absent), so the `Dockerfile`, `docker-compose.yml` and
+  environment.** A Docker daemon can be started there, but its network policy
+  refuses the Debian package mirrors (403 on `apt-get update`), so every stage
+  that installs packages fails before the app is built. The `Dockerfile`, `docker-compose.yml` and
   entrypoint are written against the documented behaviour of the tools and
   reviewed, but **the first real build happens on your Coolify server.** Budget
   time for it on the first deploy. Everything else in this repository — schema,
   migrations, seed, auth, RBAC, money arithmetic, isolation, SEO, the production
   Next build itself — is verified against a running build and a real database.
-- **There is no scheduler.** Marking invoices overdue, billing retainers and
-  sending payment reminders are buttons under Admin → Finance, run on demand.
-  Nothing pretends a cron exists. If you want them scheduled, that is a cron
-  container or a Coolify scheduled task calling the same service functions — it
-  has not been built.
+- **Invoice PDFs need Chromium.** The image installs Debian's `chromium`
+  (several hundred MB) and sets `CHROMIUM_PATH`. Outside the image, set
+  `CHROMIUM_PATH` to a headless Chromium; without one the PDF links are hidden
+  and `/api/invoices/<id>/pdf` answers 503.
 - **Shiprocket is an interface only.** No implementation, no credentials in use.
 - **No CDN configuration is included.** The app sets its own cache headers and
   runs correctly behind one; choosing and configuring it is yours.

@@ -3,7 +3,7 @@ import { currentActor } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { toMoneyString } from "@/lib/money";
-import { generateInvoicePdf } from "@/lib/finance/invoice-pdf";
+import { generateInvoicePdf, PdfUnavailableError } from "@/lib/finance/invoice-pdf";
 import { siteSettings } from "@/lib/content/queries";
 import { log } from "@/lib/logger";
 import type { Prisma } from "@/generated/prisma/client";
@@ -141,6 +141,12 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (error instanceof PdfUnavailableError) {
+      return NextResponse.json(
+        { error: "PDF download is not available on this server." },
+        { status: 503 },
+      );
+    }
     pdfLog.error({ invoiceId, err: error }, "PDF generation failed");
     return NextResponse.json(
       { error: "Could not generate the invoice PDF. Try again shortly." },
