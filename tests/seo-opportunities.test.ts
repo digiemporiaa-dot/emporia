@@ -4,8 +4,12 @@ import {
   fromChanges,
   fromContent,
   fromIndexation,
+  fromInternational,
   fromKeywords,
   fromLinks,
+  fromLocal,
+  fromNap,
+  fromReviews,
   fromTechnical,
   reconcile,
   type Candidate,
@@ -66,6 +70,65 @@ describe("candidates", () => {
       { key: "total-ctr", severity: "low", direction: "down", title: "CTR slipped", source: "Search Console", range, entity: { type: "property", keys: [] }, view: "overview" },
     ]);
     expect(changes.map((c) => c.fingerprint)).toEqual(["changes:total-clicks"]);
+  });
+});
+
+describe("local and international candidates", () => {
+  const cell = (status: "covered" | "not-indexable" | "not-crawled" | "draft" | "gap", impressions: number, url: string | null = null) => ({
+    serviceId: "s", serviceName: "SEO", cityId: "c", cityName: "Pune", status, url,
+    demand: { impressions, clicks: 1, queries: impressions ? [{ query: "seo pune", impressions }] : [] },
+  });
+
+  it("local: gaps at or above the demand threshold, drafts cheaper, non-indexable pages always", () => {
+    expect(fromLocal([cell("gap", 50)], 50)[0]).toMatchObject({ fingerprint: "local:gap:s:c", type: "local-gap", title: "No SEO page for Pune", query: "seo pune", impact: 50, severity: "LOW", effort: "HIGH" });
+    expect(fromLocal([cell("gap", 49)], 50)).toEqual([]);
+    expect(fromLocal([cell("gap", 200)], 50)[0]?.severity).toBe("MEDIUM");
+    expect(fromLocal([cell("gap", 1000)], 50)[0]?.severity).toBe("HIGH");
+    expect(fromLocal([cell("draft", 60)], 50)[0]).toMatchObject({ effort: "MEDIUM", evidence: expect.objectContaining({ cmsDraft: true }) });
+    expect(fromLocal([cell("not-indexable", 0, "https://e.com/seo-pune")], 50)[0]).toMatchObject({ fingerprint: "local:not-indexable:s:c", url: "https://e.com/seo-pune", title: expect.stringContaining("/seo-pune"), severity: "MEDIUM", effort: "LOW" });
+    expect(fromLocal([cell("not-indexable", 0, null), cell("covered", 900), cell("not-crawled", 900)], 50)).toEqual([]);
+  });
+
+  it("NAP: listings always, the site only with a crawl, schema mismatches grouped by field", () => {
+    const base = { hasCrawl: true, hasAddress: true, schemaPages: 2, schemaMismatches: [], incompletePages: [], phoneOnSite: true, listings: [] };
+    expect(fromNap(base)).toEqual([]);
+    const listing = { id: "L1", name: "Pune", mismatches: [{ field: "name", expected: "A", found: "B" }, { field: "phone", expected: "1", found: "2" }] };
+    expect(fromNap({ ...base, listings: [listing] }).map((c) => [c.fingerprint, c.severity])).toEqual([["nap:listing:L1:name", "MEDIUM"], ["nap:listing:L1:phone", "HIGH"]]);
+    const site = {
+      ...base,
+      schemaPages: 0,
+      schemaMismatches: [
+        { url: "u1", mismatches: [{ field: "phone", expected: "1", found: "2" }] },
+        { url: "u2", mismatches: [{ field: "phone", expected: "1", found: "3" }, { field: "postalCode", expected: "1", found: "2" }] },
+      ],
+      incompletePages: ["u1"],
+      phoneOnSite: false,
+    };
+    const found = fromNap(site);
+    expect(found.map((c) => c.fingerprint)).toEqual(["nap:schema:phone", "nap:schema:postalCode", "nap:phone-missing", "nap:schema-missing", "nap:schema-incomplete"]);
+    expect(found[0]).toMatchObject({ impact: 2, title: expect.stringContaining("(2 pages)"), evidence: expect.objectContaining({ pages: ["u1", "u2"] }) });
+    expect(found[1]?.title).toContain("(1 page)");
+    expect(fromNap({ ...site, hasCrawl: false, listings: [listing] }).map((c) => c.source + c.type)).toEqual(["NAPnap-listing", "NAPnap-listing"]);
+    expect(fromNap({ ...site, hasAddress: false }).map((c) => c.fingerprint)).not.toContain("nap:schema-missing");
+    expect(fromNap({ ...site, phoneOnSite: null }).map((c) => c.fingerprint)).not.toContain("nap:phone-missing");
+  });
+
+  it("reviews: unanswered (high with a low rating) and quiet listings", () => {
+    const options = { quietDays: 60, unansweredDays: 30, lowRating: 3 };
+    const found = fromReviews([{ id: "a", name: "Pune", unanswered: 2, unansweredLow: 1, daysSinceLast: 60 }, { id: "b", name: "Mumbai", unanswered: 1, unansweredLow: 0, daysSinceLast: 59 }, { id: "c", name: "Nagpur", unanswered: 0, unansweredLow: 0, daysSinceLast: null }], options);
+    expect(found.map((c) => [c.fingerprint, c.severity, c.impact, c.impactUnit])).toEqual([
+      ["reviews:unanswered:a", "HIGH", 2, "reviews"],
+      ["reviews:quiet:a", "LOW", 60, "days"],
+      ["reviews:unanswered:b", "MEDIUM", 1, "reviews"],
+    ]);
+    expect(found[0]?.title).toBe("2 unanswered reviews from the last 30 days: Pune");
+    expect(found[2]?.title).toBe("1 unanswered review from the last 30 days: Mumbai");
+  });
+
+  it("international: one per country without a version, severity from clicks", () => {
+    expect(fromInternational([{ country: "AE", name: "United Arab Emirates", clicks: 12, impressions: 300, share: 0.083 }])).toEqual([
+      expect.objectContaining({ fingerprint: "international:country:AE", title: "United Arab Emirates sends 8% of clicks but has no version of its own", impact: 12, impactUnit: "clicks", severity: "MEDIUM", effort: "HIGH" }),
+    ]);
   });
 });
 

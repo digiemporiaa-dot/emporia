@@ -12,7 +12,7 @@ import type { ChangeInsight } from "@/lib/seo-intel/engine/changes";
  * create, refresh, resolve and reopen.
  */
 
-export type Source = "KEYWORDS" | "CONTENT" | "TECHNICAL" | "INDEXATION" | "LINKS" | "CHANGES";
+export type Source = "KEYWORDS" | "CONTENT" | "TECHNICAL" | "INDEXATION" | "LINKS" | "CHANGES" | "LOCAL" | "NAP" | "REVIEWS" | "INTERNATIONAL";
 export type Severity = "HIGH" | "MEDIUM" | "LOW";
 export type Effort = "LOW" | "MEDIUM" | "HIGH";
 export type Status = "OPEN" | "TASK_CREATED" | "DONE" | "DISMISSED" | "RESOLVED";
@@ -26,7 +26,7 @@ export type Candidate = {
   query: string | null;
   evidence: Record<string, unknown>;
   impact: number;
-  impactUnit: "clicks" | "impressions" | "pages" | "links" | "alert";
+  impactUnit: "clicks" | "impressions" | "pages" | "links" | "alert" | "reviews" | "days";
   severity: Severity;
   effort: Effort;
 };
@@ -192,6 +192,199 @@ export function fromChanges(insights: readonly ChangeInsight[]): Candidate[] {
 // ---------------------------------------------------------------------------
 // Reconciling with what is stored
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Local and international (Phase 8)
+// ---------------------------------------------------------------------------
+
+/** Impression demand → severity for local gaps. */
+export const DEMAND_SEVERITY = { high: 1_000, medium: 200 } as const;
+const demandSeverity = (impressions: number): Severity =>
+  impressions >= DEMAND_SEVERITY.high ? "HIGH" : impressions >= DEMAND_SEVERITY.medium ? "MEDIUM" : "LOW";
+
+export type LocalCell = {
+  serviceId: string;
+  serviceName: string;
+  cityId: string;
+  cityName: string;
+  status: "covered" | "not-indexable" | "not-crawled" | "draft" | "gap";
+  url: string | null;
+  demand: { impressions: number; clicks: number; queries: { query: string; impressions: number }[] };
+};
+
+/** Gaps with real demand, and matched pages Google cannot index. */
+export function fromLocal(cells: readonly LocalCell[], minImpressions: number): Candidate[] {
+  const out: Candidate[] = [];
+  for (const cell of cells) {
+    const evidence = { service: cell.serviceName, city: cell.cityName, demand: cell.demand.impressions, queries: cell.demand.queries.slice(0, 5) };
+    if ((cell.status === "gap" || cell.status === "draft") && cell.demand.impressions >= minImpressions) {
+      out.push({
+        fingerprint: `local:gap:${cell.serviceId}:${cell.cityId}`,
+        source: "LOCAL",
+        type: "local-gap",
+        title: `No ${cell.serviceName} page for ${cell.cityName}`,
+        url: null,
+        query: cell.demand.queries[0]?.query ?? null,
+        evidence: { ...evidence, cmsDraft: cell.status === "draft" },
+        impact: cell.demand.impressions,
+        impactUnit: "impressions",
+        severity: demandSeverity(cell.demand.impressions),
+        effort: cell.status === "draft" ? "MEDIUM" : "HIGH",
+      });
+    } else if (cell.status === "not-indexable" && cell.url) {
+      out.push({
+        fingerprint: `local:not-indexable:${cell.serviceId}:${cell.cityId}`,
+        source: "LOCAL",
+        type: "local-not-indexable",
+        title: `${cell.serviceName} page for ${cell.cityName} cannot be indexed: ${path(cell.url)}`,
+        url: cell.url,
+        query: null,
+        evidence,
+        impact: cell.demand.impressions,
+        impactUnit: "impressions",
+        severity: "MEDIUM",
+        effort: "LOW",
+      });
+    }
+  }
+  return out;
+}
+
+export type NapInput = {
+  hasCrawl: boolean;
+  hasAddress: boolean;
+  schemaPages: number;
+  schemaMismatches: { url: string; mismatches: { field: string; expected: string; found: string }[] }[];
+  incompletePages: string[];
+  phoneOnSite: boolean | null;
+  listings: { id: string; name: string; mismatches: { field: string; expected: string; found: string }[] }[];
+};
+
+const NAP_FIELD: Record<string, string> = { name: "name", phone: "phone", street: "street address", locality: "city", postalCode: "postal code" };
+
+/** Disagreements with the business profile, and missing local structured data. */
+export function fromNap(input: NapInput): Candidate[] {
+  const out: Candidate[] = [];
+  for (const listing of input.listings) {
+    for (const mismatch of listing.mismatches) {
+      out.push({
+        fingerprint: `nap:listing:${listing.id}:${mismatch.field}`,
+        source: "NAP",
+        type: "nap-listing",
+        title: `Google listing ${NAP_FIELD[mismatch.field] ?? mismatch.field} differs: ${listing.name}`,
+        url: null,
+        query: null,
+        evidence: { listing: listing.name, ...mismatch },
+        impact: 1,
+        impactUnit: "alert",
+        severity: mismatch.field === "name" ? "MEDIUM" : "HIGH",
+        effort: "LOW",
+      });
+    }
+  }
+  if (!input.hasCrawl) return out;
+
+  const byField = new Map<string, { pages: string[]; example: { expected: string; found: string } }>();
+  for (const page of input.schemaMismatches) {
+    for (const mismatch of page.mismatches) {
+      const entry = byField.get(mismatch.field) ?? { pages: [], example: { expected: mismatch.expected, found: mismatch.found } };
+      if (!entry.pages.includes(page.url)) entry.pages.push(page.url);
+      byField.set(mismatch.field, entry);
+    }
+  }
+  for (const [field, entry] of byField) {
+    out.push({
+      fingerprint: `nap:schema:${field}`,
+      source: "NAP",
+      type: "nap-schema",
+      title: `Structured data ${NAP_FIELD[field] ?? field} differs from the business profile (${entry.pages.length} ${entry.pages.length === 1 ? "page" : "pages"})`,
+      url: entry.pages[0] ?? null,
+      query: null,
+      evidence: { field, ...entry.example, pages: entry.pages.slice(0, 10) },
+      impact: entry.pages.length,
+      impactUnit: "pages",
+      severity: "MEDIUM",
+      effort: "LOW",
+    });
+  }
+  if (input.phoneOnSite === false) {
+    out.push({ fingerprint: "nap:phone-missing", source: "NAP", type: "nap-phone-missing", title: "The business phone number is not on the website", url: null, query: null, evidence: {}, impact: 1, impactUnit: "alert", severity: "MEDIUM", effort: "LOW" });
+  }
+  if (input.hasAddress && input.schemaPages === 0) {
+    out.push({ fingerprint: "nap:schema-missing", source: "NAP", type: "nap-schema-missing", title: "No LocalBusiness structured data on the website", url: null, query: null, evidence: {}, impact: 1, impactUnit: "alert", severity: "MEDIUM", effort: "LOW" });
+  }
+  if (input.incompletePages.length) {
+    out.push({
+      fingerprint: "nap:schema-incomplete",
+      source: "NAP",
+      type: "nap-schema-incomplete",
+      title: `LocalBusiness structured data is missing required fields (${input.incompletePages.length} ${input.incompletePages.length === 1 ? "page" : "pages"})`,
+      url: input.incompletePages[0] ?? null,
+      query: null,
+      evidence: { pages: input.incompletePages.slice(0, 10) },
+      impact: input.incompletePages.length,
+      impactUnit: "pages",
+      severity: "LOW",
+      effort: "LOW",
+    });
+  }
+  return out;
+}
+
+export type ReviewInput = { id: string; name: string; unanswered: number; unansweredLow: number; daysSinceLast: number | null };
+
+export function fromReviews(locations: readonly ReviewInput[], options: { quietDays: number; unansweredDays: number; lowRating: number }): Candidate[] {
+  const out: Candidate[] = [];
+  for (const location of locations) {
+    if (location.unanswered > 0) {
+      out.push({
+        fingerprint: `reviews:unanswered:${location.id}`,
+        source: "REVIEWS",
+        type: "reviews-unanswered",
+        title: `${location.unanswered} unanswered ${location.unanswered === 1 ? "review" : "reviews"} from the last ${options.unansweredDays} days: ${location.name}`,
+        url: null,
+        query: null,
+        evidence: { location: location.name, unanswered: location.unanswered, lowRated: location.unansweredLow, lowRating: options.lowRating },
+        impact: location.unanswered,
+        impactUnit: "reviews",
+        severity: location.unansweredLow > 0 ? "HIGH" : "MEDIUM",
+        effort: "LOW",
+      });
+    }
+    if (location.daysSinceLast !== null && location.daysSinceLast >= options.quietDays) {
+      out.push({
+        fingerprint: `reviews:quiet:${location.id}`,
+        source: "REVIEWS",
+        type: "reviews-quiet",
+        title: `No new Google review for ${location.daysSinceLast} days: ${location.name}`,
+        url: null,
+        query: null,
+        evidence: { location: location.name, days: location.daysSinceLast },
+        impact: location.daysSinceLast,
+        impactUnit: "days",
+        severity: "LOW",
+        effort: "MEDIUM",
+      });
+    }
+  }
+  return out;
+}
+
+export function fromInternational(missing: readonly { country: string; name: string; clicks: number; impressions: number; share: number }[]): Candidate[] {
+  return missing.map((row) => ({
+    fingerprint: `international:country:${row.country}`,
+    source: "INTERNATIONAL" as const,
+    type: "international-missing-version",
+    title: `${row.name} sends ${Math.round(row.share * 100)}% of clicks but has no version of its own`,
+    url: null,
+    query: null,
+    evidence: { country: row.country, clicks: row.clicks, impressions: row.impressions, share: row.share },
+    impact: row.clicks,
+    impactUnit: "clicks" as const,
+    severity: clickSeverity(row.clicks),
+    effort: "HIGH" as const,
+  }));
+}
 
 export type Stored = { id: string; fingerprint: string; source: Source; status: Status; impact: number; dismissedImpact: number | null };
 

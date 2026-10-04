@@ -195,19 +195,22 @@ to leave a password in the environment.
       500-page crawl therefore takes roughly 45 minutes of scheduler runs.
    9. Asks Google's URL Inspection about up to 20 crawled pages for up to two
       websites, within 200 a day per website.
-   10. Re-detects SEO opportunities for up to two websites not checked in the
+   10. Reads Google reviews and listing details for up to five Business
+       Profile locations not read in the last 20 hours — only locations of
+       clients with an active SEO website (Local SEO). Read only.
+   11. Re-detects SEO opportunities for up to two websites not checked in the
        last 20 hours, so each website is checked daily (Command Center).
-   11. Marks sent and part-paid invoices overdue once their due date passes.
-   12. Raises a draft invoice for each active retainer whose billing date has
+   12. Marks sent and part-paid invoices overdue once their due date passes.
+   13. Raises a draft invoice for each active retainer whose billing date has
       come, and moves its next billing date on. Drafts are reviewed and sent by
       staff; nothing is emailed to the client at this step.
-   13. Emails a payment reminder for invoices due within three days or already
+   14. Emails a payment reminder for invoices due within three days or already
        overdue, at most once every three days per invoice. A failed send
        counts too, so a broken mailer does not retry every five minutes; resend
        it from the email log once the mailer is fixed.
 
    The JSON response reports each step's counts, including `accountsChecked`,
-   `expiringWarned`, `crawls`, `urlInspections`, `opportunitiesDetected` and `finance` (`overdue`,
+   `expiringWarned`, `crawls`, `urlInspections`, `reviewLocationsSynced`, `opportunitiesDetected` and `finance` (`overdue`,
    `retainersRaised`, `remindersSent`).
 
    Without this job, `publishAt`, `unpublishAt` and a post's scheduled time

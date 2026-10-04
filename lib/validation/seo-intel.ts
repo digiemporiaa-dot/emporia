@@ -170,3 +170,27 @@ export const opportunityTaskSchema = z.object({
     .refine((value) => value === null || !Number.isNaN(value.getTime()), "Enter a valid date."),
 });
 export const detectNowSchema = z.object({ propertyId: id });
+
+// Local SEO (Phase 8)
+export const localServiceSchema = z.object({
+  propertyId: id,
+  id: optionalId,
+  name: z.string().trim().min(1, "Enter a service name.").max(100, "Up to 100 characters."),
+  terms: z.string().max(1_000, "Up to 1,000 characters.").default(""),
+});
+export const localServiceRemoveSchema = z.object({ propertyId: id, id });
+export const localCitiesAddSchema = z.object({ propertyId: id, cityIds: z.array(id).min(1, "Choose at least one city.").max(200, "Up to 200 cities at a time.") });
+export const localCityAliasesSchema = z.object({ propertyId: id, localCityId: id, aliases: z.string().max(500, "Up to 500 characters.").default("") });
+export const localCityRemoveSchema = z.object({ propertyId: id, localCityId: id });
+export const localPageSchema = z.object({
+  propertyId: id,
+  localServiceId: id,
+  cityId: id,
+  url: z
+    .string()
+    .trim()
+    .max(2_000, "Up to 2,000 characters.")
+    .optional()
+    .transform((value) => (value ? value : null)),
+});
+export const localPropertySchema = z.object({ propertyId: id });

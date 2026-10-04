@@ -15,6 +15,7 @@ import { syncDueGscProperties } from "@/lib/services/seo-intel/gsc-sync.service"
 import { advanceCrawls, startDueCrawls } from "@/lib/services/seo-intel/crawl.service";
 import { inspectDueUrls } from "@/lib/services/seo-intel/indexation.service";
 import { detectDueOpportunities } from "@/lib/services/seo-intel/opportunity.service";
+import { syncDueReviews } from "@/lib/services/seo-intel/reviews.service";
 import { markOverdue } from "@/lib/services/invoice.service";
 import { billDueRetainers, sendPaymentReminders } from "@/lib/services/retainer.service";
 import { systemActor } from "@/lib/actor/types";
@@ -141,6 +142,11 @@ async function handle(request: Request): Promise<NextResponse> {
     if (inspection.status === "rejected") {
       cronLog.error({ err: inspection.reason }, "URL inspection failed");
     }
+    // Google reviews and listing details, once a day per location.
+    const reviews = await Promise.allSettled([syncDueReviews({ limit: 5 })]).then(([result]) => result);
+    if (reviews.status === "rejected") {
+      cronLog.error({ err: reviews.reason }, "review sync failed");
+    }
     // The daily opportunity detection, after the data it reads is fresh.
     const detection = await Promise.allSettled([detectDueOpportunities({ limit: 2 })]).then(([result]) => result);
     if (detection.status === "rejected") {
@@ -225,6 +231,7 @@ async function handle(request: Request): Promise<NextResponse> {
         ...(crawl.status === "fulfilled" ? crawl.value : { pages: 0, finished: 0, failed: 0 }),
       },
       urlInspections: inspection.status === "fulfilled" ? inspection.value.inspected : 0,
+      reviewLocationsSynced: reviews.status === "fulfilled" ? reviews.value : 0,
       opportunitiesDetected: detection.status === "fulfilled" ? detection.value.detected : 0,
       finance: {
         overdue: overdue.status === "fulfilled" ? overdue.value : 0,

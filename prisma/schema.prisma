@@ -536,6 +536,7 @@ model User {
   seoConnectionsMade         SeoConnection[]           @relation("SeoConnectionConnectedBy")
   crawlRunsStarted           CrawlRun[]                @relation("CrawlRunStartedBy")
   seoThresholdsUpdated       SeoThreshold[]            @relation("SeoThresholdUpdatedBy")
+  seoLocalPagesUpdated       SeoLocalPage[]            @relation("SeoLocalPageUpdatedBy")
   seoOpportunitiesAssigned   SeoOpportunity[]          @relation("SeoOpportunityAssignee")
   seoOpportunitiesDismissed  SeoOpportunity[]          @relation("SeoOpportunityDismissedBy")
   seoKeywordsAdded           SeoKeyword[]              @relation("SeoKeywordCreatedBy")
@@ -823,16 +824,17 @@ model Service {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  cityPages    ServiceCityPage[]
-  packages     ServicePackage[]
-  leads        Lead[]
-  caseStudies  CaseStudy[]
-  testimonials Testimonial[]
-  faqs         FAQ[]
-  projects     Project[]
-  popupTargets PopupTarget[]
-  popupEvents  PopupAnalytics[]
-  catalogItems CatalogItem[]
+  cityPages        ServiceCityPage[]
+  packages         ServicePackage[]
+  leads            Lead[]
+  caseStudies      CaseStudy[]
+  testimonials     Testimonial[]
+  faqs             FAQ[]
+  projects         Project[]
+  popupTargets     PopupTarget[]
+  popupEvents      PopupAnalytics[]
+  catalogItems     CatalogItem[]
+  seoLocalServices SeoLocalService[]
 
   @@index([status, order])
   @@index([heroMediaId])
@@ -862,13 +864,15 @@ model City {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  servicePages ServiceCityPage[]
-  leads        Lead[]
-  caseStudies  CaseStudy[]
-  testimonials Testimonial[]
-  faqs         FAQ[]
-  popupTargets PopupTarget[]
-  popupEvents  PopupAnalytics[]
+  servicePages   ServiceCityPage[]
+  leads          Lead[]
+  caseStudies    CaseStudy[]
+  testimonials   Testimonial[]
+  faqs           FAQ[]
+  popupTargets   PopupTarget[]
+  popupEvents    PopupAnalytics[]
+  seoLocalCities SeoLocalCity[]
+  seoLocalPages  SeoLocalPage[]
 
   @@index([isActive, order])
   @@index([countryId])
@@ -2936,6 +2940,8 @@ model SocialAccount {
 
   posts         SocialPost[]
   externalPosts SocialExternalPost[]
+  gbpReviews    GbpReview[]
+  gbpListing    GbpListing?
 
   @@unique([provider, externalId])
   @@index([clientId, status])
@@ -3442,6 +3448,9 @@ model SeoProperty {
   thresholds     SeoThreshold[]
   opportunities  SeoOpportunity[]
   changeEvents   SeoChangeEvent[]
+  localServices  SeoLocalService[]
+  localCities    SeoLocalCity[]
+  localPages     SeoLocalPage[]
 
   @@unique([clientId, domain])
   @@index([clientId, isActive])
@@ -3770,6 +3779,11 @@ model CrawlPage {
   /// [{ "lang": "en-IN", "href": "https://…" }]
   hreflang         Json?
   schemaTypes      String[] @default([])
+  /// Business entities from JSON-LD (LocalBusiness family or anything with an
+  /// address), at most 5: [{ types, name, telephone, address, hasGeo, hasHours, url }].
+  localBusiness    Json?
+  /// `tel:` links on the page, as written after the scheme, at most 10.
+  phones           String[] @default([])
   imageCount       Int?
   imagesMissingAlt Int?
   externalLinks    Int?
@@ -3870,6 +3884,117 @@ model InternalLinkSuggestion {
 /// One rule setting. `propertyId` null = the agency default; a row for a
 /// website overrides that one value for it. Unknown keys are ignored when
 /// read; one row per scope and key is kept by the service under a lock.
+/// A service a website should be found for in each of its cities (Phase 8).
+/// Staff list them per website; for the agency's own website they can be
+/// imported from the CMS, which links `cmsServiceId`.
+model SeoLocalService {
+  id         String      @id @default(cuid())
+  propertyId String
+  property   SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+  /// Lower-case words searchers use for it: "seo", "search engine optimisation".
+  /// A page or query matches the service when it contains any of them.
+  terms      String[]
+
+  cmsServiceId String?
+  cmsService   Service? @relation(fields: [cmsServiceId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages SeoLocalPage[]
+
+  @@unique([propertyId, name])
+  @@index([cmsServiceId])
+}
+
+/// A city a website targets. Matching uses the city's name plus `aliases`
+/// (other spellings people search: "bangalore" for Bengaluru).
+model SeoLocalCity {
+  id         String      @id @default(cuid())
+  propertyId String
+  property   SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  cityId     String
+  city       City        @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  aliases    String[]    @default([])
+
+  createdAt DateTime @default(now())
+
+  @@unique([propertyId, cityId])
+  @@index([cityId])
+}
+
+/// The page staff chose for one service in one city, replacing the
+/// automatic match.
+model SeoLocalPage {
+  id             String          @id @default(cuid())
+  propertyId     String
+  property       SeoProperty     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  localServiceId String
+  localService   SeoLocalService @relation(fields: [localServiceId], references: [id], onDelete: Cascade)
+  cityId         String
+  city           City            @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  url            String
+
+  updatedById String?
+  updatedBy   User?    @relation("SeoLocalPageUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([localServiceId, cityId])
+  @@index([propertyId])
+  @@index([cityId])
+  @@index([updatedById])
+}
+
+/// The Google Business listing as Google holds it, read during the daily
+/// review sync, with the sync's outcome. One per connected location.
+model GbpListing {
+  id              String        @id @default(cuid())
+  socialAccountId String        @unique
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  title   String?
+  /// { lines: string[], locality, region, postalCode, country }
+  address Json?
+  phone   String?
+  website String?
+
+  /// Google's own figures for the whole listing.
+  averageRating    Float?
+  totalReviewCount Int?
+
+  /// Last attempt and last success, kept apart so a failing sync shows.
+  lastAttemptAt DateTime?
+  lastSyncedAt  DateTime?
+  lastError     String?
+  /// False when the listing had more reviews than one sync reads.
+  complete      Boolean   @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  @@index([lastAttemptAt])
+}
+
+/// One Google review. Public on Google already; deleted with the location's
+/// connection.
+model GbpReview {
+  id              String        @id @default(cuid())
+  socialAccountId String
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  /// Google's review id.
+  externalId      String
+  rating          Int
+  comment         String?
+  reviewerName    String?
+  createdAt       DateTime
+  updatedAt       DateTime
+  replyComment    String?
+  repliedAt       DateTime?
+
+  @@unique([socialAccountId, externalId])
+  @@index([socialAccountId, createdAt])
+}
+
 model SeoThreshold {
   id         String       @id @default(cuid())
   propertyId String?
@@ -3892,6 +4017,14 @@ enum SeoOpportunitySource {
   INDEXATION
   LINKS
   CHANGES
+  /// Service × city coverage gaps and matched pages that cannot be indexed.
+  LOCAL
+  /// Name, address and phone disagreeing with the business profile; local schema.
+  NAP
+  /// Google reviews left unanswered or drying up.
+  REVIEWS
+  /// Countries sending traffic to a multi-country site with no version for them.
+  INTERNATIONAL
 }
 
 enum SeoOpportunityStatus {

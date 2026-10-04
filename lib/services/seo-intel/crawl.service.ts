@@ -363,6 +363,8 @@ async function crawlPage(
       lang: parsed.lang,
       hreflang: parsed.hreflang.length ? parsed.hreflang : Prisma.JsonNull,
       schemaTypes: parsed.schemaTypes,
+      localBusiness: parsed.localBusiness.length ? parsed.localBusiness : Prisma.JsonNull,
+      phones: parsed.phones,
       imageCount: parsed.imageCount,
       imagesMissingAlt: parsed.imagesMissingAlt,
       // Kept only until the crawl is analysed (link suggestions), then cleared.

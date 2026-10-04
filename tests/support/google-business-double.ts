@@ -19,7 +19,19 @@ export type GbpRequest = {
   body: string;
 };
 
-export type GbpRoute = "token" | "accounts" | "locations" | "location" | "post";
+export type GbpRoute = "token" | "accounts" | "locations" | "location" | "post" | "reviews";
+
+/** A review as Google's v4 API returns it. */
+export type GbpReviewJson = {
+  reviewId?: string;
+  name?: string;
+  reviewer?: { displayName?: string; isAnonymous?: boolean };
+  starRating?: string;
+  comment?: string;
+  createTime?: string;
+  updateTime?: string;
+  reviewReply?: { comment?: string; updateTime?: string };
+};
 
 export type GoogleBusinessDouble = {
   url: string;
@@ -31,6 +43,10 @@ export type GoogleBusinessDouble = {
   swallowNextPost: () => void;
   emptyNextPost: () => void;
   failWith: (route: GbpRoute, status: number, body?: object) => void;
+  /** The reviews a location returns, newest first, with Google's own totals. */
+  setReviews: (location: string, reviews: GbpReviewJson[], totals?: { averageRating?: number; totalReviewCount?: number }) => void;
+  /** Another location, reachable by its own name (tests that need ids nobody else uses). */
+  addLocation: (name: string) => void;
   close: () => Promise<void>;
 };
 
@@ -54,11 +70,15 @@ export async function startGoogleBusinessDouble(): Promise<GoogleBusinessDouble>
   let swallow = false;
   let empty = false;
   const failures = new Map<GbpRoute, { status: number; body: object }>();
+  const extra: Loc[] = [];
+  const reviews = new Map<string, { list: GbpReviewJson[]; totals: { averageRating?: number; totalReviewCount?: number } }>();
 
   const locationJson = (l: Loc) => ({
     name: l.name,
     title: l.title,
-    storefrontAddress: { locality: l.locality, regionCode: "IN" },
+    storefrontAddress: { locality: l.locality, regionCode: "IN", addressLines: ["14 Hill Road"], administrativeArea: "Maharashtra", postalCode: "400050" },
+    phoneNumbers: { primaryPhone: "022 4000 1001" },
+    websiteUri: "https://northwind.example/",
     // Proto3 JSON omits false booleans; so does this.
     metadata: {
       ...(l.canPost ? { canOperateLocalPost: true } : {}),
@@ -97,7 +117,9 @@ export async function startGoogleBusinessDouble(): Promise<GoogleBusinessDouble>
               ? "locations"
               : /^\/v1\/locations\/\d+$/.test(path)
                 ? "location"
-                : "post";
+                : /^\/v4\/accounts\/\d+\/locations\/\d+\/reviews$/.test(path)
+                  ? "reviews"
+                  : "post";
 
       const json = (status: number, payload: object) =>
         res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(payload));
@@ -135,9 +157,19 @@ export async function startGoogleBusinessDouble(): Promise<GoogleBusinessDouble>
 
         case "location": {
           const name = path.replace(/^\/v1\//, "");
-          const found = Object.values(ESTATE).flat().find((l) => l.name === name);
+          const found = [...Object.values(ESTATE).flat(), ...extra].find((l) => l.name === name);
           if (!found) return json(404, { error: { code: 404, status: "NOT_FOUND" } });
           return json(200, locationJson(found));
+        }
+
+        case "reviews": {
+          const location = path.replace(/^\/v4\/accounts\/\d+\//, "").replace(/\/reviews$/, "");
+          const entry = reviews.get(location) ?? { list: [], totals: {} };
+          const size = Math.min(50, Number(query["pageSize"] ?? 50));
+          const at = query["pageToken"] ? Number(query["pageToken"]) : 0;
+          const items = entry.list.slice(at, at + size);
+          const next = at + size < entry.list.length ? String(at + size) : undefined;
+          return json(200, { reviews: items, ...entry.totals, ...(next ? { nextPageToken: next } : {}) });
         }
 
         case "post": {
@@ -185,6 +217,12 @@ export async function startGoogleBusinessDouble(): Promise<GoogleBusinessDouble>
       empty = true;
     },
     failWith: (route, status, body = {}) => failures.set(route, { status, body }),
+    addLocation: (name) => {
+      extra.push({ name, title: "Northwind Studio", locality: "Bandra", canPost: true });
+    },
+    setReviews: (location, list, totals = {}) => {
+      reviews.set(location, { list, totals });
+    },
     close: () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

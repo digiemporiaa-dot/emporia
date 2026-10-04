@@ -25,7 +25,7 @@ import { formatCount } from "../overview-parts";
 export const metadata: Metadata = { title: "Command Center" };
 export const dynamic = "force-dynamic";
 
-const SOURCES = ["KEYWORDS", "CONTENT", "TECHNICAL", "INDEXATION", "LINKS", "CHANGES"] as const;
+const SOURCES = ["KEYWORDS", "CONTENT", "TECHNICAL", "INDEXATION", "LINKS", "LOCAL", "NAP", "REVIEWS", "INTERNATIONAL", "CHANGES"] as const;
 const SEVERITIES = ["HIGH", "MEDIUM", "LOW"] as const;
 const EFFORTS = ["LOW", "MEDIUM", "HIGH"] as const;
 
@@ -47,6 +47,10 @@ const SOURCE_LABEL: Record<(typeof SOURCES)[number], string> = {
   TECHNICAL: "Technical",
   INDEXATION: "Indexation",
   LINKS: "Internal links",
+  LOCAL: "Local coverage",
+  NAP: "Name, address, phone",
+  REVIEWS: "Google reviews",
+  INTERNATIONAL: "International",
   CHANGES: "What changed",
 };
 const STATUS_LABEL: Record<StatusFilter, string> = { active: "Open and in progress", OPEN: "Open", TASK_CREATED: "Task created", DONE: "Done", DISMISSED: "Dismissed", RESOLVED: "Resolved by detector" };
@@ -63,6 +67,10 @@ function impactText(impact: number, unit: string) {
       return `${formatCount(impact)} page${impact === 1 ? "" : "s"}`;
     case "links":
       return `${formatCount(impact)} link${impact === 1 ? "" : "s"} to add`;
+    case "reviews":
+      return `${formatCount(impact)} review${impact === 1 ? "" : "s"}`;
+    case "days":
+      return `${formatCount(impact)} day${impact === 1 ? "" : "s"}`;
     default:
       return "Alert";
   }
@@ -82,6 +90,14 @@ function evidenceHref(row: { source: (typeof SOURCES)[number]; type: string; pro
       return `/admin/marketing/seo/indexation?property=${p}&conflict=${row.type}` as Route;
     case "LINKS":
       return `/admin/marketing/seo/links?property=${p}` as Route;
+    case "LOCAL":
+      return `/admin/marketing/seo/local?property=${p}&status=${row.type === "local-gap" ? "gap" : "not-indexable"}` as Route;
+    case "NAP":
+      return `/admin/marketing/seo/local/nap?property=${p}` as Route;
+    case "REVIEWS":
+      return `/admin/marketing/seo/local/reviews?property=${p}` as Route;
+    case "INTERNATIONAL":
+      return `/admin/marketing/seo/international?property=${p}` as Route;
     case "CHANGES":
       return `/admin/marketing/seo?property=${p}` as Route;
   }
