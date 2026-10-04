@@ -1,6 +1,6 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–5 and 10 built. Phases 6–7 need a paid provider (D2); 8, 9 and 11 can go next without one (9 needs the Google Analytics Data API enabled).**
+**Status: Phases 1–5, 8 and 10 built. Phases 6–7 need a paid provider (D2); 9 and 11 can go next without one (9 needs the Google Analytics Data API enabled, 11 a CrUX API key for Core Web Vitals).**
 
 | Phase | State |
 | ----- | ----- |
@@ -9,7 +9,9 @@
 | 3 — Crawler, technical SEO, indexation | **Done** — 52 tests |
 | 4 — Keywords, rankings, opportunities | **Done** — 23 tests |
 | 5 — Content intelligence, internal links | **Done** — 19 tests |
-| 6–9 | Planned, Part E |
+| 6–7 | Need a paid provider (D2) |
+| 8 — Local and international SEO | **Done** — TESTCOUNT tests |
+| 9 | Planned, Part E |
 | 10 — Opportunity engine, thresholds, Command Center | **Done** — 25 tests |
 | 11 | Planned, Part E |
 
@@ -549,3 +551,84 @@ inherited values shown in each field).
 **Not in this phase, deliberately:** notifications or automations on new
 high-severity opportunities, history charts of change events (Phase 11), and
 portal visibility of opportunities (D4: admin only for now).
+
+---
+
+## Part L — Phase 8, as built
+
+**Decisions (2026-10-04):** staff list each client website's services and
+cities (the agency's own website imports them from the CMS); Google reviews
+are stored with their text and reviewer's public name; the client's business
+profile is the reference for name, address and phone; reviews are read once a
+day.
+
+**Local coverage** (`engine/local.ts`, `local.service.ts`, `SeoLocalService`,
+`SeoLocalCity`, `SeoLocalPage`): up to 30 services (each with up to 10 search
+words) and 200 cities (each with up to 5 other names) per website. Each
+service × city is matched to a page of the latest finished crawl whose URL
+(best), title or H1 (next), or the two together name both — compared as whole
+words after folding case, accents and punctuation; ties go to the indexable
+page, then more internal links, then the shorter URL. A page staff choose
+(on the website's own host only) replaces the match; for the agency's own
+website an imported service points at its published Service × City page. Demand
+is the last 28 days of Search Console impressions for queries naming both. Each
+cell is covered, no page, not indexable, not crawled, or a CMS draft. The
+import adds published CMS services (or any with a Service × City page) and
+cities with a Service × City page; it never removes. Every change is audited.
+
+**Google reviews** (`reviews.service.ts`, `GbpListing`, `GbpReview`,
+`GoogleBusinessProvider.getListing` / `listReviews`): the scheduler reads up to
+five Business Profile locations a run, each once in 20 hours, only for clients
+with an active SEO website; "Read reviews now" reads a client's locations (3
+per 10 minutes). Each read claims the location first, so overlapping runs read
+it once. A complete read (up to 2,000 reviews) replaces the stored set; a
+partial one only updates what it read. A failure keeps the stored reviews and
+shows the error. Read only: Emporia never replies. Reviews go with the
+location's connection (cascade). The screen shows Google's rating and total,
+new reviews per 30 days and per month, average stars, reviews waiting for a
+reply, and the median reply time. Google's v4 reviews call has no published
+discovery document; its shape is from Google's reference and the tests' double.
+
+**Name, address and phone** (`engine/nap.ts`, `nap.service.ts`): the crawler
+now keeps each page's business entities from JSON-LD (the LocalBusiness family,
+or anything with an address; at most 5) and its `tel:` links. They and each
+synced Google listing are compared with the business profile: phones by their
+last ten digits, postal codes exactly, cities and streets after folding and
+expanding common abbreviations; a field missing on either side is not a
+mismatch. Also reported: whether the profile's phone appears on the site,
+other linked numbers, and missing required (name, telephone, street, city,
+postal code, country) and recommended (geo, opening hours) schema fields.
+
+**International** (`engine/international.ts`, `international.service.ts`):
+new technical rules — invalid hreflang codes (ISO 639-1 plus optional script
+and ISO 3166-1 alpha-2 region, or x-default; `en-uk` is told to use `gb`),
+a code used for two URLs, a set without the page itself, alternates that
+redirect, fail or are noindex, hreflang/canonical conflicts, `<html lang>`
+contradicting the page's own entry, and identical pages under different
+locale paths with no hreflang between them (country duplicates). Versions tied
+together by hreflang may share titles, descriptions and text without being
+reported as duplicates. The screen lists declared versions, page languages,
+locale paths, the international findings, and Search Console clicks by country
+(alpha-3 mapped from an ISO table), flagging countries without a version only
+on sites that declare several.
+
+**Command Center**: four new sources, each counted as run only when its data
+exists — LOCAL (gaps with at least `local.gapMinImpressions` searches, and
+matched pages that cannot be indexed; needs a crawl, Search Console and both
+lists), NAP (listing and structured-data disagreements, phone missing, no or
+incomplete LocalBusiness data; needs a business profile with an address or
+phone, the site half also a crawl), REVIEWS (unanswered reviews in the last
+`reviews.unansweredDays`, high when any is at or below `reviews.lowRating`
+stars; no new review for `reviews.quietDays`; needs every connected location
+read within 40 hours) and INTERNATIONAL (countries with at least
+`intl.minShare` of clicks and `intl.minClicks` clicks; needs a crawl and Search
+Console). Thresholds are in Settings → Thresholds.
+
+**Screens**: Local SEO (Coverage with a per-cell panel to choose the page;
+Google reviews; Name, address, phone; Services and cities) and International.
+
+**Not in this phase, deliberately:** replying to reviews from Emporia,
+JavaScript-rendered structured data (the crawler reads static HTML),
+competitor local rankings and map-pack positions (need a provider, D2),
+query-level country data (Search Console totals by country only), and portal
+visibility (D4).
