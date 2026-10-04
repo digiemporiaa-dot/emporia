@@ -47,6 +47,10 @@ const PROPERTY_SELECT = {
   defaultLanguage: true,
   timezone: true,
   isActive: true,
+  crawlMaxPages: true,
+  crawlFrequency: true,
+  nextCrawlAt: true,
+  lastCrawledAt: true,
   createdAt: true,
   updatedAt: true,
   client: { select: { id: true, name: true, isInternal: true } },
@@ -170,6 +174,10 @@ function fieldsFrom(input: SeoPropertyUpdateInput) {
     defaultLanguage: input.defaultLanguage,
     timezone: input.timezone,
     isActive: input.isActive,
+    crawlMaxPages: input.crawlMaxPages,
+    crawlFrequency: input.crawlFrequency,
+    // Manual means the scheduler never starts one; weekly with no date is due now.
+    ...(input.crawlFrequency === "MANUAL" ? { nextCrawlAt: null } : {}),
   };
 }
 
@@ -208,7 +216,7 @@ export async function updateProperty(actor: Actor, id: string, input: SeoPropert
   await db.$transaction(async (tx) => {
     const before = await tx.seoProperty.findFirst({
       where: { id, client: { deletedAt: null } },
-      select: { id: true, clientId: true, domain: true, displayName: true, protocol: true, projectId: true, isActive: true, defaultCountryId: true, defaultLanguage: true, timezone: true },
+      select: { id: true, clientId: true, domain: true, displayName: true, protocol: true, projectId: true, isActive: true, defaultCountryId: true, defaultLanguage: true, timezone: true, crawlMaxPages: true, crawlFrequency: true },
     });
     if (!before) throw new NotFoundError("That SEO property does not exist.");
 
@@ -219,7 +227,7 @@ export async function updateProperty(actor: Actor, id: string, input: SeoPropert
     const after = await tx.seoProperty.update({
       where: { id },
       data: { ...data, defaultCountryId: await countryId(tx, input.defaultCountry) },
-      select: { id: true, clientId: true, domain: true, displayName: true, protocol: true, projectId: true, isActive: true, defaultCountryId: true, defaultLanguage: true, timezone: true },
+      select: { id: true, clientId: true, domain: true, displayName: true, protocol: true, projectId: true, isActive: true, defaultCountryId: true, defaultLanguage: true, timezone: true, crawlMaxPages: true, crawlFrequency: true },
     });
     await record({ actor, action: "UPDATE", entityType: "SeoProperty", entityId: id, before, after }, tx);
   });

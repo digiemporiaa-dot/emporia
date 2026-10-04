@@ -22,6 +22,8 @@ export type PropertyValues = {
   defaultLanguage: string;
   timezone: string;
   isActive: boolean;
+  crawlMaxPages: number;
+  crawlFrequency: "WEEKLY" | "MANUAL";
 };
 
 type Option = { id: string; name: string };
@@ -195,6 +197,23 @@ export function PropertyForm({
           )}
         </Field>
       </div>
+
+      <fieldset className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
+        <legend className="sr-only">Site crawl</legend>
+        <Field id="crawlFrequency" label="Site crawl" error={err("crawlFrequency")} hint="Weekly crawls run on the schedule; staff can also crawl any time.">
+          {(aria) => (
+            <Select {...aria} name="crawlFrequency" defaultValue={property?.crawlFrequency ?? "WEEKLY"}>
+              <option value="WEEKLY">Weekly, and on demand</option>
+              <option value="MANUAL">Only on demand</option>
+            </Select>
+          )}
+        </Field>
+        <Field id="crawlMaxPages" label="Pages per crawl" error={err("crawlMaxPages")} hint="10 to 5,000. Larger sites take longer and load the client's server more.">
+          {(aria) => (
+            <Input {...aria} name="crawlMaxPages" type="number" inputMode="numeric" min={10} max={5000} step={1} defaultValue={property?.crawlMaxPages ?? 500} />
+          )}
+        </Field>
+      </fieldset>
 
       <label className="flex items-center gap-2 text-sm text-ink">
         <input type="checkbox" name="isActive" defaultChecked={property?.isActive ?? true} className="size-4 accent-navy-800" />

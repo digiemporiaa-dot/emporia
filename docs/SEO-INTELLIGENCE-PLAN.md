@@ -1,13 +1,14 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–2 built. Phase 3 (crawler, technical SEO, indexation) is next.**
+**Status: Phases 1–3 built. Phase 4 (keywords and rank snapshots) is next.**
 
 | Phase | State |
 | ----- | ----- |
 | 1 — Properties, countries, permissions, navigation | **Done** — 128 tests |
 | 2 — Search Console + Executive Overview | **Done** — 133 tests |
-| 3 — Crawler, technical SEO, indexation | Next |
-| 4–11 | Planned, Part E |
+| 3 — Crawler, technical SEO, indexation | **Done** — 52 tests |
+| 4 — Keywords, rank snapshots | Next |
+| 5–11 | Planned, Part E |
 
 This is the mandatory audit step (CLAUDE.md §15) for the SEO Intelligence
 brief: what exists today, what the brief collides with, the data model and
@@ -336,3 +337,72 @@ recent runs) and Settings.
 5 needs them for cannibalization), GA4 sessions/conversions (Phase 9), indexed
 pages (Phase 3), the health score (needs several sources). Countries show
 Google's three-letter codes.
+
+---
+
+## Part H — Phase 3, as built
+
+**Decisions (2026-10-04):** 500 pages per crawl by default (10–5,000 per
+website), weekly plus on demand, htmlparser2 for parsing, the last 5 crawls
+kept per website.
+
+**Models** (migration `seo_crawler`, additive only): crawl settings on
+`SeoProperty` (`crawlMaxPages`, `crawlFrequency`, `nextCrawlAt`,
+`lastCrawledAt`); `CrawlRun`, `CrawlPage` (the queue and the result in one
+row), `CrawlLink` (internal links only — external ones are counted on the
+page), `CrawlIssue`, and `UrlInspection` (latest result per URL).
+
+**Crawler** (`lib/seo-intel/crawler/`): `fetch.ts` re-checks every URL's
+spelling, resolves the host, refuses it if any address is non-public, then
+connects to that checked address — the socket never resolves again, closing
+DNS rebinding. Redirects are never followed implicitly; each hop is a new
+checked request. 10 s timeout, 2 MB HTML cap (10 MB sitemaps), gzip/deflate/br
+decoded within the cap. `robots.ts` follows RFC 9309 (most specific group,
+longest rule, allow wins ties, `*`/`$`). `sitemap.ts` reads sitemaps and
+indexes (20 files, 50,000 URLs). `parse.ts` reads title, description, robots,
+canonical (`<base>` honoured), lang, hreflang, headings, word count and a hash
+of the visible text, JSON-LD and microdata types, images without `alt`, and
+links. It does not run JavaScript.
+
+**Runs** (`crawl.service.ts`): one crawl per website at a time, decided under
+an advisory lock. The scheduler starts due weekly crawls and then, under a
+two-minute lease, fetches a chunk (≤60 pages, ≤30 s, two at a time) per run.
+Link-discovered pages are fetched before sitemap-only ones; `nofollow` links
+and pages marked `nofollow` are recorded but not followed. The page limit is
+enforced when queueing, serialised per run, and `limitReached` says when it
+stopped discovery. A crawl older than a day is failed. When the queue is
+empty: links are resolved, inlinks counted, click depth recomputed from the
+start page over links and redirects, the rules run, and older crawls beyond
+five are deleted.
+
+**Technical rules** (`engine/technical.ts`, pure): 25 rules in three
+severities, each with a title and an explanation shown on screen — broken
+pages (with the pages linking to them), server errors, fetch failures,
+redirect loops and chains, internal links to redirects, noindex pages in the
+sitemap, canonicals to broken URLs, missing/long/duplicate titles and
+descriptions, missing or multiple H1s, duplicate content (indexable pages
+only), thin content, orphans, deep pages, slow responses, images without alt,
+hreflang without a return link, robots-blocked pages, missing `lang`.
+
+**Indexation** (`indexation.service.ts`, `engine/indexation.ts`): the URL
+Inspection API through the existing Search Console connection (same scope).
+The scheduler inspects up to 20 URLs for two websites per run within 200 a
+day per website (Google allows 2,000); sitemap URLs first, then other
+indexable pages, then inspections older than 14 days. Staff can inspect one
+crawled URL on demand. Connection-level errors and rate limits stop the batch;
+a per-URL failure is stored on the row. Results are bucketed (indexed, not
+indexed, unknown to Google, could not inspect, not inspected) and compared
+with the crawl: indexable but not indexed, not indexable but indexed, and
+Google choosing another canonical.
+
+**Screens**: Site crawl (run status, Crawl now / Cancel, recent crawls, pages
+filtered by status, indexability, blocked, failed, queued; refreshes itself
+while a crawl runs), Technical SEO (findings by rule, worst first; per-rule
+and per-severity URL lists with evidence; compare with earlier crawls) and
+Indexation (counts, disagreements, Google's coverage states, filterable list
+with Inspect). Crawl settings are on the website form.
+
+**Not in this phase, deliberately:** JavaScript rendering, external link
+checking, crawl-to-crawl diffs as their own view (Phase 10's change
+detection), Core Web Vitals (Phase 11), and the Page-indexing report, which is
+not in Google's API.

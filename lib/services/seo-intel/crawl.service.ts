@@ -259,8 +259,11 @@ async function nextQueued(runId: string, count: number): Promise<QueuedPage[]> {
 
 /** Add URLs to the queue up to the page limit; a found-by-link depth replaces "sitemap only". */
 async function enqueue(run: WorkRun, items: { url: string; depth: number }[]): Promise<void> {
-  if (!items.length) return;
-  const unique = [...new Map(items.map((item) => [item.url, item])).values()];
+  // The crawl never leaves the website, whatever the caller passed.
+  const hosts = siteHosts(run.domain);
+  const onSite = items.filter((item) => isOnSite(item.url, hosts));
+  if (!onSite.length) return;
+  const unique = [...new Map(onSite.map((item) => [item.url, item])).values()];
   const existing = await db.crawlPage.findMany({
     where: { runId: run.id, url: { in: unique.map((item) => item.url) } },
     select: { id: true, url: true, depth: true },
@@ -407,6 +410,35 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
     select: { toUrl: true, fromPage: { select: { url: true } } },
   });
 
+  // Click depth from the start page over links and redirects, now that the
+  // whole graph is known. Pages are fetched two at a time and partly from the
+  // sitemap, so the depth recorded while queueing depends on fetch order.
+  const edges = new Map<string, string[]>();
+  const addEdge = (from: string, to: string) => {
+    const list = edges.get(from) ?? [];
+    list.push(to);
+    edges.set(from, list);
+  };
+  for (const link of links) addEdge(link.fromPage.url, link.toUrl);
+  for (const page of pages) if (page.redirectTo) addEdge(page.url, page.redirectTo);
+  const depthOf = new Map<string, number>([[run.startUrl, 0]]);
+  const frontier = [run.startUrl];
+  while (frontier.length) {
+    const url = frontier.shift() as string;
+    const next = (depthOf.get(url) as number) + 1;
+    for (const target of edges.get(url) ?? []) {
+      if (!depthOf.has(target)) {
+        depthOf.set(target, next);
+        frontier.push(target);
+      }
+    }
+  }
+  for (const page of pages) page.depth = depthOf.get(page.url) ?? -1;
+  await db.$executeRaw`
+    UPDATE "CrawlPage" p SET depth = v.depth
+    FROM unnest(${pages.map((page) => page.id)}::text[], ${pages.map((page) => page.depth)}::int[]) AS v(id, depth)
+    WHERE p.id = v.id AND p.depth <> v.depth`;
+
   const rulePages: RulePage[] = pages.map((page) => ({
     ...page,
     noindex: hasNoindex(page.metaRobots, page.xRobotsTag),
@@ -415,6 +447,10 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
   const findings = technicalFindings(rulePages, links.map((link) => ({ from: link.fromPage.url, to: link.toUrl })));
   const idByUrl = new Map(pages.map((page) => [page.url, page.id]));
   const fetched = pages.filter((page) => page.state !== "QUEUED").length;
+
+  // Cancelled while this chunk ran: leave it cancelled, unanalysed.
+  const current = await db.crawlRun.findUnique({ where: { id: run.id }, select: { status: true } });
+  if (current?.status !== "RUNNING") return;
 
   await db.$transaction([
     db.crawlIssue.deleteMany({ where: { runId: run.id } }),
@@ -427,8 +463,8 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
         detail: (finding.detail as Prisma.InputJsonValue | undefined) ?? Prisma.JsonNull,
       })),
     }),
-    db.crawlRun.update({
-      where: { id: run.id },
+    db.crawlRun.updateMany({
+      where: { id: run.id, status: "RUNNING" },
       data: { status: "SUCCEEDED", finishedAt: now, lockedUntil: null, pagesFetched: fetched, summary: summarize(findings) },
     }),
     db.seoProperty.update({ where: { id: run.propertyId }, data: { lastCrawledAt: now } }),

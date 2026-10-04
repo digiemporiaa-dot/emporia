@@ -190,24 +190,30 @@ to leave a password in the environment.
       Typically that's a LinkedIn token. The warning is sent once per expiry
       date.
    7. Syncs Search Console for up to two websites.
-   8. Marks sent and part-paid invoices overdue once their due date passes.
-   9. Raises a draft invoice for each active retainer whose billing date has
+   8. Starts the weekly site crawls that are due (two per run), then works on
+      running crawls for up to 30 seconds — about 60 pages, two at a time. A
+      500-page crawl therefore takes roughly 45 minutes of scheduler runs.
+   9. Asks Google's URL Inspection about up to 20 crawled pages for up to two
+      websites, within 200 a day per website.
+   10. Marks sent and part-paid invoices overdue once their due date passes.
+   11. Raises a draft invoice for each active retainer whose billing date has
       come, and moves its next billing date on. Drafts are reviewed and sent by
       staff; nothing is emailed to the client at this step.
-   10. Emails a payment reminder for invoices due within three days or already
+   12. Emails a payment reminder for invoices due within three days or already
        overdue, at most once every three days per invoice. A failed send
        counts too, so a broken mailer does not retry every five minutes; resend
        it from the email log once the mailer is fixed.
 
    The JSON response reports each step's counts, including `accountsChecked`,
-   `expiringWarned` and `finance` (`overdue`, `retainersRaised`,
-   `remindersSent`).
+   `expiringWarned`, `crawls`, `urlInspections` and `finance` (`overdue`,
+   `retainersRaised`, `remindersSent`).
 
    Without this job, `publishAt`, `unpublishAt` and a post's scheduled time
    are recorded but never acted on. Metrics are never collected, accounts are
    only checked when someone presses Sync now, and nobody is warned before an
    account's access runs out. Overdue marking, retainer billing and reminders
-   only happen from the buttons under Admin → Finance. Everything else in the
+   only happen from the buttons under Admin → Finance. Site crawls never
+   progress and no URLs are inspected. Everything else in the
    application is unaffected.
 
 ### What happens on every deploy
@@ -393,6 +399,17 @@ until it reaches the 16 months Google keeps. A busy installation with many
 websites needs the cron at least every 15 minutes for history to fill
 promptly. **Sync now** on a website's Search Console page runs one sync
 immediately (three per website per ten minutes).
+
+### Site crawler (SEO Intelligence)
+
+No configuration. The crawler identifies itself as `EmporiaSEOBot/1.0`,
+obeys robots.txt (a client can block it with `User-agent: EmporiaSEOBot`),
+fetches only the website's own host and its www/non-www twin, and connects only
+to public addresses — checked for every request and redirect, so a website
+cannot point it at the server's own network. The container needs ordinary
+outbound HTTPS. It reads the HTML the server sends and does not run
+JavaScript, so pages that build their content in the browser look thin to it;
+the screens say so.
 
 ### AI
 

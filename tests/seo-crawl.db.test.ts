@@ -54,6 +54,7 @@ describeDb("SEO crawl", () => {
   let clientId = "";
   let propertyId = "";
   const requests: string[] = [];
+  let onRequest: ((path: string) => Promise<void>) | null = null;
 
   const staff = (permissions: string[]): Actor =>
     ({ userId: staffId, name: "Staff", email: "s@x.test", type: "STAFF", roleName: "ADMIN", roleId: "r", clientId: null, ip: null, userAgent: null, permissions: new Set(permissions) }) as Actor;
@@ -70,9 +71,10 @@ describeDb("SEO crawl", () => {
   }
 
   beforeAll(async () => {
-    server = createServer((req, res) => {
+    server = createServer(async (req, res) => {
       const path = (req.url ?? "/").split("?")[0] as string;
       requests.push(path);
+      if (onRequest) await onRequest(path);
       const entry = SITE[path];
       if (!entry) {
         res.writeHead(404, { "content-type": "text/html" });
@@ -119,8 +121,10 @@ describeDb("SEO crawl", () => {
 
     // robots.txt was obeyed: the disallowed page was never requested.
     expect(requests).not.toContain("/private/x");
-    // External links are counted, never followed.
-    expect(requests.every((path) => !path.includes("other.example.org"))).toBe(true);
+    // External links are counted, never queued or followed.
+    const queued = await db.crawlPage.findMany({ where: { runId: run!.id }, select: { url: true } });
+    expect(queued.length).toBeGreaterThan(5);
+    expect(queued.every((row) => new URL(row.url).hostname === HOST)).toBe(true);
 
     const issues = await listCrawlIssues(manager(), run!.id, { perPage: 100 });
     const has = (rule: string, path: string) =>
@@ -152,6 +156,14 @@ describeDb("SEO crawl", () => {
     expect(about?.inSitemap).toBe(true);
     expect(pages.rows.some((row) => row.url.endsWith("/hidden"))).toBe(false);
 
+    // Click depth comes from the link graph, whatever order pages were fetched in.
+    const all = await listCrawlPages(manager(), run!.id, { perPage: 100 });
+    const depth = (path: string) => all.rows.find((row) => row.url === `http://${HOST}${path}`)?.depth;
+    expect(depth("/")).toBe(0);
+    expect(depth("/about")).toBe(1);
+    expect(depth("/older")).toBe(2);
+    expect(depth("/orphan")).toBe(-1);
+
     const blocked = await listCrawlPages(manager(), run!.id, { filter: "blocked" });
     expect(blocked.rows.map((row) => row.url)).toEqual([`http://${HOST}/private/x`]);
   });
@@ -173,6 +185,22 @@ describeDb("SEO crawl", () => {
     await advanceCrawls(work());
     expect(requests.length).toBe(before);
     expect((await db.crawlRun.findUniqueOrThrow({ where: { id: started.id } })).status).toBe("CANCELLED");
+  });
+
+  it("stays cancelled when cancelled while a batch is being fetched", async () => {
+    const started = await startCrawl(manager(), propertyId);
+    onRequest = async (path) => {
+      if (path === "/about") await cancelCrawl(manager(), started.id);
+    };
+    try {
+      await advanceCrawls(work());
+    } finally {
+      onRequest = null;
+    }
+    const run = await db.crawlRun.findUniqueOrThrow({ where: { id: started.id } });
+    expect(run.status).toBe("CANCELLED");
+    expect(run.summary).toBeNull();
+    expect(await db.crawlPage.count({ where: { runId: started.id, state: "QUEUED" } })).toBeGreaterThan(0);
   });
 
   it("keeps only the last few crawls", async () => {
