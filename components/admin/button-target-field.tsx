@@ -63,8 +63,9 @@ export function ButtonTargetField({
       <span className={labelClass} aria-hidden="true">
         {label}
       </span>
-      <div className="flex flex-wrap gap-2">
-        <Select aria-label={`${label}: action`} value={mode} onChange={(e) => switchTo(e.target.value as "page" | "popup")} className="w-auto">
+      {/* Stacked: builder columns are narrow, and a popup's name must stay readable. */}
+      <div className="grid gap-2">
+        <Select aria-label={`${label}: action`} value={mode} onChange={(e) => switchTo(e.target.value as "page" | "popup")}>
           <option value="page">Go to a page</option>
           <option value="popup">Open a popup</option>
         </Select>
@@ -76,7 +77,6 @@ export function ButtonTargetField({
             value={chosen ? "" : value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="min-w-0 flex-1"
           />
         ) : popups.length === 0 ? null : (
           <Select
@@ -84,7 +84,6 @@ export function ButtonTargetField({
             aria-invalid={error ? true : undefined}
             value={chosen ?? ""}
             onChange={(e) => onChange(e.target.value ? popupTarget(e.target.value) : "")}
-            className="min-w-0 flex-1"
           >
             {!option ? <option value="">{chosen ? "A popup that no longer exists" : "Choose a popup"}</option> : null}
             {popups.map((popup) => (

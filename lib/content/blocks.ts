@@ -42,7 +42,7 @@ export const linkHref = trimmed(300).refine(
  */
 export const buttonHref = trimmed(300).refine(
   (value) => value.startsWith("/") || isPopupTarget(value),
-  "Choose a page on this site (starting with /) or a popup.",
+  "Links must start with / — this field is for pages on this site, or choose a popup.",
 );
 
 export const alignment = z.enum(["left", "center"]);

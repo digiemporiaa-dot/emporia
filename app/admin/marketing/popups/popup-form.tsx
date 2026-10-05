@@ -203,7 +203,7 @@ export function PopupForm({
             defaultChecked={popup?.isActive ?? false}
             className="size-4 accent-[var(--color-brand-red)]"
           />
-          Active — an active popup needs at least one targeting rule
+          Active — an active popup needs at least one targeting rule (a button popup does not)
         </label>
       </fieldset>
 
