@@ -58,7 +58,9 @@ describe("where it is accepted", () => {
   it("lets an active button popup save without targeting, but not an automatic one", () => {
     const input = { name: "Audit", title: "Free SEO audit", trigger: "BUTTON_CLICK", frequency: "EVERY_VISIT", isActive: true, targets: [] };
     expect(popupSchema.safeParse(input).success).toBe(true);
-    expect(popupSchema.safeParse({ ...input, trigger: "PAGE_LOAD" }).success).toBe(false);
+    for (const trigger of ["PAGE_LOAD", "TIME_DELAY", "SCROLL_PERCENT", "EXIT_INTENT"]) {
+      expect(popupSchema.safeParse({ ...input, trigger, triggerValue: 10 }).success).toBe(false);
+    }
   });
 });
 
