@@ -8,7 +8,7 @@ import { DEFAULT_CHANGE_THRESHOLDS, type ChangeThresholds } from "@/lib/seo-inte
  * screens always agree. Percentages are stored as fractions (0.25 = 25%).
  */
 
-type Unit = "clicks" | "impressions" | "percent" | "places" | "count" | "days" | "stars";
+type Unit = "clicks" | "impressions" | "percent" | "places" | "count" | "days" | "stars" | "sessions";
 type Def = { group: string; label: string; help: string; unit: Unit; default: number; min: number; max: number };
 
 export const THRESHOLD_DEFS = {
@@ -38,6 +38,8 @@ export const THRESHOLD_DEFS = {
   "reviews.quietDays": { group: "Local", label: "No new reviews for", help: "Flag a listing that has had no new review for this many days.", unit: "days", default: 60, min: 7, max: 730 },
   "intl.minShare": { group: "International", label: "Missing country version: share of clicks", help: "A country must send at least this share of clicks to a multi-country site with no version for it.", unit: "percent", default: 0.05, min: 0.005, max: 1 },
   "intl.minClicks": { group: "International", label: "Missing country version: minimum clicks", help: "…and at least this many clicks in 28 days.", unit: "clicks", default: 20, min: 1, max: 1_000_000 },
+  "analytics.minSessions": { group: "Analytics", label: "Low-converting page: organic sessions", help: "28-day organic sessions (GA4) a landing page needs before its key-event rate is judged.", unit: "sessions", default: 200, min: 10, max: 10_000_000 },
+  "analytics.rateShare": { group: "Analytics", label: "Low-converting page: share of the site's rate", help: "Flag organic landing pages whose key-event rate is under this share of the site's organic rate.", unit: "percent", default: 0.5, min: 0.05, max: 1 },
 } as const satisfies Record<string, Def>;
 
 export type ThresholdKey = keyof typeof THRESHOLD_DEFS;

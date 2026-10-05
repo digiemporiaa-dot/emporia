@@ -194,3 +194,9 @@ export const localPageSchema = z.object({
     .transform((value) => (value ? value : null)),
 });
 export const localPropertySchema = z.object({ propertyId: id });
+
+// Google Analytics 4 (Phase 9)
+export const ga4PropertyChoiceSchema = z.object({
+  propertyId: id,
+  ga4Property: z.string().trim().regex(/^properties\/\d+$/, "Choose a GA4 property."),
+});

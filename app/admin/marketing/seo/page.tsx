@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
 import { can, requirePermission } from "@/lib/auth/rbac";
@@ -81,13 +81,15 @@ export default async function SeoOverviewPage({
       name: "Google Analytics 4",
       state: property.ga4PropertyId ? "connected" : "missing",
       detail: property.ga4PropertyId
-        ? property.ga4PropertyId
+        ? `${property.ga4PropertyId}${property.ga4Currency ? ` · revenue in ${property.ga4Currency}` : ""}`
         : "Not connected yet. Organic sessions, engagement and conversions come from here.",
     },
     {
       name: "Site crawl",
-      state: "missing",
-      detail: "Not run yet. Technical issues, indexability, internal links and schema come from crawling the site.",
+      state: property.lastCrawledAt ? "connected" : "missing",
+      detail: property.lastCrawledAt
+        ? `Last finished ${formatDay(property.lastCrawledAt.toISOString().slice(0, 10))}. Technical issues, indexability, internal links and schema come from here.`
+        : "Not run yet. Technical issues, indexability, internal links and schema come from crawling the site.",
     },
     {
       name: "Rankings",
@@ -176,7 +178,12 @@ export default async function SeoOverviewPage({
             <div className="rounded-lg border border-dashed border-line px-4 py-3">
               <p className="text-2xs font-medium uppercase tracking-wide text-ink-subtle">Sessions, leads, revenue</p>
               <p className="mt-1 text-xs text-ink-subtle">
-                From Google Analytics 4 and the CRM once they are connected. Indexed pages come with the site crawl.
+                {property.ga4PropertyId ? "From Google Analytics 4" : "From Google Analytics 4, once it is connected,"}
+                {property.client.isInternal ? " and the CRM" : ""} — see{" "}
+                <Link href={`/admin/marketing/seo/revenue?property=${property.id}` as Route} className="text-navy-800 underline underline-offset-2">
+                  Organic → revenue
+                </Link>
+                .
               </p>
             </div>
           </div>
@@ -339,6 +346,11 @@ export default async function SeoOverviewPage({
                       {source.name === "Google Search Console" ? (
                         <Link href={`/admin/marketing/seo/properties/${property.id}/search-console`} className="ml-2 text-xs text-navy-800 underline underline-offset-2 hover:text-brand-red">
                           {property.gscSiteUrl ? "Manage" : "Connect"}
+                        </Link>
+                      ) : null}
+                      {source.name === "Google Analytics 4" ? (
+                        <Link href={`/admin/marketing/seo/properties/${property.id}/analytics` as Route} className="ml-2 text-xs text-navy-800 underline underline-offset-2 hover:text-brand-red">
+                          {property.ga4PropertyId ? "Manage" : "Connect"}
                         </Link>
                       ) : null}
                     </p>

@@ -3,12 +3,11 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/rbac";
 import { ForbiddenError, IntegrationNotConfiguredError, NotFoundError, ValidationError } from "@/lib/errors";
 import { record } from "@/lib/services/audit.service";
-import { decryptSecret, encryptSecret } from "@/lib/security/secret";
-import { googleAuthorizationUrl, googleExchangeCode, googleRefresh, type GoogleOAuthConfig } from "@/lib/social/google-oauth";
-import { googleOAuthApp, googleServiceAccount, seoGoogleCallbackUrl } from "@/lib/seo-intel/google/settings";
-import { serviceAccountToken } from "@/lib/seo-intel/google/service-account";
+import { encryptSecret } from "@/lib/security/secret";
+import { googleAuthorizationUrl, googleExchangeCode } from "@/lib/social/google-oauth";
+import { googleServiceAccount, seoGoogleCallbackUrl } from "@/lib/seo-intel/google/settings";
 import { GoogleSearchConsole, GSC_SCOPE } from "@/lib/seo-intel/providers/gsc";
-import { SeoCredentialsError } from "@/lib/seo-intel/providers/errors";
+import { googleAccountEmail, revokeGrant, seoOAuthConfig, tokenSource } from "@/lib/services/seo-intel/google-credentials";
 import { siteMatchesDomain } from "@/lib/seo-intel/gsc-site";
 import type { Actor } from "@/lib/actor/types";
 import type { GscSite, SearchConsoleProvider, UrlInspectionProvider } from "@/lib/seo-intel/providers/types";
@@ -27,8 +26,7 @@ import type { SeoConnection } from "@/generated/prisma/client";
  * returned — `SafeGscConnection` is the only shape that leaves.
  */
 
-const OAUTH_SCOPES = [GSC_SCOPE, "openid", "email"] as const;
-const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const LABEL = "Search Console";
 
 function staffOnly(actor: Actor): void {
   if (actor.type !== "STAFF" && actor.type !== "SYSTEM") throw new ForbiddenError("Not available in the client portal.");
@@ -43,11 +41,7 @@ async function propertyFor(propertyId: string) {
   return property;
 }
 
-async function oauthConfig(): Promise<GoogleOAuthConfig> {
-  const app = await googleOAuthApp();
-  if (!app) throw new IntegrationNotConfiguredError("Google sign-in is not set up. Add the OAuth client in SEO settings first.");
-  return { ...app, scopes: OAUTH_SCOPES, requiredScopes: [GSC_SCOPE], label: "Search Console" };
-}
+const oauthConfig = () => seoOAuthConfig(GSC_SCOPE, LABEL);
 
 export type SafeGscConnection = {
   method: "OAUTH" | "SERVICE_ACCOUNT";
@@ -126,16 +120,8 @@ export async function completeGscOAuthFor(actor: Actor, propertyId: string, code
   const config = await oauthConfig();
   const credentials = await googleExchangeCode(config, (url, init) => fetch(url, init), code, seoGoogleCallbackUrl());
 
-  // Which Google account this is, so the screen can say. Optional: a failure
-  // here costs a label, not the connection.
-  let accountEmail: string | null = null;
-  try {
-    const response = await fetch(USERINFO_URL, { headers: { authorization: `Bearer ${credentials.accessToken}` }, signal: AbortSignal.timeout(10_000) });
-    const body = (await response.json().catch(() => ({}))) as { email?: unknown };
-    if (response.ok && typeof body.email === "string") accountEmail = body.email;
-  } catch {
-    accountEmail = null;
-  }
+  // Which Google account this is, so the screen can say.
+  const accountEmail = await googleAccountEmail(credentials.accessToken);
 
   const data = {
     method: "OAUTH" as const,
@@ -206,61 +192,9 @@ export async function connectGscWithServiceAccount(actor: Actor, propertyId: str
 // Reading with the stored credentials
 // ---------------------------------------------------------------------------
 
-const expiring = (expiresAt: Date | null) => !expiresAt || expiresAt.getTime() - Date.now() < 120_000;
-
-/**
- * A fresh OAuth access token, renewed and stored if it is about to expire.
- * Serialised per connection: whoever renews second uses the first one's token
- * rather than spending the refresh token twice.
- */
-async function oauthAccessToken(connectionId: string): Promise<string> {
-  return db.$transaction(
-    async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`seo-credentials:${connectionId}`}))`;
-      const current = await tx.seoConnection.findUnique({ where: { id: connectionId } });
-      if (!current) throw new SeoCredentialsError("This Search Console connection no longer exists.");
-      const access = decryptSecret(current.accessToken);
-      const refresh = decryptSecret(current.refreshToken);
-      if (access && !expiring(current.tokenExpiresAt)) return access;
-      if (!refresh) throw new SeoCredentialsError("This Search Console connection can no longer be read. Reconnect it.");
-
-      let fresh;
-      try {
-        fresh = await googleRefresh(await oauthConfig(), (url, init) => fetch(url, init), {
-          accessToken: access ?? "",
-          refreshToken: refresh,
-          expiresAt: current.tokenExpiresAt,
-        });
-      } catch (error) {
-        if (error instanceof IntegrationNotConfiguredError) throw error;
-        throw new SeoCredentialsError("Google no longer accepts this Search Console connection. Reconnect it.");
-      }
-      await tx.seoConnection.update({
-        where: { id: connectionId },
-        data: {
-          accessToken: encryptSecret(fresh.accessToken),
-          refreshToken: fresh.refreshToken ? encryptSecret(fresh.refreshToken) : current.refreshToken,
-          tokenExpiresAt: fresh.expiresAt,
-          ...(fresh.scopes ? { scopes: [...fresh.scopes] } : {}),
-        },
-      });
-      return fresh.accessToken;
-    },
-    { timeout: 30_000 },
-  );
-}
-
 /** The provider for a stored connection, whichever way it authenticates. */
 export function searchConsoleFor(connection: Pick<SeoConnection, "id" | "method">): SearchConsoleProvider & UrlInspectionProvider {
-  const token =
-    connection.method === "OAUTH"
-      ? () => oauthAccessToken(connection.id)
-      : async () => {
-          const account = await googleServiceAccount();
-          if (!account) throw new SeoCredentialsError("The service account key is no longer set up. Add it in SEO settings, then reconnect.");
-          return serviceAccountToken(account, [GSC_SCOPE]);
-        };
-  return new GoogleSearchConsole(token, (url, init) => fetch(url, init));
+  return new GoogleSearchConsole(tokenSource(connection, GSC_SCOPE, LABEL), (url, init) => fetch(url, init));
 }
 
 async function connectionOf(propertyId: string) {
@@ -357,15 +291,7 @@ export async function disconnectGsc(actor: Actor, propertyId: string): Promise<v
   const connection = await db.seoConnection.findUnique({ where: { propertyId_source: { propertyId, source: "SEARCH_CONSOLE" } } });
   if (!connection) return;
 
-  const token = decryptSecret(connection.refreshToken) ?? decryptSecret(connection.accessToken);
-  if (connection.method === "OAUTH" && token) {
-    await fetch("https://oauth2.googleapis.com/revoke", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ token }).toString(),
-      signal: AbortSignal.timeout(10_000),
-    }).catch(() => undefined);
-  }
+  await revokeGrant(connection);
 
   await db.$transaction(async (tx) => {
     await tx.seoConnection.delete({ where: { id: connection.id } });
