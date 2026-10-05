@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { ButtonPopupsProvider } from "@/components/admin/button-target-field";
+import { buttonPopupOptions } from "@/lib/services/popup.service";
 import Link from "next/link";
 import { requireActorPage } from "@/lib/actor";
-import { requirePermission } from "@/lib/auth/rbac";
+import { can, requirePermission } from "@/lib/auth/rbac";
 import { getNavigationSettings } from "@/lib/services/navigation.service";
 import { NavigationForm } from "./navigation-form";
 
@@ -20,6 +22,8 @@ export default async function NavigationSettingsPage() {
   requirePermission(actor, "settings.view");
 
   const navigation = await getNavigationSettings(actor);
+  // The "Open a popup" choice for the header button: only for whoever can save it.
+  const buttonPopups = can(actor, "settings.edit") ? await buttonPopupOptions(actor) : [];
 
   return (
     <>
@@ -38,7 +42,9 @@ export default async function NavigationSettingsPage() {
         </p>
       </header>
 
-      <NavigationForm navigation={navigation} />
+      <ButtonPopupsProvider popups={buttonPopups}>
+        <NavigationForm navigation={navigation} />
+      </ButtonPopupsProvider>
     </>
   );
 }

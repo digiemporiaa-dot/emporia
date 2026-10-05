@@ -597,6 +597,7 @@ comes from the session — never `(id)` alone. See §10.
 
 /api/auth/[...nextauth]         Auth.js
 /api/popups/resolve             POST, server-side popup targeting (§14)
+/api/popups/open                POST, the popup a button opens (§14)
 /api/leads/capture              POST, public form + popup submissions
 /api/uploads/presign            POST, authenticated presigned R2 URL
 /api/uploads/complete           POST, confirm + persist Media
@@ -1041,6 +1042,18 @@ the client filters a list of popups would leak every campaign to anyone reading
 the network tab.
 
 Ties break on `Popup.priority`, then most recently updated.
+
+**Button popups.** A popup whose trigger is `BUTTON_CLICK` is never returned by
+automatic resolution. It opens from a button instead: any page-builder button
+(`ctaHref`, `secondaryHref`, `buttonHref`) or the header button stores
+`popup:<popupId>` in place of a page path (`lib/popups/button-target`), chosen
+in the builder or Settings → Navigation as "Open a popup". Such a button
+renders as a `<button data-popup-open>`; on click the popup host calls
+`POST /api/popups/open` with the id and path, and the server answers with that
+popup only if it is switched on, a button popup and inside its dates. Targeting
+and frequency do not apply — the visitor asked for it — and the impression is
+recorded with the page's attribution like any other. Text links and card links
+stay pages.
 
 ### 14.2 Attribution capture
 

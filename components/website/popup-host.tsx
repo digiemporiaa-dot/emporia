@@ -51,6 +51,8 @@ export function PopupHost() {
 
   const panelRef = React.useRef<HTMLDivElement>(null);
   const restoreFocusTo = React.useRef<HTMLElement | null>(null);
+  /** The button that opened the popup, so focus returns to it (Safari does not focus buttons on click). */
+  const openerRef = React.useRef<HTMLElement | null>(null);
   const startedRef = React.useRef(false);
 
   // Ask the server what, if anything, to show here.
@@ -82,6 +84,40 @@ export function PopupHost() {
       cancelled = true;
       controller.abort();
     };
+  }, [pathname]);
+
+  // Buttons that open a popup (`data-popup-open="<id>"`, lib/popups/button-target).
+  // The server decides whether that popup is live; frequency and targeting do
+  // not apply, because the visitor asked for it.
+  React.useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      const button = (event.target as Element | null)?.closest?.<HTMLElement>("[data-popup-open]");
+      const popupId = button?.dataset["popupOpen"];
+      if (!button || !popupId) return;
+      event.preventDefault();
+      openerRef.current = button;
+      void (async () => {
+        try {
+          const response = await fetch("/api/popups/open", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ popupId, path: pathname }),
+          });
+          if (!response.ok) return;
+          const data = (await response.json()) as { popup: Popup | null };
+          if (!data.popup) return;
+          setStatus("idle");
+          setError(null);
+          startedRef.current = false;
+          setPopup(data.popup);
+          setOpen(true);
+        } catch {
+          // Nothing to show is better than an error in the visitor's way.
+        }
+      })();
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
   }, [pathname]);
 
   // Trigger handling.
@@ -116,14 +152,6 @@ export function PopupHost() {
         document.addEventListener("mouseout", onLeave);
         return () => document.removeEventListener("mouseout", onLeave);
       }
-      case "BUTTON_CLICK": {
-        const onClick = (event: Event) => {
-          const target = event.target as HTMLElement | null;
-          if (target?.closest("[data-popup-trigger]")) show();
-        };
-        document.addEventListener("click", onClick);
-        return () => document.removeEventListener("click", onClick);
-      }
       default:
         return;
     }
@@ -138,7 +166,8 @@ export function PopupHost() {
   React.useEffect(() => {
     if (!open || !popup) return;
 
-    restoreFocusTo.current = document.activeElement as HTMLElement | null;
+    restoreFocusTo.current = openerRef.current ?? (document.activeElement as HTMLElement | null);
+    openerRef.current = null;
     void postEvent(popup.id, "VIEW", pathname);
 
     const previousOverflow = document.body.style.overflow;

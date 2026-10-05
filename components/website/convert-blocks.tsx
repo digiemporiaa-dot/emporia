@@ -2,6 +2,7 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { Route } from "next";
+import { popupTargetId } from "@/lib/popups/button-target";
 import { Container, Eyebrow } from "@/components/website/primitives";
 import { Reveal, Stagger, StaggerItem } from "@/components/website/motion";
 import { Band } from "@/components/website/band";
@@ -464,12 +465,23 @@ export function ComparisonTableBlock({
                     className={cn("px-4 py-4 text-center", column.highlight && "bg-surface-muted")}
                   >
                     {column.ctaLabel && column.ctaHref ? (
-                      <Link
-                        href={column.ctaHref as Route}
-                        className="inline-flex h-9.5 items-center rounded-md bg-brand-red px-4 text-sm font-medium text-white transition-colors hover:bg-red-600"
-                      >
-                        {column.ctaLabel}
-                      </Link>
+                      popupTargetId(column.ctaHref) ? (
+                        <button
+                          type="button"
+                          data-popup-open={popupTargetId(column.ctaHref) ?? undefined}
+                          aria-haspopup="dialog"
+                          className="inline-flex h-9.5 items-center rounded-md bg-brand-red px-4 text-sm font-medium text-white transition-colors hover:bg-red-600"
+                        >
+                          {column.ctaLabel}
+                        </button>
+                      ) : (
+                        <Link
+                          href={column.ctaHref as Route}
+                          className="inline-flex h-9.5 items-center rounded-md bg-brand-red px-4 text-sm font-medium text-white transition-colors hover:bg-red-600"
+                        >
+                          {column.ctaLabel}
+                        </Link>
+                      )
                     ) : null}
                   </td>
                 ))}

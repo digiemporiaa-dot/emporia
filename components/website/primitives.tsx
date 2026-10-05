@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import type { Route } from "next";
 import { cn } from "@/lib/utils/cn";
+import { popupTargetId } from "@/lib/popups/button-target";
 
 export function Container({
   className,
@@ -115,17 +116,25 @@ export function CtaButton({
   } as const;
 
   const sizes = { md: "h-10 px-5 text-sm", lg: "h-12 px-6 text-base" } as const;
+  const classes = cn(
+    "inline-flex items-center justify-center rounded-md font-medium transition-colors duration-(--duration-fast)",
+    variants[variant],
+    sizes[size],
+    className,
+  );
+
+  // A button that opens a popup: the popup host listens for data-popup-open.
+  const popupId = popupTargetId(typeof href === "string" ? href : href.pathname);
+  if (popupId) {
+    return (
+      <button type="button" data-popup-open={popupId} aria-haspopup="dialog" className={classes}>
+        {children}
+      </button>
+    );
+  }
 
   return (
-    <Link
-      href={href as Route}
-      className={cn(
-        "inline-flex items-center justify-center rounded-md font-medium transition-colors duration-(--duration-fast)",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
-    >
+    <Link href={href as Route} className={classes}>
       {children}
     </Link>
   );

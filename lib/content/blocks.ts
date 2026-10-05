@@ -1,3 +1,4 @@
+import { isPopupTarget } from "@/lib/popups/button-target";
 import { z } from "zod";
 import { ICON_NAMES } from "@/lib/content/icons";
 import { gridConfig } from "@/lib/content/grid";
@@ -32,6 +33,16 @@ const optionalText = (max: number) =>
 export const linkHref = trimmed(300).refine(
   (value) => value.startsWith("/"),
   "Links must start with / — this field is for pages on this site.",
+);
+
+/**
+ * Where a button goes: a page on this site, or `popup:<id>` to open a popup
+ * (lib/popups/button-target). Only buttons take a popup — text links and card
+ * links stay pages.
+ */
+export const buttonHref = trimmed(300).refine(
+  (value) => value.startsWith("/") || isPopupTarget(value),
+  "Links must start with / — this field is for pages on this site, or choose a popup.",
 );
 
 export const alignment = z.enum(["left", "center"]);
@@ -111,7 +122,7 @@ export const imageBoxBlock = z.object({
   title: trimmed(160).min(2, "Enter a title."),
   text: optionalText(600),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   band: styleField,
 });
 
@@ -122,7 +133,7 @@ export const imageTextBlock = z.object({
   heading: trimmed(200).min(2, "Enter a heading."),
   body: optionalText(3000),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   imagePosition: z.enum(["left", "right"]).default("left"),
   band: styleField,
 });
@@ -147,7 +158,7 @@ export const featureBlock = z.object({
   mediaId: mediaRef,
   alt: optionalText(300),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   band: styleField,
 });
 
@@ -215,7 +226,7 @@ export const iconCardsBlock = z.object({
         badge: optionalText(40),
         href: linkHref.optional(),
         buttonLabel: optionalText(60),
-        buttonHref: linkHref.optional(),
+        buttonHref: buttonHref.optional(),
         /** Hidden cards keep their content and their position. */
         enabled: z.boolean().default(true),
       }),
@@ -249,7 +260,7 @@ export const imageCardsBlock = z.object({
         icon: iconName.optional(),
         href: linkHref.optional(),
         buttonLabel: optionalText(60),
-        buttonHref: linkHref.optional(),
+        buttonHref: buttonHref.optional(),
         enabled: z.boolean().default(true),
       }),
     )
@@ -272,9 +283,9 @@ export const ctaBlock = z.object({
   heading: trimmed(200).min(2, "Enter a heading."),
   body: optionalText(800),
   ctaLabel: trimmed(60).min(1, "Enter the button label."),
-  ctaHref: linkHref,
+  ctaHref: buttonHref,
   secondaryLabel: optionalText(60),
-  secondaryHref: linkHref.optional(),
+  secondaryHref: buttonHref.optional(),
   tone: z.enum(["navy", "light"]).default("navy"),
   /**
    * `large` is the closing band the homepage ends on — bigger type, more air.
@@ -319,9 +330,9 @@ export const textImageBlock = z.object({
   body: optionalText(4000),
   bullets: z.array(trimmed(300)).max(10).default([]),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   secondaryLabel: optionalText(60),
-  secondaryHref: linkHref.optional(),
+  secondaryHref: buttonHref.optional(),
 
   mediaId: mediaRef,
   alt: optionalText(300),
@@ -376,7 +387,7 @@ export const benefitsBlock = z.object({
   imageSide: z.enum(["left", "right"]).default("right"),
   split: splitRatio.default("50/50"),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   band: styleField,
 });
 
@@ -418,7 +429,7 @@ export const fullWidthImageBlock = z.object({
   heading: optionalText(200),
   body: optionalText(1200),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   align: alignToken.default("center"),
   band: styleField,
 });
@@ -442,9 +453,9 @@ export const heroBlock = z.object({
   heading: trimmed(200).min(1, "Enter the heading."),
   body: optionalText(3000),
   ctaLabel: optionalText(60),
-  ctaHref: linkHref.optional(),
+  ctaHref: buttonHref.optional(),
   secondaryLabel: optionalText(60),
-  secondaryHref: linkHref.optional(),
+  secondaryHref: buttonHref.optional(),
   facts: z
     .array(z.object({ label: trimmed(80), value: trimmed(80) }))
     .max(6)
@@ -652,7 +663,7 @@ export const featureCardsBlock = z.object({
         title: trimmed(200).min(1, "Each feature needs a title."),
         text: optionalText(800),
         ctaLabel: optionalText(60),
-        ctaHref: linkHref.optional(),
+        ctaHref: buttonHref.optional(),
         enabled: z.boolean().default(true),
       }),
     )
@@ -878,7 +889,7 @@ export const comparisonTableBlock = z.object({
         detail: optionalText(120),
         highlight: z.boolean().default(false),
         ctaLabel: optionalText(60),
-        ctaHref: linkHref.optional(),
+        ctaHref: buttonHref.optional(),
       }),
     )
     // Not `.min(1)`: a block is added before it is filled in, and a required

@@ -7,6 +7,7 @@ import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { NavLink, isExternalHref } from "@/components/website/nav-link";
 import type { NavItemInput } from "@/lib/validation/navigation";
+import { popupTargetId } from "@/lib/popups/button-target";
 
 /**
  * Site header with mobile navigation.
@@ -121,12 +122,10 @@ export function SiteHeaderNav({
 
         <div className="flex items-center gap-2">
           {cta ? (
-            <NavLink
-              href={cta.href}
+            <CtaControl
+              cta={cta}
               className="hidden h-9.5 items-center rounded-md bg-brand-red px-4 text-sm font-medium text-white transition-colors duration-(--duration-fast) hover:bg-red-600 lg:inline-flex"
-            >
-              {cta.label}
-            </NavLink>
+            />
           ) : null}
 
           {links.length > 0 || cta ? (
@@ -191,16 +190,33 @@ export function SiteHeaderNav({
 
           {cta ? (
             <div className="px-5 pb-8 pt-4">
-              <NavLink
-                href={cta.href}
+              <CtaControl
+                cta={cta}
+                // The menu closes first, so the popup is not opened behind it.
+                onPopup={() => setOpen(false)}
                 className="flex h-12 items-center justify-center rounded-md bg-brand-red px-5 text-base font-medium text-white"
-              >
-                {cta.label}
-              </NavLink>
+              />
             </div>
           ) : null}
         </div>
       ) : null}
     </header>
+  );
+}
+
+/** The header button: a link, or — `popup:<id>` — a button the popup host opens a popup for. */
+function CtaControl({ cta, className, onPopup }: { cta: HeaderCta; className: string; onPopup?: () => void }) {
+  const popupId = popupTargetId(cta.href);
+  if (popupId) {
+    return (
+      <button type="button" data-popup-open={popupId} aria-haspopup="dialog" onClick={onPopup} className={className}>
+        {cta.label}
+      </button>
+    );
+  }
+  return (
+    <NavLink href={cta.href} className={className}>
+      {cta.label}
+    </NavLink>
   );
 }

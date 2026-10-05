@@ -32,6 +32,8 @@ export type PopupTargetRule = {
 
 export type PopupCandidate = {
   id: string;
+  /** BUTTON_CLICK popups open only from a button and never compete here. */
+  trigger?: string;
   priority: number;
   frequency: Frequency;
   isActive: boolean;
@@ -166,6 +168,7 @@ export function selectPopup(
   visitor: VisitorState,
 ): PopupCandidate | null {
   const eligible = candidates.filter((popup) => {
+    if (popup.trigger === "BUTTON_CLICK") return false;
     if (!isScheduled(popup, visitor.now)) return false;
     if (popup.targets.length === 0) return false;
     if (!popup.targets.some((rule) => targetMatches(rule, page, visitor))) return false;

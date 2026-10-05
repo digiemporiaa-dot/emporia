@@ -2,7 +2,7 @@ import "server-only";
 import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
 import { NotFoundError } from "@/lib/errors";
-import { requirePermission } from "@/lib/auth/rbac";
+import { can, requirePermission } from "@/lib/auth/rbac";
 import { paged, toSkipTake, type PageParams } from "@/lib/paging";
 import { withAudit } from "@/lib/services/audit.service";
 import { selectPopup, type PageContext, type VisitorState } from "@/lib/popups/targeting";
@@ -97,6 +97,32 @@ export async function resolveForPage(
     triggerValue: full.triggerValue,
     frequency: full.frequency,
   };
+}
+
+/**
+ * The popup a button opens (trigger BUTTON_CLICK), if it is live now.
+ *
+ * The visitor asked for it by clicking, so frequency and targeting do not
+ * apply (decided 2026-10-05); only "is it switched on and in its dates" does.
+ */
+export async function resolveButtonPopup(popupId: string, now = new Date()): Promise<ResolvedPopup | null> {
+  const popup = await db.popup.findFirst({
+    where: {
+      id: popupId,
+      trigger: "BUTTON_CLICK",
+      isActive: true,
+      AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
+    },
+    select: { id: true, title: true, body: true, ctaLabel: true, ctaHref: true, formFields: true, trigger: true, triggerValue: true, frequency: true },
+  });
+  return popup ?? null;
+}
+
+/** Live button popups, for the "Open popup" choice on buttons in the builder and the header. */
+export async function buttonPopupOptions(actor: Actor): Promise<{ id: string; name: string; isActive: boolean }[]> {
+  // Whoever edits buttons: page builders (pages.edit) or the header (settings.edit).
+  if (!can(actor, "pages.edit") && !can(actor, "settings.edit")) requirePermission(actor, "pages.edit");
+  return db.popup.findMany({ where: { trigger: "BUTTON_CLICK" }, orderBy: [{ isActive: "desc" }, { name: "asc" }], select: { id: true, name: true, isActive: true }, take: 200 });
 }
 
 export type PopupEventInput = {
