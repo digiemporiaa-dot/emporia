@@ -146,11 +146,13 @@ describeDb("Core Web Vitals", () => {
 
     it("does not refetch history once there are snapshots, and lists only pages from the latest check", async () => {
       const crux = cruxDouble();
-      crux.set(`https://www.${HOST}`, "PHONE", rec("2025-03-15", 2200));
+      // This time Google has the bare domain: the www twin is not asked.
+      crux.set(`https://${HOST}`, "PHONE", rec("2025-03-15", 2200));
       crux.set(`https://www.${HOST}/p2`, "PHONE", rec("2025-03-15", 2100));
       const later = new Date("2025-03-17T06:00:00Z");
       await checkCwv(propertyId, { provider: crux, now: later });
       expect(crux.calls.some((c) => c.kind === "history")).toBe(false);
+      expect(crux.calls.some((c) => c.key === `https://www.${HOST}`)).toBe(false);
       const overview = await cwvOverview(admin(), propertyId);
       expect(overview.pages.map((p) => p.url)).toEqual([`https://www.${HOST}/p2`]);
       expect(overview.trend.at(-1)).toMatchObject({ periodEnd: "2025-03-15", lcp: 2200 });

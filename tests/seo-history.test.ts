@@ -67,6 +67,11 @@ describe("opportunity flow", () => {
     expect(flow[0]?.opened).toBe(0);
   });
 
+  it("does not count a reopened item as dismissed because it once was", () => {
+    const flow = opportunityFlow([{ firstSeenAt: at("2025-02-01T00:00:00Z"), status: "OPEN", resolvedAt: null, dismissedAt: at("2025-03-11T00:00:00Z") }], weeks);
+    expect(flow[1]).toEqual({ week: "2025-03-10", opened: 0, done: 0, resolved: 0, dismissed: 0 });
+  });
+
   it("ignores a closed status with no closing date", () => {
     const flow = opportunityFlow([{ ...base, firstSeenAt: at("2025-03-04T00:00:00Z"), status: "DISMISSED" }], weeks);
     expect(flow[0]).toEqual({ week: "2025-03-03", opened: 1, done: 0, resolved: 0, dismissed: 0 });

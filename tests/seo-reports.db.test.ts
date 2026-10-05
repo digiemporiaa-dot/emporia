@@ -33,6 +33,7 @@ describeDb("Monthly SEO reports and history", () => {
   let propertyId = "";
   let emptyPropertyId = "";
   let portalUserId = "";
+  let invitedUserId = "";
   let reportId = "";
 
   const staff = (permissions: string[]): Actor =>
@@ -66,6 +67,8 @@ describeDb("Monthly SEO reports and history", () => {
     emptyPropertyId = (await db.seoProperty.create({ data: { clientId: clientB, domain: `b-${HOST}`, displayName: "B site", crawlFrequency: "MANUAL" }, select: { id: true } })).id;
     const roleId = (await db.role.findFirstOrThrow({ where: { name: "CLIENT_USER" }, select: { id: true } })).id;
     portalUserId = (await db.user.create({ data: { email: `portal-${TAG}@x.test`, name: "Portal", type: "CLIENT", status: "ACTIVE", clientId: clientA, roleId }, select: { id: true } })).id;
+    // Invited but not signed up yet: not emailed.
+    invitedUserId = (await db.user.create({ data: { email: `invited-${TAG}@x.test`, name: "Invited", type: "CLIENT", status: "INVITED", clientId: clientA, roleId }, select: { id: true } })).id;
 
     // Search Console, site totals. May has 20 of 31 days; clicks 10/day; position 4 then 8.
     await db.gscDailyTotal.createMany({
@@ -83,6 +86,9 @@ describeDb("Monthly SEO reports and history", () => {
         { propertyId, date: day("2023-05-10"), query: "seo company", clicks: 20, impressions: 200, position: 9 },
         { propertyId, date: day("2023-04-10"), query: "seo agency", clicks: 30, impressions: 300, position: 5 },
         { propertyId, date: day("2023-04-10"), query: "seo company", clicks: 10, impressions: 100, position: 7.5 },
+        // Half a place either way is noise, not movement.
+        { propertyId, date: day("2023-05-10"), query: "seo services", clicks: 1, impressions: 10, position: 4.5 },
+        { propertyId, date: day("2023-04-10"), query: "seo services", clicks: 1, impressions: 10, position: 5 },
       ],
     });
     await db.gscPageDaily.createMany({
@@ -92,7 +98,7 @@ describeDb("Monthly SEO reports and history", () => {
       ],
     });
     await db.seoKeyword.createMany({
-      data: ["seo agency", "seo company", "local seo"].map((keyword) => ({ propertyId, keyword })),
+      data: ["seo agency", "seo company", "seo services", "local seo"].map((keyword) => ({ propertyId, keyword })),
     });
 
     // GA4: organic only, site totals only.
@@ -153,11 +159,11 @@ describeDb("Monthly SEO reports and history", () => {
 
   afterAll(async () => {
     if (!clientA) return;
-    await db.emailLog.deleteMany({ where: { entityType: "SeoReport", to: `portal-${TAG}@x.test` } });
+    await db.emailLog.deleteMany({ where: { entityType: "SeoReport", to: { in: [`portal-${TAG}@x.test`, `invited-${TAG}@x.test`] } } });
     // The scheduler's drafts for other tests' websites, made at this test's moment.
     await db.seoReport.deleteMany({ where: { month: MONTH, generatedById: null, generatedAt: DRAFT_AT } });
     await db.seoProperty.deleteMany({ where: { id: { in: [propertyId, emptyPropertyId] } } });
-    await db.user.deleteMany({ where: { id: portalUserId } });
+    await db.user.deleteMany({ where: { id: { in: [portalUserId, invitedUserId] } } });
     await db.client.deleteMany({ where: { id: { in: [clientA, clientB] } } });
   });
 
@@ -172,6 +178,7 @@ describeDb("Monthly SEO reports and history", () => {
       expect(s.topQueries).toEqual([
         { query: "seo agency", clicks: 50, impressions: 500, position: 3, previousClicks: 30 },
         { query: "seo company", clicks: 20, impressions: 200, position: 9, previousClicks: 10 },
+        { query: "seo services", clicks: 1, impressions: 10, position: 4.5, previousClicks: 1 },
       ]);
       // Pages are shown as paths, compared with the same page the month before.
       expect(s.topPages).toEqual([{ page: "/services", clicks: 40, impressions: 400, previousClicks: 25 }]);
@@ -180,8 +187,8 @@ describeDb("Monthly SEO reports and history", () => {
     it("moves tracked keywords by a full place or more, and counts first-page keywords", async () => {
       const { keywords } = await buildReportData(propertyId, MONTH, NOW);
       expect(keywords).toEqual({
-        tracked: 3,
-        inTop10: 2,
+        tracked: 4,
+        inTop10: 3,
         improved: [{ keyword: "seo agency", from: 5, to: 3 }],
         declined: [{ keyword: "seo company", from: 7.5, to: 9 }],
       });
@@ -236,6 +243,12 @@ describeDb("Monthly SEO reports and history", () => {
       expect(draft).toMatchObject({ status: "DRAFT", generatedById: null });
       expect(await db.seoReport.count({ where: { propertyId: emptyPropertyId } })).toBe(0);
       reportId = draft.id;
+
+      // A website added later is still reached with a limit of one: drafted websites never use up the run.
+      const laterId = (await db.seoProperty.create({ data: { clientId: clientA, domain: `later-${HOST}`, displayName: "Later", crawlFrequency: "MANUAL", gscSiteUrl: `sc-domain:later-${HOST}` }, select: { id: true } })).id;
+      expect(await draftDueReports({ now: DRAFT_AT, limit: 1 })).toBe(1);
+      expect(await db.seoReport.count({ where: { propertyId: laterId, month: MONTH } })).toBe(1);
+      await db.seoProperty.delete({ where: { id: laterId } });
 
       await db.seoReport.update({ where: { id: reportId }, data: { notes: "kept" } });
       await draftDueReports({ now: new Date("2023-06-04T01:00:00Z"), limit: 500 });
