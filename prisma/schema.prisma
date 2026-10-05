@@ -537,6 +537,8 @@ model User {
   crawlRunsStarted           CrawlRun[]                @relation("CrawlRunStartedBy")
   seoThresholdsUpdated       SeoThreshold[]            @relation("SeoThresholdUpdatedBy")
   seoLocalPagesUpdated       SeoLocalPage[]            @relation("SeoLocalPageUpdatedBy")
+  seoReportsMade             SeoReport[]               @relation("SeoReportGeneratedBy")
+  seoReportsPublished        SeoReport[]               @relation("SeoReportPublishedBy")
   seoOpportunitiesAssigned   SeoOpportunity[]          @relation("SeoOpportunityAssignee")
   seoOpportunitiesDismissed  SeoOpportunity[]          @relation("SeoOpportunityDismissedBy")
   seoKeywordsAdded           SeoKeyword[]              @relation("SeoKeywordCreatedBy")
@@ -3433,6 +3435,10 @@ model SeoProperty {
   lastCrawledAt  DateTime?
   /// When the opportunity detector last ran for this website (daily).
   lastDetectedAt DateTime?
+  /// When Core Web Vitals were last read from CrUX (weekly).
+  cwvCheckedAt   DateTime?
+  /// Why the last Core Web Vitals check failed, in words safe to show; null when it worked.
+  cwvError       String?
 
   createdById String?
   createdBy   User?   @relation("SeoPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -3457,6 +3463,9 @@ model SeoProperty {
   localPages     SeoLocalPage[]
   ga4Landing     Ga4LandingDaily[]
   ga4Totals      Ga4DailyTotal[]
+  crawlHistory   SeoCrawlHistory[]
+  reports        SeoReport[]
+  cwvSnapshots   CwvSnapshot[]
 
   @@unique([clientId, domain])
   @@index([clientId, isActive])
@@ -3890,6 +3899,85 @@ model InternalLinkSuggestion {
 /// One rule setting. `propertyId` null = the agency default; a row for a
 /// website overrides that one value for it. Unknown keys are ignored when
 /// read; one row per scope and key is kept by the service under a lock.
+/// One finished crawl's headline numbers, kept after the crawl itself is
+/// pruned (only the last few crawls keep their pages), for history charts.
+model SeoCrawlHistory {
+  id             String      @id @default(cuid())
+  propertyId     String
+  property       SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// The crawl run's id; the run may since have been pruned.
+  runId          String      @unique
+  finishedAt     DateTime
+  pagesFetched   Int
+  indexablePages Int
+  critical       Int
+  warning        Int
+  notice         Int
+
+  @@index([propertyId, finishedAt])
+}
+
+enum SeoReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// A website's monthly SEO report: a frozen snapshot of the month, so it reads
+/// the same however the underlying data changes later. Published reports are
+/// visible to the client in the portal.
+model SeoReport {
+  id         String          @id @default(cuid())
+  propertyId String
+  property   SeoProperty     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// `YYYY-MM`.
+  month      String
+  status     SeoReportStatus @default(DRAFT)
+  data       Json
+  notes      String?
+
+  /// Null when the scheduler made it.
+  generatedById String?
+  generatedBy   User?     @relation("SeoReportGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  generatedAt   DateTime  @default(now())
+  publishedById String?
+  publishedBy   User?     @relation("SeoReportPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([propertyId, month])
+  @@index([status, publishedAt])
+  @@index([generatedById])
+  @@index([publishedById])
+}
+
+/// Core Web Vitals at the 75th percentile from the Chrome UX Report, for an
+/// origin ("" url) or one page, per form factor and CrUX collection period.
+/// Field data from real Chrome users; absent when CrUX has too few visits.
+model CwvSnapshot {
+  id         String      @id @default(cuid())
+  propertyId String
+  property   SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// "" for the whole origin, else a normalised page URL.
+  url        String      @default("")
+  /// "PHONE", "DESKTOP" or "ALL".
+  formFactor String
+  /// The last day of CrUX's 28-day collection period.
+  periodEnd  DateTime    @db.Date
+  /// Milliseconds.
+  lcp        Int?
+  inp        Int?
+  fcp        Int?
+  ttfb       Int?
+  /// Unitless.
+  cls        Float?
+  fetchedAt  DateTime    @default(now())
+
+  @@unique([propertyId, url, formFactor, periodEnd])
+  @@index([propertyId, periodEnd])
+}
+
 /// GA4 sessions for one landing page and channel on one day (Phase 9). The
 /// top pages by sessions, capped per day; a day is replaced whole.
 model Ga4LandingDaily {

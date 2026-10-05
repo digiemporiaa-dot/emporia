@@ -119,6 +119,16 @@ describeDb("SEO crawl", () => {
     expect(run?.sitemapUrls).toBe(5);
     expect(run?.limitReached).toBe(false);
 
+    // The run's headline numbers are kept for the history charts.
+    const kept = await db.seoCrawlHistory.findUniqueOrThrow({ where: { runId: run!.id } });
+    const stored = await db.crawlRun.findUniqueOrThrow({ where: { id: run!.id }, select: { summary: true, pagesFetched: true, finishedAt: true } });
+    const counts = stored.summary as Record<string, number>;
+    expect(kept).toMatchObject({ propertyId, pagesFetched: stored.pagesFetched, critical: counts["CRITICAL"], warning: counts["WARNING"], notice: counts["NOTICE"] });
+    expect(kept.finishedAt.getTime()).toBe(stored.finishedAt!.getTime());
+    expect(kept.indexablePages).toBe(await db.crawlPage.count({ where: { runId: run!.id, indexable: true } }));
+    expect(kept.indexablePages).toBeGreaterThan(0);
+    expect(kept.critical + kept.warning).toBeGreaterThan(0);
+
     // robots.txt was obeyed: the disallowed page was never requested.
     expect(requests).not.toContain("/private/x");
     // External links are counted, never queued or followed.

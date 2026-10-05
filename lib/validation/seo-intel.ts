@@ -111,6 +111,14 @@ export const seoGoogleSettingsSchema = z.object({
   /** The whole service-account key file, pasted. */
   serviceAccountJson: z.string().trim().max(10_000, "That key file is too large.").default(""),
   removeServiceAccount: z.boolean().default(false),
+  /** Chrome UX Report API key, for Core Web Vitals. Blank keeps what is stored. */
+  cruxApiKey: z
+    .string()
+    .trim()
+    .max(200)
+    .default("")
+    .refine((value) => value === "" || /^[\w-]{20,200}$/.test(value), "That does not look like a Google API key."),
+  removeCruxKey: z.boolean().default(false),
 });
 
 export type SeoGoogleSettingsInput = z.infer<typeof seoGoogleSettingsSchema>;
@@ -200,3 +208,8 @@ export const ga4PropertyChoiceSchema = z.object({
   propertyId: id,
   ga4Property: z.string().trim().regex(/^properties\/\d+$/, "Choose a GA4 property."),
 });
+
+// Phase 11 — monthly SEO reports.
+export const seoReportGenerateSchema = z.object({ propertyId: id, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a month.") });
+export const seoReportNotesSchema = z.object({ reportId: id, notes: z.string().max(5_000, "Up to 5,000 characters.").default("") });
+export const seoReportPublishSchema = z.object({ reportId: id, published: z.enum(["true", "false"]).transform((value) => value === "true") });

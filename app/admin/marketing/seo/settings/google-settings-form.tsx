@@ -65,6 +65,33 @@ export function GoogleSettingsForm({ settings }: { settings: SafeGoogleSettings 
           </label>
         ) : null}
       </fieldset>
+
+      <fieldset className="space-y-4">
+        <legend className="font-display text-base text-navy-800">Core Web Vitals (Chrome UX Report)</legend>
+        <p className="text-xs text-ink-subtle">
+          Page speed as real Chrome users experienced it. Enable the Chrome UX Report API in Google Cloud, create an API key
+          restricted to that API, and paste it here. Without a key, page speed shows as not configured. The key is
+          encrypted and never shown again.
+        </p>
+        <Field
+          id="cruxApiKey"
+          label="API key"
+          hint={
+            settings.cruxKeyUnreadable
+              ? "A key is stored but can no longer be read (the app secret changed). Enter it again."
+              : settings.cruxKeyConfigured
+                ? "A key is stored. Leave blank to keep it."
+                : undefined
+          }
+        >
+          {(aria) => <Input {...aria} name="cruxApiKey" type="password" autoComplete="new-password" spellCheck={false} />}
+        </Field>
+        {settings.cruxKeyConfigured ? (
+          <label className="flex items-center gap-2 text-xs text-ink-muted">
+            <input type="checkbox" name="removeCruxKey" className="size-4 accent-navy-800" /> Remove the API key
+          </label>
+        ) : null}
+      </fieldset>
     </ActionForm>
   );
 }

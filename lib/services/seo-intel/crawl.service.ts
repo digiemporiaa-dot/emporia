@@ -471,7 +471,15 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
     await clearPageText(run.id);
   }
 
+  const indexablePages = await db.crawlPage.count({ where: { runId: run.id, indexable: true } });
+  const summary = summarize(findings);
   await db.$transaction([
+    // Kept after the run itself is pruned, for the history charts.
+    db.seoCrawlHistory.upsert({
+      where: { runId: run.id },
+      create: { propertyId: run.propertyId, runId: run.id, finishedAt: now, pagesFetched: fetched, indexablePages, critical: summary.CRITICAL, warning: summary.WARNING, notice: summary.NOTICE },
+      update: { finishedAt: now, pagesFetched: fetched, indexablePages, critical: summary.CRITICAL, warning: summary.WARNING, notice: summary.NOTICE },
+    }),
     db.crawlIssue.deleteMany({ where: { runId: run.id } }),
     db.crawlIssue.createMany({
       data: findings.map((finding) => ({
@@ -484,7 +492,7 @@ async function finishRun(run: WorkRun, now: Date): Promise<void> {
     }),
     db.crawlRun.updateMany({
       where: { id: run.id, status: "RUNNING" },
-      data: { status: "SUCCEEDED", finishedAt: now, lockedUntil: null, pagesFetched: fetched, summary: summarize(findings), suggestionCount },
+      data: { status: "SUCCEEDED", finishedAt: now, lockedUntil: null, pagesFetched: fetched, summary, suggestionCount },
     }),
     db.seoProperty.update({ where: { id: run.propertyId }, data: { lastCrawledAt: now } }),
   ]);

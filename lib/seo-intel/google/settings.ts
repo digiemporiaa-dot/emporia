@@ -13,6 +13,8 @@ import type { ServiceAccountKey } from "@/lib/seo-intel/google/service-account";
  * - a service account (address + key id + encrypted private key), for
  *   clients who add the agency's service account to their property instead.
  *
+ * - a Chrome UX Report API key (encrypted), for Core Web Vitals (Phase 11).
+ *
  * Either, both or neither may be set (decision D3). This module decrypts, so
  * it is for building providers only — screens read the masked view in
  * `google-settings.service`.
@@ -26,6 +28,7 @@ export type StoredGoogleConfig = {
   serviceAccountEmail?: string;
   serviceAccountKeyId?: string | null;
   serviceAccountKey?: string;
+  cruxApiKey?: string;
 };
 
 export async function readGoogleConfig(): Promise<StoredGoogleConfig> {
@@ -38,6 +41,7 @@ export async function readGoogleConfig(): Promise<StoredGoogleConfig> {
     serviceAccountEmail: str("serviceAccountEmail"),
     serviceAccountKeyId: str("serviceAccountKeyId") ?? null,
     serviceAccountKey: str("serviceAccountKey"),
+    cruxApiKey: str("cruxApiKey"),
   };
 }
 
@@ -55,6 +59,12 @@ export async function googleServiceAccount(): Promise<ServiceAccountKey | null> 
   if (!config.serviceAccountEmail || !config.serviceAccountKey) return null;
   const privateKey = decryptSecret(config.serviceAccountKey);
   return privateKey ? { email: config.serviceAccountEmail, keyId: config.serviceAccountKeyId ?? null, privateKey } : null;
+}
+
+/** The Chrome UX Report API key, decrypted, or null when it is not set up (or no longer decrypts). */
+export async function cruxApiKey(): Promise<string | null> {
+  const { cruxApiKey: stored } = await readGoogleConfig();
+  return stored ? decryptSecret(stored) : null;
 }
 
 /** Where Google sends the browser back. From SITE_URL, never from a request's Host header. */

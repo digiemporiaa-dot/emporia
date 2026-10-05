@@ -1,6 +1,6 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–5 and 8–10 built. Phases 6–7 need a paid provider (D2); 11 can go next (it needs a CrUX API key for Core Web Vitals).**
+**Status: Phases 1–5 and 8–11 built. Phases 6–7 need a paid provider (D2). Core Web Vitals (Phase 11) switch on when a CrUX API key is entered.**
 
 | Phase | State |
 | ----- | ----- |
@@ -691,3 +691,77 @@ additive across days), GA4 conversions by event name, the client portal (D4),
 leads for client websites (Emporia does not capture them — GA4 key events are
 their conversions), and gclid-based paid detection (a tagged ad is paid; an
 untagged ad click from Google would read as organic).
+
+---
+
+## Part N — Phase 11, as built
+
+**Decisions (2026-10-05):** monthly SEO reports follow the social report
+pattern — staff draft, add notes and publish, and the client reads it in the
+portal, for their own websites only; the scheduler drafts last month's report
+on the 3rd and staff can regenerate, but only a person publishes; Core Web
+Vitals are built now and switch on with a Chrome UX Report API key (no key:
+the screen says not configured); CrUX covers the origin and the 20 pages with
+the most clicks, weekly.
+
+**History** (`history.service.ts`, `engine/history.ts`, History tab): each
+successful crawl writes its headline numbers to `SeoCrawlHistory` (pages
+fetched, indexable pages, critical / warning / notice findings) in the same
+transaction that marks it finished, so the trend survives crawl pruning; the
+migration backfilled the crawls already stored. The screen shows sixteen
+months of Search Console clicks and impressions and GA4 organic sessions and
+revenue by month (a month with no data is a gap, a partial month says how many
+days it covers), every crawl's findings and indexable pages, opportunities
+opened / done / resolved / dismissed per week for twelve weeks (counted by
+what each item is now), and the "What changed" timeline.
+
+**Monthly reports** (`seo-report.service.ts`, `report-doc.ts`, Reports tab):
+a report is a frozen JSON snapshot validated by `seoReportDataSchema`, built
+only from stored rows:
+- Search Console site totals for the month, the month before and the same
+  month a year earlier (with days covered), the top 10 queries and pages with
+  last month's clicks beside them;
+- tracked keywords: how many average a first-page position, and up to five
+  that moved a full place or more each way;
+- GA4 organic sessions, engaged sessions, key events and revenue (currency
+  kept);
+- the latest crawl finished by the month's end against the one before;
+- opportunities opened, done and resolved in the month, how many are open,
+  and the five worst open;
+- Google reviews for the client's connected locations; the origin's phone
+  Core Web Vitals for the latest period ending in the month; up to ten
+  changes.
+
+A source that is not connected is `null` and the report says so — never
+zeros. Regenerating replaces a draft's figures and keeps its notes; a
+published report is refused until it is unpublished. Notes are plain text,
+5,000 characters, drafts only. Publishing (audited) emails the client's
+active portal users. The portal lists the client's published reports under
+*SEO reports* (the item appears once there is one); `getSeoReport` answers
+"not found" for a draft or another client's report. `/print/seo-reports/[id]`
+prints for staff and the owning client. The scheduler (`draftDueReports`)
+drafts, from the 3rd (UTC), last month's report for up to three active
+websites a run that have Search Console or GA4 and no report for that month.
+
+**Core Web Vitals** (`cwv.service.ts`, `providers/crux.ts`, `engine/cwv.ts`,
+Page speed tab): the API key is stored encrypted in the SEO Google settings
+and sent in a header, never a URL. Weekly per website (two a run): the origin
+on phones and desktops — the site's own host, then its www twin — with up to
+25 weekly periods of history on the first check; and, on phones, the 20 on-site
+pages with the most Search Console clicks over the latest 28 days. Google's
+404 for too little traffic is "no data", not an error. A failed check records
+its reason on the screen and waits for the next week; **Check now** runs one
+(at most hourly). Verdicts use Google's thresholds at the 75th percentile
+(LCP 2.5 s / 4 s, INP 200 / 500 ms, CLS 0.1 / 0.25; FCP and TTFB shown for
+context): good only when all three core metrics are good, poor when any is.
+
+**Performance**: the report and history queries were checked with EXPLAIN on
+600,000 synthetic rows — the monthly history queries now range over the
+`(propertyId, date)` index instead of `to_char(date)`, and the report's
+heaviest query (top queries for a month) runs in about 30 ms. No new index was
+needed.
+
+**Not in this phase, deliberately:** a PDF file stored per report (the print
+view saves as PDF from the browser), Core Web Vitals opportunities in the
+Command Center, page-level CWV on desktops (the origin covers them), and
+CrUX's per-country data (the API does not offer it).

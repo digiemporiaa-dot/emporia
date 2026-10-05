@@ -23,6 +23,8 @@ export type SafeGoogleSettings = {
   serviceAccountEmail: string | null;
   serviceAccountKeyConfigured: boolean;
   serviceAccountKeyUnreadable: boolean;
+  cruxKeyConfigured: boolean;
+  cruxKeyUnreadable: boolean;
   /** To register in the Google Cloud console as an authorised redirect URI. */
   callbackUrl: string;
 };
@@ -35,6 +37,8 @@ function safe(config: StoredGoogleConfig): SafeGoogleSettings {
     serviceAccountEmail: config.serviceAccountEmail ?? null,
     serviceAccountKeyConfigured: Boolean(config.serviceAccountKey),
     serviceAccountKeyUnreadable: Boolean(config.serviceAccountKey) && decryptSecret(config.serviceAccountKey) === null,
+    cruxKeyConfigured: Boolean(config.cruxApiKey),
+    cruxKeyUnreadable: Boolean(config.cruxApiKey) && decryptSecret(config.cruxApiKey) === null,
     callbackUrl: seoGoogleCallbackUrl(),
   };
 }
@@ -92,11 +96,15 @@ export async function saveGoogleSettings(actor: Actor, input: SeoGoogleSettingsI
     next.serviceAccountKey = encryptSecret(key.privateKey);
   }
 
+  if (input.removeCruxKey) delete next.cruxApiKey;
+  else if (input.cruxApiKey) next.cruxApiKey = encryptSecret(input.cruxApiKey);
+
   const audit = (config: StoredGoogleConfig) => ({
     oauthClientId: config.oauthClientId ?? null,
     oauthSecretConfigured: Boolean(config.oauthClientSecret),
     serviceAccountEmail: config.serviceAccountEmail ?? null,
     serviceAccountKeyId: config.serviceAccountKeyId ?? null,
+    cruxKeyConfigured: Boolean(config.cruxApiKey),
   });
 
   await db.$transaction(async (tx) => {
@@ -116,6 +124,7 @@ export async function saveGoogleSettings(actor: Actor, input: SeoGoogleSettingsI
           ...audit(next),
           oauthSecretChanged: next.oauthClientSecret !== before.oauthClientSecret,
           serviceAccountKeyChanged: next.serviceAccountKey !== before.serviceAccountKey,
+          cruxKeyChanged: next.cruxApiKey !== before.cruxApiKey,
         },
       },
       tx,

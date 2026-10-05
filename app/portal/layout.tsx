@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import { redirect } from "next/navigation";
 import { currentActor } from "@/lib/actor";
 import { db } from "@/lib/db";
@@ -30,7 +30,7 @@ export default async function PortalLayout({ children }: { children: React.React
   if (!actor) redirect("/auth/login?redirectTo=/portal");
   if (actor.type !== "CLIENT" || !actor.clientId) redirect("/admin");
 
-  const [client, pendingApprovals, unreadMessages, setup] = await Promise.all([
+  const [client, pendingApprovals, unreadMessages, setup, seoReports] = await Promise.all([
     db.client.findFirst({
       where: { id: actor.clientId, deletedAt: null },
       select: { name: true },
@@ -40,6 +40,7 @@ export default async function PortalLayout({ children }: { children: React.React
       where: { clientId: actor.clientId, fromClient: false, readAt: null },
     }),
     myOnboardingProgress(actor as PortalActor).catch(() => null),
+    db.seoReport.count({ where: { status: "PUBLISHED", property: { clientId: actor.clientId } } }),
   ]);
   const setupLeft = setup ? setup.applicable - setup.done : 0;
 
@@ -66,6 +67,7 @@ export default async function PortalLayout({ children }: { children: React.React
     { href: "/portal/invoices", label: "Invoices", icon: "invoices" },
     { href: "/portal/campaigns", label: "Campaigns", icon: "campaigns" },
     { href: "/portal/social", label: "Social", icon: "campaigns" },
+    ...(seoReports > 0 ? [{ href: "/portal/seo/reports" as Route, label: "SEO reports", icon: "seo" as const }] : []),
     { href: "/portal/files", label: "Files", icon: "files" },
     {
       href: "/portal/messages",

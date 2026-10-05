@@ -61,6 +61,7 @@ export async function saveGoogleSettingsAction(_prev: SeoActionState, formData: 
       ...raw,
       removeOAuth: raw["removeOAuth"] === "on",
       removeServiceAccount: raw["removeServiceAccount"] === "on",
+      removeCruxKey: raw["removeCruxKey"] === "on",
     });
     if (!parsed.success) {
       return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Check the form.", details: parsed.error.flatten().fieldErrors };

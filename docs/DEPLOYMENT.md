@@ -418,6 +418,17 @@ and device, and the top 2,000 landing pages a day. Days are the GA4
 property's own; revenue is kept in its currency. If an API is not enabled the
 connection page says which one.
 
+**Core Web Vitals** need a Chrome UX Report API key: enable the *Chrome UX
+Report API* in a Google Cloud project, create an API key restricted to it,
+and paste it into the same settings page (stored encrypted). Without it the
+Page speed screen says not configured and nothing is requested. With it, each
+scheduled run checks up to two websites that are a week due.
+
+**Monthly SEO reports** are drafted by the scheduler from the 3rd of each
+month (UTC) for websites with Search Console or GA4 — up to three a run —
+and are never published without a person. Publishing emails the client's
+portal users through the SMTP settings.
+
 ### Site crawler (SEO Intelligence)
 
 No configuration. The crawler identifies itself as `EmporiaSEOBot/1.0`,
