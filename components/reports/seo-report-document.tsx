@@ -64,7 +64,9 @@ function compare(current: number, previous: number, lastYear?: number): string |
   return parts.length ? parts.join(" · ") : null;
 }
 
-const ms = (value: number | null) => (value === null ? "Not enough data" : value >= 1000 ? `${(value / 1000).toFixed(1)} s` : `${value} ms`);
+// Two decimals, so 2,470 ms never reads as the 2.5 s threshold.
+const ms = (value: number | null) => (value === null ? "Not enough data" : value >= 1000 ? `${(value / 1000).toFixed(2)} s` : `${value} ms`);
+const plural = (n: number, one: string, many: string) => `${NUMBER.format(n)} ${n === 1 ? one : many}`;
 
 export function SeoReportDocument({ data, notes }: { data: SeoReportData; notes: string | null }) {
   const s = data.search;
@@ -246,10 +248,10 @@ export function SeoReportDocument({ data, notes }: { data: SeoReportData; notes:
       ) : null}
 
       <Section title="Work on the site">
-        <p className="text-sm">
-          <span className="tabular-nums">{data.opportunities.done}</span> improvements completed,{" "}
-          <span className="tabular-nums">{data.opportunities.resolved}</span> issues found fixed on the site, and{" "}
-          <span className="tabular-nums">{data.opportunities.opened}</span> new ones found this month. <span className="tabular-nums">{data.opportunities.openNow}</span> are open now.
+        <p className="text-sm tabular-nums">
+          {plural(data.opportunities.done, "improvement", "improvements")} completed, {plural(data.opportunities.resolved, "issue", "issues")} found fixed on the
+          site, and {plural(data.opportunities.opened, "new one", "new ones")} found this month. {NUMBER.format(data.opportunities.openNow)}{" "}
+          {data.opportunities.openNow === 1 ? "is" : "are"} open now.
         </p>
         {data.opportunities.top.length ? (
           <div>

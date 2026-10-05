@@ -25,6 +25,8 @@ import type { Actor } from "@/lib/actor/types";
 const cwvLog = log("seo-cwv");
 export const CWV_INTERVAL_DAYS = 7;
 export const CWV_TOP_PAGES = 20;
+/** Rows fetched within this of the newest belong to the same check. */
+const SAME_CHECK_MS = 6 * 3_600_000;
 const FORM_FACTORS: readonly CruxFormFactor[] = ["PHONE", "DESKTOP"];
 
 function staffOnly(actor: Actor) {
@@ -206,9 +208,10 @@ export async function cwvOverview(actor: Actor, propertyId: string) {
     const rows = origin.filter((s) => s.formFactor === formFactor);
     return rows.length ? view(rows[rows.length - 1] as Snapshot) : null;
   };
-  // Only the pages the latest check read: a page that has left the top twenty keeps its rows, but is not listed.
+  // Only the pages the latest check read (a check takes minutes; checks are a week apart): a page that has
+  // left the top twenty keeps its rows, but is not listed.
   const lastFetch = Math.max(0, ...latestPages.map((s) => s.fetchedAt.getTime()));
-  const current = latestPages.filter((s) => s.fetchedAt.getTime() === lastFetch);
+  const current = latestPages.filter((s) => lastFetch - s.fetchedAt.getTime() < SAME_CHECK_MS);
   return {
     configured,
     checkedAt: property.cwvCheckedAt,

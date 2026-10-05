@@ -63,7 +63,7 @@ export default async function SeoReportsPage({ searchParams }: { searchParams: P
       <PropertyPicker id="report-property" properties={properties} current={property.id} />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Monthly reports</CardTitle>
             <CardDescription>
@@ -109,7 +109,7 @@ export default async function SeoReportsPage({ searchParams }: { searchParams: P
         </Card>
 
         {canManage ? (
-          <Card>
+          <Card className="min-w-0">
             <CardHeader>
               <CardTitle>Generate a report</CardTitle>
               <CardDescription>Regenerating a draft replaces its figures and keeps its notes. A published report must be unpublished first.</CardDescription>
@@ -140,12 +140,12 @@ export default async function SeoReportsPage({ searchParams }: { searchParams: P
 
       {selected ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <Card>
+          <Card className="min-w-0">
             <CardBody>
               <SeoReportDocument data={selected.data} notes={selected.notes} />
             </CardBody>
           </Card>
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle>{reportMonthLabel(selected.month)}</CardTitle>
