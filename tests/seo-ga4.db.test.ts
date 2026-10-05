@@ -152,6 +152,9 @@ describeDb("SEO GA4", () => {
     });
 
     it("the next run re-reads recent days without duplicates and walks a month further back", async () => {
+      // A day older than the 16 months kept is removed, as Search Console's are.
+      await db.ga4DailyTotal.create({ data: { propertyId, date: new Date("2024-01-01"), channel: "Direct", sessions: 1, engagedSessions: 1, keyEvents: 0, revenue: "0" } });
+      await db.ga4LandingDaily.create({ data: { propertyId, date: new Date("2024-01-01"), landingPage: "/old", channel: "Direct", sessions: 1, engagedSessions: 1, keyEvents: 0, revenue: "0" } });
       const { provider } = fakeGa4();
       await syncGa4Property(propertyId, { trigger: "SCHEDULED", provider, now: new Date(now.getTime() + 60_000) });
       const day = new Date(`${yesterday}T00:00:00Z`);
@@ -159,6 +162,8 @@ describeDb("SEO GA4", () => {
       expect(await db.ga4DailyTotal.count({ where: { propertyId, date: day } })).toBe(6);
       const connection = await db.seoConnection.findUniqueOrThrow({ where: { propertyId_source: { propertyId, source: "ANALYTICS" } } });
       expect(connection.backfilledFrom?.toISOString().slice(0, 10)).toBe(addDays(yesterday, -62));
+      expect(await db.ga4DailyTotal.count({ where: { propertyId, date: new Date("2024-01-01") } })).toBe(0);
+      expect(await db.ga4LandingDaily.count({ where: { propertyId, date: new Date("2024-01-01") } })).toBe(0);
     });
 
     it("a run already holding the lease is not doubled", async () => {

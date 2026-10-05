@@ -189,7 +189,7 @@ to leave a password in the environment.
       account whose access runs out within a week and can't be renewed.
       Typically that's a LinkedIn token. The warning is sent once per expiry
       date.
-   7. Syncs Search Console for up to two websites.
+   7. Syncs Search Console, then Google Analytics 4, for up to two websites each.
    8. Starts the weekly site crawls that are due (two per run), then works on
       running crawls for up to 30 seconds — about 60 pages, two at a time. A
       500-page crawl therefore takes roughly 45 minutes of scheduler runs.
@@ -210,7 +210,7 @@ to leave a password in the environment.
        it from the email log once the mailer is fixed.
 
    The JSON response reports each step's counts, including `accountsChecked`,
-   `expiringWarned`, `crawls`, `urlInspections`, `reviewLocationsSynced`, `opportunitiesDetected` and `finance` (`overdue`,
+   `expiringWarned`, `searchConsole`, `analytics`, `crawls`, `urlInspections`, `reviewLocationsSynced`, `opportunitiesDetected` and `finance` (`overdue`,
    `retainersRaised`, `remindersSent`).
 
    Without this job, `publishAt`, `unpublishAt` and a post's scheduled time
@@ -389,14 +389,15 @@ Intelligence → Settings** (needs `seo.intelligence.connect`) and stored
 encrypted with `AUTH_SECRET`. Set up either or both:
 
 1. **Sign in with Google.** In a Google Cloud project, enable the *Google
-   Search Console API*, create an OAuth client of type *Web application*, and
+   Search Console API* — and, for Google Analytics, the *Google Analytics
+   Data API* and *Google Analytics Admin API* — create an OAuth client of type *Web application*, and
    add the authorised redirect URI the settings page shows —
    `${SITE_URL}/api/seo/google/callback`. Until Google verifies the app, only
    the test users listed on its consent screen can sign in.
 2. **Service account.** In the same project, create a service account, add a
    JSON key, and paste the whole file into the settings page. A client then
    adds the service account's address as a user (Restricted is enough) in
-   their Search Console.
+   their Search Console, and as a Viewer in their GA4 property.
 
 Data arrives through the scheduler (`/api/cron`, §4): each run syncs up to two
 websites, re-reading the last five days and filling history a month at a time
@@ -407,6 +408,15 @@ this was added have none). A busy installation with many
 websites needs the cron at least every 15 minutes for history to fill
 promptly. **Sync now** on a website's Search Console page runs one sync
 immediately (three per website per ten minutes).
+
+Google Analytics 4 connects the same way, from a website's *Google Analytics*
+page, through the same callback URI. A GA4 property is accepted only if one of
+its web data streams is the website's domain. Each scheduled run syncs up to
+two websites: the last three days again (GA4 revises them), then a month of
+history at a time back to 16 months — totals per channel, organic by country
+and device, and the top 2,000 landing pages a day. Days are the GA4
+property's own; revenue is kept in its currency. If an API is not enabled the
+connection page says which one.
 
 ### Site crawler (SEO Intelligence)
 
