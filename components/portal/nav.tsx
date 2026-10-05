@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Paperclip,
   Receipt,
+  TrendingUp,
   UserRound,
 } from "lucide-react";
 import type { Route } from "next";
@@ -38,6 +39,7 @@ const ICONS = {
   messages: MessageSquare,
   profile: UserRound,
   setup: ListChecks,
+  seo: TrendingUp,
 } as const;
 
 export type PortalNavItem = {

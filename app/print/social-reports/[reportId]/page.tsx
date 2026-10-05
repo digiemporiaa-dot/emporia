@@ -5,7 +5,7 @@ import { getReport } from "@/lib/services/social-report.service";
 import { isAppError } from "@/lib/errors";
 import { monthLabel } from "@/lib/social/report-doc";
 import { SocialReportDocument } from "@/components/reports/social-report-document";
-import { PrintButton } from "./print-button";
+import { PrintButton } from "@/components/reports/print-button";
 
 export const metadata: Metadata = { title: "Social report" };
 export const dynamic = "force-dynamic";

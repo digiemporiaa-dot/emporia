@@ -200,3 +200,8 @@ export const ga4PropertyChoiceSchema = z.object({
   propertyId: id,
   ga4Property: z.string().trim().regex(/^properties\/\d+$/, "Choose a GA4 property."),
 });
+
+// Phase 11 — monthly SEO reports.
+export const seoReportGenerateSchema = z.object({ propertyId: id, month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a month.") });
+export const seoReportNotesSchema = z.object({ reportId: id, notes: z.string().max(5_000, "Up to 5,000 characters.").default("") });
+export const seoReportPublishSchema = z.object({ reportId: id, published: z.enum(["true", "false"]).transform((value) => value === "true") });

@@ -17,6 +17,7 @@ import { inspectDueUrls } from "@/lib/services/seo-intel/indexation.service";
 import { detectDueOpportunities } from "@/lib/services/seo-intel/opportunity.service";
 import { syncDueReviews } from "@/lib/services/seo-intel/reviews.service";
 import { syncDueGa4Properties } from "@/lib/services/seo-intel/ga4-sync.service";
+import { draftDueReports } from "@/lib/services/seo-intel/seo-report.service";
 import { markOverdue } from "@/lib/services/invoice.service";
 import { billDueRetainers, sendPaymentReminders } from "@/lib/services/retainer.service";
 import { systemActor } from "@/lib/actor/types";
@@ -158,6 +159,11 @@ async function handle(request: Request): Promise<NextResponse> {
     if (detection.status === "rejected") {
       cronLog.error({ err: detection.reason }, "opportunity detection failed");
     }
+    // From the 3rd, draft last month's SEO report for each website. Staff publish.
+    const seoReports = await Promise.allSettled([draftDueReports({ limit: 3 })]).then(([result]) => result);
+    if (seoReports.status === "rejected") {
+      cronLog.error({ err: seoReports.reason }, "drafting SEO reports failed");
+    }
 
     // Finance: mark unpaid invoices overdue, bill retainers that are due,
     // and remind clients about invoices coming due soon.
@@ -240,6 +246,7 @@ async function handle(request: Request): Promise<NextResponse> {
       urlInspections: inspection.status === "fulfilled" ? inspection.value.inspected : 0,
       reviewLocationsSynced: reviews.status === "fulfilled" ? reviews.value : 0,
       opportunitiesDetected: detection.status === "fulfilled" ? detection.value.detected : 0,
+      seoReportsDrafted: seoReports.status === "fulfilled" ? seoReports.value : 0,
       finance: {
         overdue: overdue.status === "fulfilled" ? overdue.value : 0,
         retainersRaised: retainers.status === "fulfilled" ? retainers.value.length : 0,
