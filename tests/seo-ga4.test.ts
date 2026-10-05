@@ -17,8 +17,8 @@ describe("normalising GA4 reports", () => {
   });
 
   it("drops malformed rows and counts them", () => {
-    const raw = reportOf(["date"], [["20260931", 1, 1, "0", "0"], ["20260930", "1.5", 1, "0", "0"], ["20260930", 1, 1, "-1", "0"], ["20260930", 1, 1, "0", "abc"], ["20260930", 1, 1, "1e2", "1e2"]]) as Ga4RawReport;
-    expect(normalizeGa4Report(raw, ["date"])).toEqual({ rows: [{ date: "2026-09-30", sessions: 1, engagedSessions: 1, keyEvents: 100, revenue: "100.00" }], dropped: 4 });
+    const raw = reportOf(["date"], [["20260931", 1, 1, "0", "0"], ["20260930", "1.5", 1, "0", "0"], ["20260930", "-3", 1, "0", "0"], ["20260930", "1e3", 1, "0", "0"], ["20260930", 1, 1, "-1", "0"], ["20260930", 1, 1, "0", "abc"], ["20260930", 1, 1, "1e2", "1e2"]]) as Ga4RawReport;
+    expect(normalizeGa4Report(raw, ["date"])).toEqual({ rows: [{ date: "2026-09-30", sessions: 1, engagedSessions: 1, keyEvents: 100, revenue: "100.00" }], dropped: 6 });
   });
 
   it("a report missing a requested column is not data", () => {
@@ -91,6 +91,11 @@ describe("GA4 adapter", () => {
     });
     const paged = await reportAll(provider, { property: "properties/101", startDate: "a", endDate: "b", dimensions: ["date"], metrics: ["sessions"] }, 10);
     expect([paged.report.rows?.length, paged.truncated, calls]).toEqual([3, false, 1]);
+
+    // Exactly as many rows as the cap, and GA4 says that is all: complete, not truncated.
+    double.onReport(() => ({ ...reportOf(["date"], Array.from({ length: 5 }, () => ["20260930", 1, 1, "0", "0"])), rowCount: 5 }));
+    const exact = await reportAll(provider, { property: "properties/101", startDate: "a", endDate: "b", dimensions: ["date"], metrics: ["sessions"] }, 5);
+    expect([exact.report.rows?.length, exact.truncated]).toEqual([5, false]);
   });
 
   it("explains each kind of refusal", async () => {

@@ -11,7 +11,7 @@
 | 5 — Content intelligence, internal links | **Done** — 19 tests |
 | 6–7 | Need a paid provider (D2) |
 | 8 — Local and international SEO | **Done** — 63 tests |
-| 9 — GA4, organic → leads → revenue | **Done** — TESTCOUNT tests |
+| 9 — GA4, organic → leads → revenue | **Done** — 32 tests |
 | 10 — Opportunity engine, thresholds, Command Center | **Done** — 25 tests |
 | 11 | Planned, Part E |
 

@@ -67,6 +67,8 @@ describeDb("Organic → revenue", () => {
           { propertyId, date, landingPage: SEO_PAGE, channel: "Organic Search", sessions: 50, engagedSessions: 30, keyEvents: 2, revenue: "10.50" },
           { propertyId, date, landingPage: BLOG_PAGE, channel: "Organic Search", sessions: 50, engagedSessions: 30, keyEvents: 0, revenue: "0" },
           { propertyId, date, landingPage: SEO_PAGE, channel: "Direct", sessions: 10, engagedSessions: 4, keyEvents: 0, revenue: "0" },
+          // GA4's placeholder: not a page, never listed.
+          { propertyId, date, landingPage: "(not set)", channel: "Organic Search", sessions: 3, engagedSessions: 0, keyEvents: 0, revenue: "0" },
         );
         gscPages.push({ propertyId, date, page: `https://${HOST}${SEO_PAGE}/`, clicks: 5, impressions: 100, position: 4 });
         gscPairs.push(
@@ -136,6 +138,7 @@ describeDb("Organic → revenue", () => {
       expect(ga4.channels).toEqual([{ channel: "Organic Search", sessions: 2800 }, { channel: "Direct", sessions: 1400 }]);
       expect(ga4.trend).toHaveLength(28);
       expect(ga4.trend[0]).toEqual({ day: "2025-03-04", value: 100 });
+      expect(ga4.landingPages).toBe(2);
       expect(ga4.landing.map((row) => [row.path, row.sessions, row.keyEvents, row.revenue])).toEqual([
         [BLOG_PAGE, 1400, 0, "0.00"],
         [SEO_PAGE, 1400, 56, "294.00"],
