@@ -111,6 +111,14 @@ export const seoGoogleSettingsSchema = z.object({
   /** The whole service-account key file, pasted. */
   serviceAccountJson: z.string().trim().max(10_000, "That key file is too large.").default(""),
   removeServiceAccount: z.boolean().default(false),
+  /** Chrome UX Report API key, for Core Web Vitals. Blank keeps what is stored. */
+  cruxApiKey: z
+    .string()
+    .trim()
+    .max(200)
+    .default("")
+    .refine((value) => value === "" || /^[\w-]{20,200}$/.test(value), "That does not look like a Google API key."),
+  removeCruxKey: z.boolean().default(false),
 });
 
 export type SeoGoogleSettingsInput = z.infer<typeof seoGoogleSettingsSchema>;

@@ -3437,6 +3437,8 @@ model SeoProperty {
   lastDetectedAt DateTime?
   /// When Core Web Vitals were last read from CrUX (weekly).
   cwvCheckedAt   DateTime?
+  /// Why the last Core Web Vitals check failed, in words safe to show; null when it worked.
+  cwvError       String?
 
   createdById String?
   createdBy   User?   @relation("SeoPropertyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
