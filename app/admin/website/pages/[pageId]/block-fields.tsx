@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { RewriteControl } from "./rewrite-control";
 import { MediaPicker, type PickedMedia } from "@/components/admin/media-picker";
+import { ButtonTargetField } from "@/components/admin/button-target-field";
 import { ICON_LABELS, ICON_NAMES } from "@/lib/content/icons";
 import type { BlockType } from "@/lib/content/blocks";
 import { EMPTY_TAXONOMY, type TaxonomyOption, type TaxonomyOptions } from "@/lib/content/taxonomy";
@@ -481,7 +482,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                     value={str(item["ctaLabel"])}
                     onChange={(v) => patch({ ctaLabel: v })}
                   />
-                  <LabelledInput
+                  <ButtonTargetField
                     label="Button link"
                     value={str(item["ctaHref"])}
                     onChange={(v) => patch({ ctaHref: v })}
@@ -664,7 +665,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               value={str(content["ctaLabel"])}
               onChange={(v) => set({ ctaLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Button link"
               value={str(content["ctaHref"])}
               onChange={(v) => set({ ctaHref: v })}
@@ -675,7 +676,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               value={str(content["secondaryLabel"])}
               onChange={(v) => set({ secondaryLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Second button link"
               value={str(content["secondaryHref"])}
               onChange={(v) => set({ secondaryHref: v })}
@@ -839,7 +840,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               value={str(content["ctaLabel"])}
               onChange={(v) => set({ ctaLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Button link"
               value={str(content["ctaHref"])}
               onChange={(v) => set({ ctaHref: v })}
@@ -850,7 +851,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               value={str(content["secondaryLabel"])}
               onChange={(v) => set({ secondaryLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Second button link"
               value={str(content["secondaryHref"])}
               onChange={(v) => set({ secondaryHref: v })}
@@ -995,7 +996,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               value={str(content["ctaLabel"])}
               onChange={(v) => set({ ctaLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Button link"
               value={str(content["ctaHref"])}
               onChange={(v) => set({ ctaHref: v })}
@@ -1188,7 +1189,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
               value={str(content["ctaLabel"])}
               onChange={(v) => set({ ctaLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Button link"
               value={str(content["ctaHref"])}
               onChange={(v) => set({ ctaHref: v })}
@@ -1767,7 +1768,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                     value={str(item["buttonLabel"])}
                     onChange={(v) => patch({ buttonLabel: v })}
                   />
-                  <LabelledInput
+                  <ButtonTargetField
                     label="Button link"
                     value={str(item["buttonHref"])}
                     onChange={(v) => patch({ buttonHref: v })}
@@ -1866,7 +1867,7 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                     value={str(item["buttonLabel"])}
                     onChange={(v) => patch({ buttonLabel: v })}
                   />
-                  <LabelledInput
+                  <ButtonTargetField
                     label="Button link"
                     value={str(item["buttonHref"])}
                     onChange={(v) => patch({ buttonHref: v })}
@@ -1919,16 +1920,14 @@ export function BlockFields({ type, ...props }: FieldProps & { type: BlockType }
                 />
               )}
             </Field>
-            <Field id="secondaryHref" label="Second button link" error={err("secondaryHref")}>
-              {(aria) => (
-                <Input
-                  {...aria}
-                  value={str(content["secondaryHref"])}
-                  onChange={(e) => set({ secondaryHref: e.target.value })}
-                  placeholder="/packages"
-                />
-              )}
-            </Field>
+            <ButtonTargetField
+              tone="plain"
+              label="Second button"
+              value={str(content["secondaryHref"])}
+              onChange={(v) => set({ secondaryHref: v })}
+              placeholder="/packages"
+              error={err("secondaryHref")}
+            />
           </div>
           <Field id="tone" label="Tone" error={err("tone")}>
             {(aria) => (
@@ -2551,7 +2550,7 @@ function ComparisonFields({
               value={str(item["ctaLabel"])}
               onChange={(v) => patch({ ctaLabel: v })}
             />
-            <LabelledInput
+            <ButtonTargetField
               label="Button goes to"
               placeholder="/contact"
               value={str(item["ctaHref"])}
@@ -2681,21 +2680,14 @@ function CtaFields({
           />
         )}
       </Field>
-      <Field
-        id="ctaHref"
-        label="Button link"
+      <ButtonTargetField
+        tone="plain"
+        label="Button"
         hint="A path on this site, e.g. /contact"
+        value={str(content["ctaHref"])}
+        onChange={(v) => set({ ctaHref: v })}
         error={err("ctaHref")}
-      >
-        {(aria) => (
-          <Input
-            {...aria}
-            value={str(content["ctaHref"])}
-            onChange={(e) => set({ ctaHref: e.target.value })}
-            placeholder="/contact"
-          />
-        )}
-      </Field>
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isPopupTarget } from "@/lib/popups/button-target";
 
 /**
  * Header, footer and navigation validation.
@@ -109,7 +110,12 @@ export const navigationSettingsSchema = z
     headerLinks: list(navItemSchema, 8, "header links"),
     ctaEnabled: z.boolean(),
     ctaLabel: z.string().trim().max(30, "Keep the button label under 30 characters."),
-    ctaHref: optionalNavHref,
+    /** A link, or `popup:<id>` to open a popup (lib/popups/button-target). */
+    ctaHref: z
+      .string()
+      .trim()
+      .max(300, "That destination is too long.")
+      .refine((value) => value === "" || isSafeHref(value) || isPopupTarget(value), HREF_HELP),
 
     tagline: z.string().trim().max(160, "Keep the tagline under 160 characters."),
     // Footer contact details. Blank means "do not show that line" — an agency

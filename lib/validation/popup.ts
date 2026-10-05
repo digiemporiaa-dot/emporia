@@ -51,7 +51,8 @@ export const popupSchema = z
       (typeof data.triggerValue === "number" && data.triggerValue >= 0),
     { message: "Enter a delay in seconds.", path: ["triggerValue"] },
   )
-  .refine((data) => !data.isActive || data.targets.length > 0, {
+  // A button popup opens wherever its button is, so it needs no targeting.
+  .refine((data) => !data.isActive || data.trigger === "BUTTON_CLICK" || data.targets.length > 0, {
     // An active popup with no targets would never fire anyway; refusing it here
     // makes that obvious at save time rather than as silent nothing.
     message: "An active popup needs at least one targeting rule.",

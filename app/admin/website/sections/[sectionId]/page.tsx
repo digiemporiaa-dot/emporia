@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { ButtonPopupsProvider } from "@/components/admin/button-target-field";
+import { buttonPopupOptions } from "@/lib/services/popup.service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
@@ -44,6 +46,8 @@ export default async function ReusableSectionPage({
         });
   const mediaById = Object.fromEntries(mediaRows.map((row) => [row.id, row]));
   const taxonomy = await taxonomyOptions();
+  // The "Open a popup" choice on buttons: button-click popups only.
+  const buttonPopups = await buttonPopupOptions(actor);
 
   return (
     <>
@@ -66,28 +70,30 @@ export default async function ReusableSectionPage({
         </p>
       </header>
 
-      <ReusableEditor
-        taxonomy={taxonomy}
-        section={{
-          id: section.id,
-          name: section.name,
-          type: section.type,
-          status: section.status,
-          isGlobal: section.isGlobal,
-          content: section.content,
-          placements: section._count.usages,
-        }}
-        media={mediaById}
-        usages={usages.map((usage) => ({
-          sectionId: usage.id,
-          isVisible: usage.isVisible,
-          pageId: usage.page.id,
-          pageTitle: usage.page.title,
-          pageSlug: usage.page.slug,
-          pageStatus: usage.page.status,
-        }))}
-        canDelete={can(actor, "pages.delete")}
-      />
+      <ButtonPopupsProvider popups={buttonPopups}>
+        <ReusableEditor
+          taxonomy={taxonomy}
+          section={{
+            id: section.id,
+            name: section.name,
+            type: section.type,
+            status: section.status,
+            isGlobal: section.isGlobal,
+            content: section.content,
+            placements: section._count.usages,
+          }}
+          media={mediaById}
+          usages={usages.map((usage) => ({
+            sectionId: usage.id,
+            isVisible: usage.isVisible,
+            pageId: usage.page.id,
+            pageTitle: usage.page.title,
+            pageSlug: usage.page.slug,
+            pageStatus: usage.page.status,
+          }))}
+          canDelete={can(actor, "pages.delete")}
+        />
+      </ButtonPopupsProvider>
     </>
   );
 }

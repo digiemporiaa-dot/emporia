@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { cn } from "@/lib/utils/cn";
+import { ButtonTargetField } from "@/components/admin/button-target-field";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { AlertCircle, ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
@@ -356,19 +358,18 @@ export function NavigationForm({ navigation }: { navigation: SiteNavigation }) {
                   />
                 )}
               </Field>
-              <Field id="ctaHref" label="Button destination" error={err("ctaHref")}>
-                {(aria) => (
-                  <Input
-                    {...aria}
-                    name="ctaHref"
-                    value={ctaHref}
-                    onChange={(event) => setCtaHref(event.target.value)}
-                    placeholder="/contact"
-                    readOnly={!ctaEnabled}
-                    className={dimmed}
-                  />
-                )}
-              </Field>
+              {/* The value travels in the hidden input, so switching the button off keeps it. */}
+              <input type="hidden" name="ctaHref" value={ctaHref} />
+              <fieldset disabled={!ctaEnabled} className={cn("min-w-0", !ctaEnabled && "opacity-60")}>
+                <ButtonTargetField
+                  tone="plain"
+                  label="Button destination"
+                  value={ctaHref}
+                  onChange={setCtaHref}
+                  placeholder="/contact"
+                  error={err("ctaHref")}
+                />
+              </fieldset>
             </div>
           </div>
         </CardBody>

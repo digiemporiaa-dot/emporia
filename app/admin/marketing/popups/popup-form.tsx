@@ -79,7 +79,7 @@ export function PopupForm({
       : trigger === "SCROLL_PERCENT"
         ? "Percent of the page scrolled, 1 to 100."
         : trigger === "BUTTON_CLICK"
-          ? "Fires when an element with data-popup-trigger is clicked."
+          ? "Opens when a visitor clicks a button set to open it: in the page builder or Settings → Navigation, choose “Open a popup”. Targeting, frequency and priority do not apply — it opens on every click, on any page with that button."
           : "No value needed for this trigger.";
 
   const needsValue = trigger === "TIME_DELAY" || trigger === "SCROLL_PERCENT";

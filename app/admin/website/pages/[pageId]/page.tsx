@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { ButtonPopupsProvider } from "@/components/admin/button-target-field";
+import { buttonPopupOptions } from "@/lib/services/popup.service";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActorPage } from "@/lib/actor";
@@ -68,6 +70,8 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
   // Loaded once for the whole screen: the filter pickers on every dynamic block
   // share this rather than each fetching the same four lists.
   const taxonomy = can(actor, "pages.edit") ? await taxonomyOptions() : EMPTY_TAXONOMY;
+  // The "Open a popup" choice on buttons: button-click popups only.
+  const buttonPopups = can(actor, "pages.edit") ? await buttonPopupOptions(actor) : [];
   // Whether the drafting assists appear at all. Both halves matter: the
   // permission, and a provider actually configured. Offering a button whose
   // only possible outcome is "AI is not configured" is worse than no button.
@@ -133,17 +137,19 @@ export default async function EditPagePage({ params }: { params: Promise<{ pageI
 
       <PageSettingsForm page={page} canPublish={can(actor, "pages.publish")} />
 
-      <PageBuilder
-        pageId={page.id}
-        sections={page.sections}
-        media={mediaById}
-        reusables={reusables}
-        taxonomy={taxonomy}
-        canEdit={can(actor, "pages.edit")}
-        allowedBlocks={allowedBlocksOf(page.template?.allowedBlocks)}
-        templateName={page.template?.name ?? null}
-        aiReady={aiReady && can(actor, "pages.edit")}
-      />
+      <ButtonPopupsProvider popups={buttonPopups}>
+        <PageBuilder
+          pageId={page.id}
+          sections={page.sections}
+          media={mediaById}
+          reusables={reusables}
+          taxonomy={taxonomy}
+          canEdit={can(actor, "pages.edit")}
+          allowedBlocks={allowedBlocksOf(page.template?.allowedBlocks)}
+          templateName={page.template?.name ?? null}
+          aiReady={aiReady && can(actor, "pages.edit")}
+        />
+      </ButtonPopupsProvider>
 
       <SchedulePanel
         pageId={page.id}
