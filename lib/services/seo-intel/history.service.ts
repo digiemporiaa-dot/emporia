@@ -22,6 +22,9 @@ function staffOnly(actor: Actor) {
   if (actor.type !== "STAFF" && actor.type !== "SYSTEM") throw new ForbiddenError("Not available in the client portal.");
 }
 
+/** The first day of the axis, as a date the (propertyId, date) index can range over. */
+const since = (months: readonly string[]) => `${months[0] ?? "0001-01"}-01`;
+
 type SearchRow = { month: string; clicks: bigint | number; impressions: bigint | number; weighted: number | null; days: bigint | number };
 type OrganicRow = { month: string; sessions: bigint | number; keyEvents: number | null; revenue: { toString(): string } | null; days: bigint | number };
 
@@ -31,7 +34,7 @@ export async function monthlySearch(propertyId: string, months: readonly string[
     SELECT to_char(date, 'YYYY-MM') AS month, SUM(clicks) AS clicks, SUM(impressions) AS impressions,
            SUM(position * impressions) AS weighted, COUNT(*) AS days
     FROM "GscDailyTotal"
-    WHERE "propertyId" = ${propertyId} AND device = '' AND country = '' AND to_char(date, 'YYYY-MM') >= ${months[0] ?? "0000-00"}
+    WHERE "propertyId" = ${propertyId} AND device = '' AND country = '' AND date >= ${since(months)}::date
     GROUP BY 1`);
   return onMonths(
     rows.map((row) => {
@@ -47,7 +50,7 @@ export async function monthlyOrganic(propertyId: string, months: readonly string
   const rows = await db.$queryRaw<OrganicRow[]>(Prisma.sql`
     SELECT to_char(date, 'YYYY-MM') AS month, SUM(sessions) AS sessions, SUM("keyEvents") AS "keyEvents", SUM(revenue) AS revenue, COUNT(*) AS days
     FROM "Ga4DailyTotal"
-    WHERE "propertyId" = ${propertyId} AND channel = ${ORGANIC_CHANNEL} AND country = '' AND device = '' AND to_char(date, 'YYYY-MM') >= ${months[0] ?? "0000-00"}
+    WHERE "propertyId" = ${propertyId} AND channel = ${ORGANIC_CHANNEL} AND country = '' AND device = '' AND date >= ${since(months)}::date
     GROUP BY 1`);
   return onMonths(
     rows.map((row) => ({ month: row.month, sessions: Number(row.sessions), keyEvents: Number(row.keyEvents ?? 0), revenue: toMoneyString(row.revenue?.toString() ?? "0"), days: Number(row.days), daysInMonth: daysInMonth(row.month) })),
