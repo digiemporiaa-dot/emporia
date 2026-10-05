@@ -27,10 +27,9 @@ export const dynamic = "force-dynamic";
  * lead was qualified, it became a client, and that client paid. Every arrow is
  * a foreign key, so this is a join rather than an estimate.
  *
- * Traffic is deliberately absent. Nothing in this application stores a
- * pageview and no analytics provider is implemented, so sessions read "Not
- * connected" rather than zero — a zero would claim the page has no visitors,
- * which is a claim nobody here has the data to make.
+ * Sessions come from the agency website's GA4 once it is connected in SEO
+ * Intelligence; until then they read "Not connected" rather than zero — a
+ * zero would claim the page has no visitors, which nobody here can know.
  */
 export default async function PagePerformancePage({
   searchParams,

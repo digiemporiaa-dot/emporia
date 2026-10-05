@@ -12,7 +12,7 @@ import type { ChangeInsight } from "@/lib/seo-intel/engine/changes";
  * create, refresh, resolve and reopen.
  */
 
-export type Source = "KEYWORDS" | "CONTENT" | "TECHNICAL" | "INDEXATION" | "LINKS" | "CHANGES" | "LOCAL" | "NAP" | "REVIEWS" | "INTERNATIONAL";
+export type Source = "KEYWORDS" | "CONTENT" | "TECHNICAL" | "INDEXATION" | "LINKS" | "CHANGES" | "LOCAL" | "NAP" | "REVIEWS" | "INTERNATIONAL" | "ANALYTICS";
 export type Severity = "HIGH" | "MEDIUM" | "LOW";
 export type Effort = "LOW" | "MEDIUM" | "HIGH";
 export type Status = "OPEN" | "TASK_CREATED" | "DONE" | "DISMISSED" | "RESOLVED";
@@ -26,7 +26,7 @@ export type Candidate = {
   query: string | null;
   evidence: Record<string, unknown>;
   impact: number;
-  impactUnit: "clicks" | "impressions" | "pages" | "links" | "alert" | "reviews" | "days";
+  impactUnit: "clicks" | "impressions" | "pages" | "links" | "alert" | "reviews" | "days" | "sessions";
   severity: Severity;
   effort: Effort;
 };
@@ -383,6 +383,25 @@ export function fromInternational(missing: readonly { country: string; name: str
     impactUnit: "clicks" as const,
     severity: clickSeverity(row.clicks),
     effort: "HIGH" as const,
+  }));
+}
+
+/** Organic sessions → severity for low-converting pages. */
+export const SESSION_SEVERITY = { high: 2_000, medium: 500 } as const;
+
+export function fromAnalytics(pages: readonly { path: string; sessions: number; keyEvents: number; rate: number; siteRate: number }[]): Candidate[] {
+  return pages.map((page) => ({
+    fingerprint: `analytics:low-conversion:${page.path}`,
+    source: "ANALYTICS" as const,
+    type: "analytics-low-conversion",
+    title: `Organic visitors rarely convert on ${page.path}`,
+    url: null,
+    query: null,
+    evidence: { path: page.path, sessions: page.sessions, keyEvents: page.keyEvents, rate: page.rate, siteRate: page.siteRate },
+    impact: page.sessions,
+    impactUnit: "sessions" as const,
+    severity: page.sessions >= SESSION_SEVERITY.high ? ("HIGH" as const) : page.sessions >= SESSION_SEVERITY.medium ? ("MEDIUM" as const) : ("LOW" as const),
+    effort: "MEDIUM" as const,
   }));
 }
 

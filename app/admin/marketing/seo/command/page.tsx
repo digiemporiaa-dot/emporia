@@ -25,7 +25,7 @@ import { formatCount } from "../overview-parts";
 export const metadata: Metadata = { title: "Command Center" };
 export const dynamic = "force-dynamic";
 
-const SOURCES = ["KEYWORDS", "CONTENT", "TECHNICAL", "INDEXATION", "LINKS", "LOCAL", "NAP", "REVIEWS", "INTERNATIONAL", "CHANGES"] as const;
+const SOURCES = ["KEYWORDS", "CONTENT", "TECHNICAL", "INDEXATION", "LINKS", "LOCAL", "NAP", "REVIEWS", "INTERNATIONAL", "ANALYTICS", "CHANGES"] as const;
 const SEVERITIES = ["HIGH", "MEDIUM", "LOW"] as const;
 const EFFORTS = ["LOW", "MEDIUM", "HIGH"] as const;
 
@@ -51,6 +51,7 @@ const SOURCE_LABEL: Record<(typeof SOURCES)[number], string> = {
   NAP: "Name, address, phone",
   REVIEWS: "Google reviews",
   INTERNATIONAL: "International",
+  ANALYTICS: "Organic conversions",
   CHANGES: "What changed",
 };
 const STATUS_LABEL: Record<StatusFilter, string> = { active: "Open and in progress", OPEN: "Open", TASK_CREATED: "Task created", DONE: "Done", DISMISSED: "Dismissed", RESOLVED: "Resolved by detector" };
@@ -71,6 +72,8 @@ function impactText(impact: number, unit: string) {
       return `${formatCount(impact)} review${impact === 1 ? "" : "s"}`;
     case "days":
       return `${formatCount(impact)} day${impact === 1 ? "" : "s"}`;
+    case "sessions":
+      return `${formatCount(impact)} organic sessions`;
     default:
       return "Alert";
   }
@@ -98,6 +101,8 @@ function evidenceHref(row: { source: (typeof SOURCES)[number]; type: string; pro
       return `/admin/marketing/seo/local/reviews?property=${p}` as Route;
     case "INTERNATIONAL":
       return `/admin/marketing/seo/international?property=${p}` as Route;
+    case "ANALYTICS":
+      return `/admin/marketing/seo/revenue?property=${p}` as Route;
     case "CHANGES":
       return `/admin/marketing/seo?property=${p}` as Route;
   }

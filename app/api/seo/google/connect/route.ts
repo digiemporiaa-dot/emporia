@@ -4,10 +4,12 @@ import { can } from "@/lib/auth/rbac";
 import { isAppError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import { gscAuthorizationUrl } from "@/lib/services/seo-intel/gsc-connection.service";
+import { ga4AuthorizationUrl } from "@/lib/services/seo-intel/ga4-connection.service";
 import { issueSeoState, SEO_OAUTH_COOKIE, SEO_OAUTH_COOKIE_PATH } from "@/lib/seo-intel/google/oauth-state";
 
 /**
- * Begin "Sign in with Google" for a property's Search Console.
+ * Begin "Sign in with Google" for a property's Search Console, or its
+ * Analytics with `?source=ANALYTICS`.
  *
  * A route handler because the browser has to be redirected to Google. Who the
  * operator is, that they may connect, and that the property exists are all
@@ -27,13 +29,15 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "You cannot connect data sources." }, { status: 403 });
   }
 
-  const propertyId = new URL(request.url).searchParams.get("propertyId");
+  const params = new URL(request.url).searchParams;
+  const propertyId = params.get("propertyId");
   if (!propertyId) return NextResponse.json({ error: "No website was named." }, { status: 400 });
+  const source = params.get("source") === "ANALYTICS" ? "ANALYTICS" : "SEARCH_CONSOLE";
 
-  const { state, nonce } = issueSeoState({ propertyId, source: "SEARCH_CONSOLE", via: "staff" });
+  const { state, nonce } = issueSeoState({ propertyId, source, via: "staff" });
   let authorizeUrl: string;
   try {
-    authorizeUrl = await gscAuthorizationUrl(actor, propertyId, state);
+    authorizeUrl = source === "ANALYTICS" ? await ga4AuthorizationUrl(actor, propertyId, state) : await gscAuthorizationUrl(actor, propertyId, state);
   } catch (error) {
     if (isAppError(error)) return NextResponse.json({ error: error.publicMessage }, { status: error.status });
     routeLog.error({ err: error, propertyId }, "could not start the search console sign-in");
@@ -48,6 +52,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     path: SEO_OAUTH_COOKIE_PATH,
     maxAge: 600,
   });
-  routeLog.info({ propertyId, actorId: actor.userId }, "search console sign-in started");
+  routeLog.info({ propertyId, source, actorId: actor.userId }, "google sign-in started");
   return response;
 }

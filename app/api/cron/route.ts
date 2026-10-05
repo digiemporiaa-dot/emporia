@@ -16,6 +16,7 @@ import { advanceCrawls, startDueCrawls } from "@/lib/services/seo-intel/crawl.se
 import { inspectDueUrls } from "@/lib/services/seo-intel/indexation.service";
 import { detectDueOpportunities } from "@/lib/services/seo-intel/opportunity.service";
 import { syncDueReviews } from "@/lib/services/seo-intel/reviews.service";
+import { syncDueGa4Properties } from "@/lib/services/seo-intel/ga4-sync.service";
 import { markOverdue } from "@/lib/services/invoice.service";
 import { billDueRetainers, sendPaymentReminders } from "@/lib/services/retainer.service";
 import { systemActor } from "@/lib/actor/types";
@@ -123,6 +124,11 @@ async function handle(request: Request): Promise<NextResponse> {
     // Search Console: a couple of websites per run, history filled a month at
     // a time. Last, and never able to fail the run — it is a read.
     const seo = await Promise.allSettled([syncDueGscProperties({ limit: 2 })]).then(([result]) => result);
+    // GA4, the same way: recent days every six hours, history a month per run.
+    const analytics = await Promise.allSettled([syncDueGa4Properties({ limit: 2 })]).then(([result]) => result);
+    if (analytics.status === "rejected") {
+      cronLog.error({ err: analytics.reason }, "analytics sync failed");
+    }
     if (seo.status === "rejected") {
       cronLog.error({ err: seo.reason }, "search console sync failed");
     }
@@ -226,6 +232,7 @@ async function handle(request: Request): Promise<NextResponse> {
       accountsChecked: accountSync.status === "fulfilled" ? accountSync.value : { checked: 0, failed: 0 },
       expiringWarned: expiring.status === "fulfilled" ? expiring.value.warned : 0,
       searchConsole: seo.status === "fulfilled" ? seo.value : { synced: 0, failed: 0 },
+      analytics: analytics.status === "fulfilled" ? analytics.value : { synced: 0, failed: 0 },
       crawls: {
         started: crawlStart.status === "fulfilled" ? crawlStart.value : 0,
         ...(crawl.status === "fulfilled" ? crawl.value : { pages: 0, finished: 0, failed: 0 }),

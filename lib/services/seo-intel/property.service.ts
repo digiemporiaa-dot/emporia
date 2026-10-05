@@ -44,6 +44,8 @@ const PROPERTY_SELECT = {
   verifiedAt: true,
   gscSiteUrl: true,
   ga4PropertyId: true,
+  ga4Currency: true,
+  ga4TimeZone: true,
   defaultLanguage: true,
   timezone: true,
   isActive: true,

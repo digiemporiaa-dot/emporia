@@ -1,6 +1,6 @@
 # SEO Intelligence — Audit and Implementation Plan
 
-**Status: Phases 1–5, 8 and 10 built. Phases 6–7 need a paid provider (D2); 9 and 11 can go next without one (9 needs the Google Analytics Data API enabled, 11 a CrUX API key for Core Web Vitals).**
+**Status: Phases 1–5 and 8–10 built. Phases 6–7 need a paid provider (D2); 11 can go next (it needs a CrUX API key for Core Web Vitals).**
 
 | Phase | State |
 | ----- | ----- |
@@ -11,7 +11,7 @@
 | 5 — Content intelligence, internal links | **Done** — 19 tests |
 | 6–7 | Need a paid provider (D2) |
 | 8 — Local and international SEO | **Done** — 63 tests |
-| 9 | Planned, Part E |
+| 9 — GA4, organic → leads → revenue | **Done** — 32 tests |
 | 10 — Opportunity engine, thresholds, Command Center | **Done** — 25 tests |
 | 11 | Planned, Part E |
 
@@ -632,3 +632,62 @@ JavaScript-rendered structured data (the crawler reads static HTML),
 competitor local rankings and map-pack positions (need a provider, D2),
 query-level country data (Search Console totals by country only), and portal
 visibility (D4).
+
+---
+
+## Part M — Phase 9, as built
+
+**Decisions (2026-10-05):** an agency-website lead is organic when its first
+recorded visit was; keywords are context only (the Search Console queries of
+a landing page), never a share of leads or revenue; GA4 history goes back 16
+months; the Command Center flags organic pages with traffic but few key
+events.
+
+**Connection** (`ga4-connection.service.ts`, `providers/ga4.ts`): Google
+sign-in or the agency's service account, like Search Console (decision D3),
+through the same callback — the signed OAuth state now names its source, and
+Analytics is staff-only. The GA4 property is chosen from Google's own list
+(Admin API account summaries) and accepted only if one of its web data
+streams is the website's host (www or not), so one client's Analytics cannot
+feed another's website. Its currency and time zone are stored. Choosing a
+different property clears the previous one's rows. Token renewal, the service
+account and revoking moved to `google-credentials.ts`, shared with Search
+Console. Google's 403 SERVICE_DISABLED is reported as "enable the … API".
+
+**Sync** (`ga4-sync.service.ts`, `normalize/ga4.ts`): the Search Console
+pattern — a lease per website, each day replaced whole, the last 3 days re-read
+every run, 30 days of history a run back to 16 months, failures backing off,
+lost access marking the connection for a person. Per day: sessions, engaged
+sessions, key events and revenue per default channel group, organic per
+country and per device (`Ga4DailyTotal`), and the top 2,000 landing page ×
+channel rows (`Ga4LandingDaily`). Columns are read by header name; revenue is
+parsed from GA4's text straight into a two-place Decimal.
+
+**Organic → revenue** (`organic.service.ts`, `engine/organic.ts`):
+- GA4, any website: organic sessions, engagement rate, key events, key-event
+  rate and GA4 revenue against the comparison period; organic share of all
+  sessions; daily trend; channel mix; the top 50 organic landing pages with
+  Search Console clicks and top three queries for the same path; organic
+  sessions by country and device.
+- CRM, the agency's own website only: leads in the period whose first touch
+  was organic (utm_medium=organic, or untagged with a search-engine referrer;
+  any other tag wins), and how many were qualified, reached the pipeline and
+  became clients; payments received in the period from clients whose
+  converting lead was organic, each client once (the Analytics rule). By
+  landing page (with GA4 organic sessions and lead rate), service, city and
+  campaign. Lead figures follow lead visibility and need `analytics.view`;
+  payments need `invoices.view`.
+- One path normalisation (`pathKey`) now serves CRM landing paths, GA4 pages
+  and Search Console URLs; Analytics → Pages uses it too and shows the agency
+  website's GA4 sessions instead of "Not connected".
+
+**Command Center**: source ANALYTICS — organic landing pages with at least
+`analytics.minSessions` 28-day sessions and a key-event rate under
+`analytics.rateShare` of the site's organic rate; severity by sessions (2,000
+high, 500 medium). It runs only when the website records key events.
+
+**Not in this phase, deliberately:** user-scoped metrics (users are not
+additive across days), GA4 conversions by event name, the client portal (D4),
+leads for client websites (Emporia does not capture them — GA4 key events are
+their conversions), and gclid-based paid detection (a tagged ad is paid; an
+untagged ad click from Google would read as organic).

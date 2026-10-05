@@ -229,6 +229,15 @@ describe("the OAuth state", () => {
     expect(readSeoState(null, nonce)).toEqual({ ok: false, reason: "malformed" });
   });
 
+  it("carries Analytics for staff, never for the portal", () => {
+    const { state, nonce } = issueSeoState({ propertyId: "prop-1", source: "ANALYTICS", via: "staff" });
+    expect(readSeoState(state, nonce)).toMatchObject({ ok: true, value: { source: "ANALYTICS", via: "staff" } });
+    const portal = issueSignedState("seo-google-oauth", { propertyId: "p", source: "ANALYTICS", via: "portal" });
+    expect(readSeoState(portal.state, portal.nonce)).toEqual({ ok: false, reason: "malformed" });
+    const other = issueSignedState("seo-google-oauth", { propertyId: "p", source: "BACKLINKS", via: "staff" });
+    expect(readSeoState(other.state, other.nonce)).toEqual({ ok: false, reason: "malformed" });
+  });
+
   it("a state minted for social accounts cannot be replayed here", () => {
     const social = issueSocialState({ clientId: "c", provider: "YOUTUBE", returnTo: "/" });
     expect(readSeoState(social.state, social.nonce)).toEqual({ ok: false, reason: "signature" });

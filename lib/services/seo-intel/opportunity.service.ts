@@ -21,9 +21,15 @@ import { computeInternational } from "@/lib/services/seo-intel/international.ser
 import { REVIEW_SYNC_INTERVAL_MS } from "@/lib/services/seo-intel/reviews.service";
 import { reviewStats } from "@/lib/seo-intel/engine/reviews";
 import { countryName } from "@/lib/geo/countries";
+import { latestGa4Day } from "@/lib/services/seo-intel/organic.service";
+import { landingStatsByPath } from "@/lib/services/seo-intel/ga4-read.service";
+import { lowConversionPages } from "@/lib/seo-intel/engine/organic";
+import { ORGANIC_CHANNEL } from "@/lib/seo-intel/normalize/ga4";
+import { resolvePeriod } from "@/lib/seo-intel/periods";
 import {
   fromChanges,
   fromContent,
+  fromAnalytics,
   fromIndexation,
   fromInternational,
   fromKeywords,
@@ -158,6 +164,31 @@ async function internationalCandidates(propertyId: string): Promise<Candidate[] 
   return fromInternational(analysis.missing.map((row) => ({ ...row, name: countryName(row.country) ?? row.country })));
 }
 
+/**
+ * Needs synced GA4 data with key events: a site that records none has no rate
+ * to compare pages against, so nothing it found before may be resolved.
+ */
+async function analyticsCandidates(propertyId: string, t: Awaited<ReturnType<typeof thresholdsFor>>): Promise<Candidate[] | null> {
+  const latest = await latestGa4Day(propertyId);
+  if (!latest) return null;
+  const range = resolvePeriod("28d", latest).current;
+  const site = await db.ga4DailyTotal.aggregate({
+    where: { propertyId, channel: ORGANIC_CHANNEL, country: "", device: "", date: { gte: toDbDate(range.start), lte: toDbDate(range.end) } },
+    _sum: { sessions: true, keyEvents: true },
+  });
+  const sessions = site._sum.sessions ?? 0;
+  const keyEvents = site._sum.keyEvents ?? 0;
+  if (sessions === 0 || keyEvents === 0) return null;
+  const pages = await landingStatsByPath(propertyId, range, ORGANIC_CHANNEL);
+  return fromAnalytics(
+    lowConversionPages(
+      [...pages].map(([path, stats]) => ({ path, sessions: stats.sessions, keyEvents: stats.keyEvents })),
+      keyEvents / sessions,
+      { minSessions: t["analytics.minSessions"], rateShare: t["analytics.rateShare"] },
+    ),
+  );
+}
+
 /** Run every source for one website and reconcile the stored list. */
 export async function detectOpportunities(propertyId: string, now = new Date()) {
   const t = await thresholdsFor(propertyId);
@@ -200,6 +231,7 @@ export async function detectOpportunities(propertyId: string, now = new Date()) 
   await attempt("NAP", () => napCandidates(propertyId));
   await attempt("REVIEWS", () => reviewCandidates(propertyId, now, t));
   await attempt("INTERNATIONAL", () => internationalCandidates(propertyId));
+  await attempt("ANALYTICS", () => analyticsCandidates(propertyId, t));
   await attempt("CHANGES", async () => {
     const overview = await getSEOOverview(systemActor({ permissions: ["seo.intelligence.view"] }), propertyId, "28d");
     if (overview.state !== "ready") return null;

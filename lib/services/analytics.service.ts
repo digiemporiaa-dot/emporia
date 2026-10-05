@@ -6,6 +6,8 @@ import { Decimal, div, mul, toMoneyString, ZERO } from "@/lib/money";
 import { rangeFilter, type DateRange } from "@/lib/analytics/range";
 import type { Actor } from "@/lib/actor/types";
 import type { Prisma } from "@/generated/prisma/client";
+import { pathKey } from "@/lib/seo-intel/engine/organic";
+import { agencyGa4Property, landingStatsByPath, localDay } from "@/lib/services/seo-intel/ga4-read.service";
 
 /**
  * Analytics.
@@ -675,13 +677,13 @@ export async function revenueByDimension(
  * earliest converting lead, so every payment is counted under exactly one page
  * — the same rule the service and city breakdowns use.
  *
- * ## Traffic is absent, not zero
+ * ## Traffic comes from GA4, or is absent — never invented
  *
- * There is no pageview store and no analytics provider implemented
- * (`lib/reporting` defines the boundary and nothing fills it). Sessions and
- * conversion rate are therefore `null`, and the screen says "Not connected".
- * A zero would read as "this page gets no visitors", which is a claim nobody
- * has the data to make (CLAUDE.md 5).
+ * Sessions are the agency website's GA4 landing-page sessions (all channels)
+ * for the same days, once its GA4 is connected in SEO Intelligence. Without
+ * that they are `null` and the screen says "Not connected": a zero would read
+ * as "this page gets no visitors", a claim nobody has the data to make
+ * (CLAUDE.md 5).
  */
 export type PageFunnelRow = {
   /** The landing path exactly as captured, normalised. */
@@ -695,7 +697,7 @@ export type PageFunnelRow = {
   clients: number;
   /** Fixed-precision string. Payments captured in range, attributed once. */
   revenue: string;
-  /** Null, always, until a traffic source exists. Never zero. */
+  /** GA4 landing sessions; null when the agency website's GA4 is not connected. */
   sessions: number | null;
 };
 
@@ -705,13 +707,10 @@ export type PageFunnelRow = {
  * `/pricing?utm_source=x` and `/pricing/` are the same page to a reader, and
  * splitting them across three rows would understate every one of them.
  */
-function landingKey(path: string | null): string {
-  if (!path) return UNATTRIBUTED;
-  const trimmed = path.trim();
-  if (!trimmed) return UNATTRIBUTED;
-  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  const withoutQuery = withSlash.split(/[?#]/)[0] ?? withSlash;
-  return withoutQuery.length > 1 ? withoutQuery.replace(/\/+$/, "") : "/";
+export function landingKey(path: string | null): string {
+  if (!path || !path.trim()) return UNATTRIBUTED;
+  // One normalisation for CRM paths, GA4 landing pages and Search Console URLs.
+  return pathKey(path);
 }
 
 /** Which lead statuses count as having got somewhere. */
@@ -729,14 +728,19 @@ export async function pageFunnel(actor: Actor, range: DateRange): Promise<PageFu
   // funnel with no money column rather than being refused the whole report.
   const seesRevenue = can(actor, "invoices.view");
 
-  const [leads, converting, revenue] = await Promise.all([
+  const [leads, converting, revenue, ga4] = await Promise.all([
     db.lead.findMany({
       where: { ...visibilityFilter(actor), deletedAt: null, createdAt: rangeFilter(range) },
       select: { landingPath: true, status: true },
     }),
     convertingLeads(visibilityFilter(actor)),
     seesRevenue ? revenueByClient(range) : Promise.resolve(null),
+    agencyGa4Property(),
   ]);
+  // Sessions from the agency website's GA4, when connected; otherwise absent.
+  const toDay = new Date(range.to.getTime());
+  toDay.setDate(toDay.getDate() - 1);
+  const sessions = ga4 ? await landingStatsByPath(ga4.id, { start: range.from ? localDay(range.from) : null, end: localDay(toDay) }) : null;
 
   const rows = new Map<string, { leads: number; qualified: number; clients: number; revenue: Decimal }>();
   const blank = () => ({ leads: 0, qualified: 0, clients: 0, revenue: ZERO });
@@ -781,8 +785,8 @@ export async function pageFunnel(actor: Actor, range: DateRange): Promise<PageFu
         qualified: value.qualified,
         clients: value.clients,
         revenue: toMoneyString(value.revenue),
-        // Not zero: nobody has the data to claim this page had no visitors.
-        sessions: null,
+        // Without GA4, not zero: nobody has the data to claim this page had no visitors.
+        sessions: sessions && path !== UNATTRIBUTED ? (sessions.get(path)?.sessions ?? 0) : null,
       };
     })
     .sort(

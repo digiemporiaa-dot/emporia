@@ -3410,6 +3410,10 @@ model SeoProperty {
   gscSiteUrl    String?
   /// "properties/123456789". Set when connected.
   ga4PropertyId String?
+  /// The GA4 property's own currency and time zone, read when it is chosen.
+  /// Revenue is stored in this currency; days are this time zone's days.
+  ga4Currency   String?
+  ga4TimeZone   String?
 
   defaultCountryId String?
   defaultCountry   Country? @relation("SeoPropertyCountry", fields: [defaultCountryId], references: [id], onDelete: SetNull)
@@ -3451,6 +3455,8 @@ model SeoProperty {
   localServices  SeoLocalService[]
   localCities    SeoLocalCity[]
   localPages     SeoLocalPage[]
+  ga4Landing     Ga4LandingDaily[]
+  ga4Totals      Ga4DailyTotal[]
 
   @@unique([clientId, domain])
   @@index([clientId, isActive])
@@ -3884,6 +3890,50 @@ model InternalLinkSuggestion {
 /// One rule setting. `propertyId` null = the agency default; a row for a
 /// website overrides that one value for it. Unknown keys are ignored when
 /// read; one row per scope and key is kept by the service under a lock.
+/// GA4 sessions for one landing page and channel on one day (Phase 9). The
+/// top pages by sessions, capped per day; a day is replaced whole.
+model Ga4LandingDaily {
+  id              String      @id @default(cuid())
+  propertyId      String
+  property        SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// The GA4 property's day.
+  date            DateTime    @db.Date
+  /// Path as GA4 reports it, without the query string; "(not set)" kept.
+  landingPage     String
+  /// GA4's default channel group, e.g. "Organic Search".
+  channel         String
+  sessions        Int
+  engagedSessions Int
+  /// GA4 reports key events as a float (fractional counting is possible).
+  keyEvents       Float
+  /// GA4 total revenue in the property's currency (`SeoProperty.ga4Currency`).
+  revenue         Decimal     @db.Decimal(14, 2)
+
+  @@index([propertyId, date])
+  @@index([propertyId, landingPage])
+}
+
+/// GA4 totals for one day: per channel ("" country and device), and organic
+/// per country or per device (channel "Organic Search"). "" means all.
+model Ga4DailyTotal {
+  id              String      @id @default(cuid())
+  propertyId      String
+  property        SeoProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  date            DateTime    @db.Date
+  channel         String      @default("")
+  /// ISO 3166-1 alpha-2, as GA4's countryId reports it.
+  country         String      @default("")
+  /// "desktop", "mobile", "tablet", as GA4 reports it.
+  device          String      @default("")
+  sessions        Int
+  engagedSessions Int
+  keyEvents       Float
+  revenue         Decimal     @db.Decimal(14, 2)
+
+  @@unique([propertyId, date, channel, country, device])
+  @@index([propertyId, date])
+}
+
 /// A service a website should be found for in each of its cities (Phase 8).
 /// Staff list them per website; for the agency's own website they can be
 /// imported from the CMS, which links `cmsServiceId`.
@@ -4025,6 +4075,8 @@ enum SeoOpportunitySource {
   REVIEWS
   /// Countries sending traffic to a multi-country site with no version for them.
   INTERNATIONAL
+  /// Organic landing pages with traffic but few key events (GA4).
+  ANALYTICS
 }
 
 enum SeoOpportunityStatus {
