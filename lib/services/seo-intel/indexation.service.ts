@@ -37,6 +37,10 @@ async function crawlCandidates(propertyId: string) {
   const pages = await db.crawlPage.findMany({
     where: { runId: run.id, state: "FETCHED", statusCode: 200, contentType: { contains: "html", mode: "insensitive" } },
     select: { url: true, inSitemap: true, indexable: true },
+    // A stable order within each tier of the sample: shallow pages first (they
+    // matter more), then by address. Without it the database chose, and which
+    // pages a day's budget covered varied from run to run.
+    orderBy: [{ depth: "asc" }, { url: "asc" }],
   });
   return { runId: run.id, pages: pages.map((page) => ({ url: page.url, inSitemap: page.inSitemap, indexable: page.indexable === true })) };
 }

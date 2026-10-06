@@ -90,9 +90,13 @@ An empty PostgreSQL database, then exactly what `docker/entrypoint.sh` runs:
   demo data after the fixes.
 - **PL6 — Dependencies.** `nodemailer` 10.0.15 and `fast-uri` 3.1.8 clear
   the two high-severity advisories; `npm audit --omit=dev` reports **0**.
-  Five advisories remain in development-only packages (`braces` under
-  `eslint-config-next`); they are not in the image, and fixing them needs a
-  breaking ESLint upgrade.
+  *Correction:* this report first said the five remaining advisories (`braces`
+  under `eslint-config-next`, which has no upstream fix — 3.0.3, the latest
+  `braces`, is the affected version) were not in the image. They were: the
+  runner copied the builder's whole `node_modules`. Now `prisma`, `tsx` and
+  `dotenv` — the runtime tools the entrypoint uses — are dependencies, the
+  image installs production dependencies only (a `prod-deps` stage), and the
+  smoke test fails if ESLint or vitest is found in it.
 - Two sweep results that are not defects: a keyword page opened without its
   `?property=` (every link in the app carries it), and three image rows in the
   development database pointing at files left by an earlier verification
@@ -118,11 +122,16 @@ the Phase 11 pass (docs/SEO-INTELLIGENCE-PLAN.md Part N).
 
 ## P7. Not verified here, and why
 
-- **The Docker image build.** The development environment's network policy
-  blocks the Debian mirrors (docs/DEPLOYMENT.md §11). The image settings were
-  reproduced instead (`HOSTNAME=0.0.0.0`, standalone server, entrypoint
-  commands) — which is how PL1 was found — but the first real build is on the
-  server. Deploy to staging first.
+- **The Docker image build — now verified in CI.** The sandbox cannot reach
+  the Debian mirrors, so the image's `apt-get` steps cannot run there. The
+  real `Dockerfile` is built on GitHub Actions on every push and booted against
+  an empty PostgreSQL by `scripts/docker-smoke.sh` (docs/DEPLOYMENT.md §11);
+  the first run passed, Chromium included. In the sandbox, the same Dockerfile
+  minus only its two `apt-get` steps was built and passed the same smoke test.
+- **A nondeterminism CI found.** The URL Inspection sample read crawled pages
+  in whatever order the database returned, so which pages a day's budget
+  covered varied — and one test passed locally and failed on GitHub. Pages are
+  now ordered by depth, then address.
 - **Live third parties.** SMTP delivery, R2 uploads, Razorpay payments,
   Google OAuth for external users (needs Google's app verification), Meta and
   other platforms' app review. Each is tested against a double and fails
