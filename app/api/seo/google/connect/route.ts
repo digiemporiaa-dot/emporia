@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { currentActor } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { isAppError } from "@/lib/errors";
@@ -30,8 +31,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const params = new URL(request.url).searchParams;
-  const propertyId = params.get("propertyId");
-  if (!propertyId) return NextResponse.json({ error: "No website was named." }, { status: 400 });
+  const parsedId = z.string().regex(/^[a-z0-9]{8,40}$/).safeParse(params.get("propertyId"));
+  if (!parsedId.success) return NextResponse.json({ error: "No website was named." }, { status: 400 });
+  const propertyId = parsedId.data;
   const source = params.get("source") === "ANALYTICS" ? "ANALYTICS" : "SEARCH_CONSOLE";
 
   const { state, nonce } = issueSeoState({ propertyId, source, via: "staff" });

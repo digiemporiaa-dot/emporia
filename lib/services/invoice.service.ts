@@ -3,7 +3,7 @@ import { db, type DbClient } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { requirePermission } from "@/lib/auth/rbac";
 import { withAudit } from "@/lib/services/audit.service";
-import { gt, toMoneyString } from "@/lib/money";
+import { gt, isNegative, sub, toMoneyString, ZERO } from "@/lib/money";
 import { nextInvoiceNumber } from "@/lib/finance/numbering";
 import { isEditable, isOutstanding, priceInvoice, transitionError } from "@/lib/finance/invoice";
 import { emailInvoice } from "@/lib/services/alerts.service";
@@ -68,9 +68,9 @@ async function writeItems(
     select: { paidTotal: true },
   });
 
-  const dueTotal = toMoneyString(
-    Math.max(0, Number(priced.total) - Number(invoice.paidTotal)).toFixed(2),
-  );
+  // Decimal throughout (CLAUDE.md 2 rule 1): never below zero when more was paid.
+  const remaining = sub(priced.total, invoice.paidTotal.toString());
+  const dueTotal = toMoneyString(isNegative(remaining) ? ZERO : remaining);
 
   await tx.invoice.update({
     where: { id: invoiceId },

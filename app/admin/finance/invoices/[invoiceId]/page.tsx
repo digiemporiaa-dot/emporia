@@ -128,7 +128,7 @@ export default async function InvoicePage({
                 </p>
               </CardHeader>
               <CardBody>
-                <div className="overflow-x-auto">
+                <div className="relative overflow-x-auto">
                   <table className="w-full min-w-[40rem] border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-line-strong text-left text-2xs uppercase tracking-widest text-ink-subtle">

@@ -131,7 +131,7 @@ export function TopTable({
 }) {
   if (rows.length === 0) return <p className="text-sm text-ink-subtle">No {label.toLowerCase()} in this period.</p>;
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full text-left text-sm">
         <caption className="sr-only">{label}</caption>
         <thead>

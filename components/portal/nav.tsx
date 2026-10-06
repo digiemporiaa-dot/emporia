@@ -54,7 +54,7 @@ export function PortalNav({ items }: { items: readonly PortalNavItem[] }) {
 
   return (
     <nav aria-label="Portal sections">
-      <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+      <ul className="flex gap-1 relative overflow-x-auto lg:flex-col lg:overflow-visible">
         {items.map((item) => {
           const Icon = ICONS[item.icon];
           const active =

@@ -271,7 +271,7 @@ export function ProposalEditor({
           Lines
         </legend>
 
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[52rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line-strong text-left text-2xs uppercase tracking-widest text-ink-subtle">

@@ -325,7 +325,7 @@ export function TableBlock({
           <h2 className="mb-5 text-2xl text-navy-800">{content.heading}</h2>
         ) : null}
         {/* Wide tables scroll inside their own container; the page never does. */}
-        <div className="overflow-x-auto rounded-lg border border-line">
+        <div className="relative overflow-x-auto rounded-lg border border-line">
           <table className="w-full min-w-[36rem] border-collapse text-left">
             {content.caption ? (
               <caption className="border-b border-line bg-surface-muted px-4 py-2.5 text-left text-sm text-ink-muted">
