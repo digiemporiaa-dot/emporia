@@ -22,6 +22,14 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# --- prod-deps: what the runner ships ----------------------------------------
+# Runtime dependencies only. prisma, tsx and dotenv are dependencies (not dev)
+# precisely so they land here: the entrypoint migrates with the Prisma CLI and
+# syncs with tsx. ESLint, vitest, TypeScript's type packages and the like stay
+# out of the image.
+FROM deps AS prod-deps
+RUN npm prune --omit=dev
+
 # --- builder: generate the client and build --------------------------------
 FROM node:${NODE_VERSION} AS builder
 WORKDIR /app
@@ -57,20 +65,20 @@ ENV CHROMIUM_PATH=/usr/bin/chromium
 RUN groupadd --system --gid 1001 nodejs \
     && useradd --system --uid 1001 --gid nodejs nextjs
 
-# The whole dependency tree, devDependencies included.
+# The runtime dependency tree (the prod-deps stage), whole.
 #
 # The entrypoint runs the Prisma 7 CLI, whose transitive closure is ~130
 # packages — `effect` among them. Copying only node_modules/{prisma,@prisma,
 # dotenv} left every one of those unresolvable and the container died on boot
-# with "Cannot find module 'effect'". `npm ci --omit=dev` is not the fix
-# either: prisma, tsx and dotenv are all devDependencies, so pruning dev is
-# exactly what removes the CLI. The image is correspondingly large; that is a
-# deliberate trade for a runner that can migrate and seed itself.
+# with "Cannot find module 'effect'", so the whole tree comes across. It is the
+# production tree: prisma, tsx and dotenv are dependencies for exactly this
+# reason, and development tooling (ESLint and its dependency chain, vitest)
+# is not in the image.
 #
 # This has to land BEFORE the standalone output so that Next's traced
 # node_modules is laid on top of it, not overwritten by it. The two overlap
 # only on identical files from the same install.
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=prod-deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 # Standalone output: server.js at /app/server.js, plus its traced dependencies
 # and the compiled server bundle under .next/. Next copies the project's real

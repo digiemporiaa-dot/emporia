@@ -64,7 +64,7 @@ describeDb("SEO indexation", () => {
             { url: url("/noindexed"), depth: 1, source: "LINK", state: "FETCHED", statusCode: 200, contentType: "text/html", indexable: false, inSitemap: false },
             { url: url("/broken"), depth: 1, source: "LINK", state: "FETCHED", statusCode: 200, contentType: "text/html", indexable: true, inSitemap: true },
             { url: url("/limited"), depth: 2, source: "LINK", state: "FETCHED", statusCode: 200, contentType: "text/html", indexable: true, inSitemap: false },
-            { url: url("/after-limit"), depth: 2, source: "LINK", state: "FETCHED", statusCode: 200, contentType: "text/html", indexable: true, inSitemap: false },
+            { url: url("/next-after-limit"), depth: 2, source: "LINK", state: "FETCHED", statusCode: 200, contentType: "text/html", indexable: true, inSitemap: false },
             { url: url("/redirect"), depth: 1, source: "LINK", state: "FETCHED", statusCode: 301, contentType: "text/html", indexable: false },
           ],
         },
@@ -80,11 +80,13 @@ describeDb("SEO indexation", () => {
 
   it("inspects sitemap URLs first, records failures, and stops on a rate limit", async () => {
     await inspectDueUrls({ provider, perRun: 20, limit: 50 });
-    // Sitemap URLs first, then indexable pages; the redirect and the noindexed
-    // non-sitemap page are not asked about; the batch stops at the rate limit.
+    // Sitemap URLs first, then indexable pages (shallow first, then by address);
+    // the redirect and the noindexed non-sitemap page are not asked about; the
+    // batch stops at the rate limit, so /next-after-limit — after /limited in
+    // that order — is never asked.
     expect(asked.slice(0, 3).sort()).toEqual([url("/"), url("/broken"), url("/missing-from-google")].sort());
     expect(asked).toContain(url("/limited"));
-    expect(asked).not.toContain(url("/after-limit"));
+    expect(asked).not.toContain(url("/next-after-limit"));
     expect(asked).not.toContain(url("/redirect"));
     expect(asked).not.toContain(url("/noindexed"));
 

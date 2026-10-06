@@ -1,0 +1,77 @@
+name: CI
+
+# Every push and pull request: the full gate, then the production image built
+# from the real Dockerfile and booted against an empty PostgreSQL, the way a
+# first Coolify deploy runs it (scripts/docker-smoke.sh).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: emporia
+          POSTGRES_PASSWORD: emporia
+          POSTGRES_DB: emporia_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U emporia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://emporia:emporia@127.0.0.1:5432/emporia_test
+      # Placeholders for tooling that reads them; the build itself is hermetic.
+      DATABASE_URL: postgresql://emporia:emporia@127.0.0.1:5432/emporia_test
+      AUTH_SECRET: ci-only-secret-that-is-at-least-32-characters-long
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+  image:
+    name: Docker image boots against an empty database
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: emporia:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test
+        run: IMAGE=emporia:smoke bash scripts/docker-smoke.sh
+      - name: Image size
+        if: always()
+        run: docker image ls emporia:smoke

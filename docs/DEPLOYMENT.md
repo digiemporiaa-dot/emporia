@@ -642,15 +642,16 @@ executes at all — a missing binary exits 127, which reads as a failed check.
 
 Stated plainly rather than papered over.
 
-- **The container image has not been built or run in the development
-  environment.** A Docker daemon can be started there, but its network policy
-  refuses the Debian package mirrors (403 on `apt-get update`), so every stage
-  that installs packages fails before the app is built. The `Dockerfile`, `docker-compose.yml` and
-  entrypoint are written against the documented behaviour of the tools and
-  reviewed, but **the first real build happens on your Coolify server.** Budget
-  time for it on the first deploy. Everything else in this repository — schema,
-  migrations, seed, auth, RBAC, money arithmetic, isolation, SEO, the production
-  Next build itself — is verified against a running build and a real database.
+- **The image is built and booted in CI, not in the development sandbox.**
+  The sandbox's network policy blocks the Debian mirrors, so the image's two
+  `apt-get` steps cannot run there. GitHub Actions (`.github/workflows/ci.yml`)
+  builds the real `Dockerfile` on every push and runs
+  `scripts/docker-smoke.sh` against it: an empty PostgreSQL, the entrypoint's
+  migrations and sync, health, sign-in, the signed-out redirect host, Secure
+  cookies, `npm run db:seed` inside the container, uid 1001, Chromium present,
+  no development tooling or `.env` in the image, and the cron gate. Run the
+  same script on your server after building:
+  `docker build -t emporia:smoke . && IMAGE=emporia:smoke scripts/docker-smoke.sh`.
 - **Invoice PDFs need Chromium.** The image installs Debian's `chromium`
   (several hundred MB) and sets `CHROMIUM_PATH`. Outside the image, set
   `CHROMIUM_PATH` to a headless Chromium; without one the PDF links are hidden
