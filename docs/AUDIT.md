@@ -1,3 +1,136 @@
+# Pre-launch audit — 6 October 2026
+
+Run before the first production deploy, across everything built since the
+26 September audit below (Social, SEO Intelligence, client onboarding, button
+popups). As before, every line was **executed**: greps over the tree, a
+database migrated from empty, a production build served with the image's
+settings (`HOSTNAME=0.0.0.0`, `NODE_ENV=production`) and driven in a real
+browser.
+
+Headline: **the ten non-negotiables hold, and three defects that would have
+shown in production were found and fixed** — signed-out visitors to `/admin`
+being sent to `http://0.0.0.0:3000`, every project-level approval being
+invisible in the admin, and the portal's Sign out button being near
+invisible. Nothing found is left open in the code; what remains is
+configuration and content (§P7).
+
+## P1. Scale
+
+| | |
+|---|---|
+| Source files (`app`, `lib`, `components`) | 770 |
+| Test files / tests | 173 / **2710 passing** |
+| Prisma models / enums | 126 / 75 |
+| Migrations | 48, all applied in order to an empty database |
+| Pages / API routes | 186 / 23 |
+| Server actions | 246 in 46 files |
+| Permissions | 134, granted by the sync on every boot |
+
+Gate at close: `eslint` clean, `tsc --noEmit` clean, **2710/2710 tests pass**
+(173 files), production build succeeds, `npm audit --omit=dev` reports 0
+vulnerabilities.
+
+## P2. First boot, as production does it
+
+An empty PostgreSQL database, then exactly what `docker/entrypoint.sh` runs:
+`prisma migrate deploy` (all 48 migrations), `prisma/sync.ts`, then
+`npm run db:seed` with `SEED_SUPER_ADMIN_*`.
+
+- `/` serves the starter homepage. **Fixed during this audit:** About,
+  Careers, Privacy Policy and Terms have reserved slugs, so the admin could
+  never create them and they 404'd for ever, with the default footer linking
+  to two of them. The sync now creates them as marked drafts that cannot be
+  published until their starter text is replaced, and the header and footer
+  hide links to pages that are not live (docs/DEPLOYMENT.md §5).
+- A crawl of every public page linked from the site: **no broken links**.
+- All **93** static admin routes: 200, no error boundary, no console error.
+- `sitemap.xml` lists only published pages under `SITE_URL`; `robots.txt`
+  disallows `/admin`, `/portal`, `/auth`, `/api`, `/print`.
+
+## P3. The ten non-negotiables
+
+| # | Rule | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Money is `Decimal` | **Pass, after a fix** | No money column is `Float`. One computation was not Decimal: an invoice's amount due was `Number(total) - Number(paid)`. Now `sub()` from `lib/money` |
+| 2 | Authorization server-side | **Pass** | All 246 server actions resolve an actor (directly or through a file-local helper) except the seven public by design: login, forgot, reset, invite, contact, and the two sign-outs. Every API route that is not public checks the actor or a signature |
+| 3 | Client isolation | **Pass** | Portal reads are scoped by the session's `clientId`; the new SEO reports and onboarding follow it and are covered by tests. 20 portal routes swept as a client user: all 200 |
+| 4 | Zod on every input | **Pass, after a fix** | Two routes passed a raw id to a scoped lookup without a schema (invoice PDF, Search Console connect); both validate now. The OAuth callbacks verify a signed state first; the Razorpay webhook verifies an HMAC over the raw body |
+| 5 | No fakes | **Pass** | No `TODO`/`FIXME` outside the task-status enum. Unconfigured integrations say so (CrUX, SMTP, R2, AI) |
+| 6 | No secrets client-side | **Pass** | No `NEXT_PUBLIC_` variable. Client components import services as types only |
+| 7 | No thin city pages | **Pass** | Unchanged: `canPublish` in the service |
+| 8 | Server Components by default | **Pass** | 138 of 380 `.tsx` files are client components; none touches the database |
+| 9 | Strict TypeScript | **Pass** | No `any`; `tsc --noEmit` clean |
+| 10 | Don't destroy working code | **Pass** | Every change in this audit is additive or a targeted fix |
+
+## P4. Findings fixed
+
+- **PL1 — Signed-out redirects went to the bind address.** Middleware built
+  the login redirect from `request.nextUrl.origin`, which the standalone
+  server sets to its bind address, ignoring the proxy's `Host` and
+  `X-Forwarded-Host`. In the image (`HOSTNAME=0.0.0.0`) a signed-out visit to
+  `/admin` redirected to `http://0.0.0.0:3000/auth/login`. It now uses the
+  forwarded host and scheme, checked for shape (`lib/http/public-origin`,
+  unit-tested). A relative `Location` was tried first and is rejected by Next.
+- **PL2 — Project approvals were invisible in the admin.** The approval
+  list, detail page and both decision actions filtered with
+  `OR: [{ project: f }, { contentItem: { project: f } }]`; Prisma matched
+  nothing for approvals without a content item, for every user. Rewritten with
+  explicit `is` in one helper; the regression test fails on the old code.
+- **PL3 — Cookies without `Secure` behind the proxy.** Attribution and popup
+  cookies took `Secure` from the request's protocol, which is plain HTTP
+  between the TLS proxy and the app. Production now always sets it.
+- **PL4 — Pages wider than a phone.** `sr-only` labels (absolutely
+  positioned) escaped 16 hand-written scroll containers and widened the page —
+  the new-proposal form by 450px at 390px wide. The containers are `relative`
+  (as `TableWrap` already was), and fieldsets may shrink below their content.
+- **PL5 — Accessibility.** The portal's Sign out button (contrast 1.31 on
+  white), red eyebrows on navy on city and case-study pages (2.46), a packages
+  table keyboard users could not scroll, and an unlabelled file input. axe
+  reports **no violations** on the fresh install and on every page swept with
+  demo data after the fixes.
+- **PL6 — Dependencies.** `nodemailer` 10.0.15 and `fast-uri` 3.1.8 clear
+  the two high-severity advisories; `npm audit --omit=dev` reports **0**.
+  Five advisories remain in development-only packages (`braces` under
+  `eslint-config-next`); they are not in the image, and fixing them needs a
+  breaking ESLint upgrade.
+- Two sweep results that are not defects: a keyword page opened without its
+  `?property=` (every link in the app carries it), and three image rows in the
+  development database pointing at files left by an earlier verification
+  session.
+- **PL7 — Small:** an invoice's amount due computed with JS numbers (P3 #1);
+  two routes without id validation (P3 #4); `robots.txt` `Host` written as a
+  URL with a trailing slash.
+
+## P5. Security headers (production build)
+
+CSP with `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`,
+`form-action 'self'`; HSTS one year with subdomains; `X-Frame-Options: DENY`;
+`nosniff`; `strict-origin-when-cross-origin`; a restrictive
+`Permissions-Policy`. Private pages are `no-store`.
+
+## P6. Performance
+
+Every admin page in the sweep rendered in under a second on the fresh install,
+and in under 1.2 seconds with demo data on the final build (129 admin routes,
+static and with real ids; slowest: the SEO Command Center).
+The SEO history and report queries were measured on 600,000 synthetic rows in
+the Phase 11 pass (docs/SEO-INTELLIGENCE-PLAN.md Part N).
+
+## P7. Not verified here, and why
+
+- **The Docker image build.** The development environment's network policy
+  blocks the Debian mirrors (docs/DEPLOYMENT.md §11). The image settings were
+  reproduced instead (`HOSTNAME=0.0.0.0`, standalone server, entrypoint
+  commands) — which is how PL1 was found — but the first real build is on the
+  server. Deploy to staging first.
+- **Live third parties.** SMTP delivery, R2 uploads, Razorpay payments,
+  Google OAuth for external users (needs Google's app verification), Meta and
+  other platforms' app review. Each is tested against a double and fails
+  honestly when not configured; none can be proven live from here.
+- **Load.** No load test was run.
+
+---
+
 # Final audit — 26 September 2026
 
 An audit of the whole project against `CLAUDE.md`, run at the close of the
