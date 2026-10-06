@@ -146,7 +146,7 @@ export function InsightsView({ clientId, range, data }: { clientId: string; rang
               <p className="text-2xs text-ink-subtle">Compared within each platform.</p>
             </div>
           </CardHeader>
-          <CardBody className="overflow-x-auto">
+          <CardBody className="relative overflow-x-auto">
             {data.types.length === 0 ? (
               <p className="text-sm text-ink-subtle">Nothing was published in this period.</p>
             ) : (
@@ -186,7 +186,7 @@ export function InsightsView({ clientId, range, data }: { clientId: string; rang
               <p className="text-2xs text-ink-subtle">Best engagement rate first — a rate over reach compares across platforms; raw engagement does not.</p>
             </div>
           </CardHeader>
-          <CardBody className="overflow-x-auto">
+          <CardBody className="relative overflow-x-auto">
             {data.campaigns.length === 0 ? (
               <p className="text-sm text-ink-subtle">No published post in this period belongs to a campaign.</p>
             ) : (
@@ -227,7 +227,7 @@ export function InsightsView({ clientId, range, data }: { clientId: string; rang
             <p className="text-2xs text-ink-subtle">Measured posts only — a post the platform told us nothing about is unknown, not weak.</p>
           </div>
         </CardHeader>
-        <CardBody className="overflow-x-auto">
+        <CardBody className="relative overflow-x-auto">
           {data.lowest.length === 0 ? (
             <p className="text-sm text-ink-subtle">No measured posts in this period.</p>
           ) : (

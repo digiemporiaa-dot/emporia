@@ -76,7 +76,7 @@ export function CalendarBody({
           This month&rsquo;s versions by where their idea is in the workflow. Stages move through review and
           approval on each idea&rsquo;s page.
         </p>
-        <div className="grid auto-cols-[minmax(15rem,1fr)] grid-flow-col gap-3 overflow-x-auto pb-2">
+        <div className="grid auto-cols-[minmax(15rem,1fr)] grid-flow-col gap-3 relative overflow-x-auto pb-2">
           {CONTENT_STAGES.map((stage) => {
             const column = ordered.filter((card) => card.stage === stage);
             return (
@@ -170,7 +170,7 @@ export function CalendarBody({
 
   if (grid.view === "week") {
     return (
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <div className="grid min-w-3xl grid-cols-7 gap-px rounded-lg border border-line bg-line">
           {grid.days.map((day) => (
             <div key={`head-${day.key}`} className="bg-surface-muted px-2 py-1.5">
@@ -215,7 +215,7 @@ export function CalendarBody({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <div className="grid min-w-3xl grid-cols-7 gap-px rounded-lg border border-line bg-line">
         {WEEKDAYS.map((weekday) => (
           <div

@@ -90,7 +90,7 @@ export function AttributionView({ clientId, data }: { clientId: string; data: So
             </div>
 
             {data.campaigns.length > 0 ? (
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[40rem] text-xs">
                   <Head first="Campaign" />
                   <tbody>
@@ -103,7 +103,7 @@ export function AttributionView({ clientId, data }: { clientId: string; data: So
             ) : null}
 
             {data.posts.length > 0 ? (
-              <div className="overflow-x-auto">
+              <div className="relative overflow-x-auto">
                 <table className="w-full min-w-[40rem] text-xs">
                   <Head first="Post" />
                   <tbody>

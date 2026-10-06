@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { ForbiddenError } from "@/lib/errors";
 import {
@@ -66,6 +66,17 @@ describeDb("site navigation", () => {
   let admin: Actor;
   let reader: Actor;
 
+  // The default links point at About, Careers and the legal pages, which the
+  // sync creates as drafts — and the public navigation hides links to pages
+  // that are not live (tests/starter-pages.db.test.ts). This suite is about
+  // what an editor saves, so those pages are live while it runs.
+  const LINKED = ["about", "careers", "privacy-policy", "terms-and-conditions"];
+  let wasDraft: string[] = [];
+  beforeAll(async () => {
+    wasDraft = (await db.page.findMany({ where: { slug: { in: LINKED }, status: { not: "PUBLISHED" } }, select: { slug: true } })).map((p) => p.slug);
+    await db.page.updateMany({ where: { slug: { in: wasDraft } }, data: { status: "PUBLISHED" } });
+  });
+
   beforeEach(async () => {
     const staff = await db.user.findFirstOrThrow({ where: { type: "STAFF" }, select: { id: true } });
     admin = actorWith(staff.id, ["settings.view", "settings.edit"]);
@@ -74,6 +85,7 @@ describeDb("site navigation", () => {
   });
 
   afterAll(async () => {
+    await db.page.updateMany({ where: { slug: { in: wasDraft } }, data: { status: "DRAFT" } });
     await wipe();
     // `site.name` and `site.tagline` are seeded rows this suite deletes to test
     // the unconfigured case; put them back so the shared test database is left

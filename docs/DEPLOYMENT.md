@@ -303,6 +303,26 @@ Edit it like any other page: **Admin → Website → Pages → Home**. The slug 
 reserved does not stop you editing the page that already has it — only creating
 a second one. If you delete it, the sync will not put it back.
 
+### About, Careers and the legal pages
+
+`/about`, `/careers`, `/privacy-policy` and `/terms-and-conditions` are CMS pages
+whose slugs are reserved, so they cannot be created from the admin either. The
+sync creates each one the first time it finds none — **as a draft**, built from
+ordinary builder blocks, with every paragraph starting
+`[Replace before publishing]` and saying what belongs there.
+
+- A page that still contains that marker **cannot be published**; the publish
+  button says how many sections still need replacing, and the builder flags
+  each one.
+- Until a page is published, header and footer links pointing at it are hidden,
+  so the default footer's Privacy and Terms links appear only once those pages
+  are live. The addresses themselves answer 404 until then.
+- Have the privacy policy and terms written or reviewed by a lawyer. The
+  starter text lists what this site actually collects, as a checklist, not as
+  policy wording.
+
+Like the homepage, these are never recreated once deleted.
+
 > **Never run `npm run db:seed:demo` against production.** It inserts sample
 > services, packages, case studies and blog posts. It marks itself with
 > `demo.seededAt` in `SiteSetting` so you can identify it later, but cleaning it

@@ -139,6 +139,13 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* Browsers give fieldsets min-width: min-content, so a wide table or long
+     line inside one pushes the whole page sideways instead of scrolling in its
+     own container. */
+  fieldset {
+    min-width: 0;
+  }
+
   body {
     margin: 0;
     background-color: var(--color-surface);

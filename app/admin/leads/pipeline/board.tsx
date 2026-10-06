@@ -74,7 +74,7 @@ export function PipelineBoard({ leads, canMove }: { leads: BoardLead[]; canMove:
         </div>
       ) : null}
 
-      <div className="flex gap-3 overflow-x-auto pb-3" aria-busy={pending}>
+      <div className="flex gap-3 relative overflow-x-auto pb-3" aria-busy={pending}>
         {BOARD_STAGES.map((stage) => {
           const staged = items.filter((lead) => lead.status === stage);
 

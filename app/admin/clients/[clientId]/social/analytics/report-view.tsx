@@ -112,7 +112,7 @@ export function ReportView({
             <CardHeader>
               <CardTitle>By platform</CardTitle>
             </CardHeader>
-            <CardBody className="overflow-x-auto">
+            <CardBody className="relative overflow-x-auto">
               <table className="w-full min-w-3xl text-left text-xs">
                 <thead>
                   <tr className="border-b border-line text-2xs uppercase tracking-wide text-ink-subtle">

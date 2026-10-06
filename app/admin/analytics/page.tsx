@@ -183,7 +183,7 @@ export default async function AnalyticsPage({
                 <CardTitle>Popup funnel</CardTitle>
               </CardHeader>
               <CardBody>
-                <div className="overflow-x-auto">
+                <div className="relative overflow-x-auto">
                   <table className="w-full min-w-[36rem] border-collapse text-sm">
                     <thead>
                       <tr className="border-b border-line-strong text-left text-2xs uppercase tracking-widest text-ink-subtle">
@@ -266,7 +266,7 @@ function Breakdown({
         {rows.length === 0 ? (
           <p className="text-xs text-ink-subtle">Nothing recorded in this period.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[28rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-line-strong text-left text-2xs uppercase tracking-widest text-ink-subtle">

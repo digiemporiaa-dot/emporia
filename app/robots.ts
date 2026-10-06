@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { absoluteUrl } from "@/lib/seo/urls";
+import { absoluteUrl, siteOrigin } from "@/lib/seo/urls";
 
 /**
  * robots.txt.
@@ -21,6 +21,7 @@ export default function robots(): MetadataRoute.Robots {
       },
     ],
     sitemap: absoluteUrl("/sitemap.xml"),
-    host: absoluteUrl("/"),
+    // An origin, not a URL: a trailing slash makes the directive invalid.
+    host: siteOrigin(),
   };
 }

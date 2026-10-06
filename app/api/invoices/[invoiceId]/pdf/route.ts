@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { currentActor } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
@@ -22,7 +23,10 @@ export async function GET(
     return NextResponse.json({ error: "Sign in first." }, { status: 401 });
   }
 
-  const { invoiceId } = await params;
+  const { invoiceId: rawId } = await params;
+  const parsedId = z.string().regex(/^[a-z0-9]{8,40}$/).safeParse(rawId);
+  if (!parsedId.success) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const invoiceId = parsedId.data;
 
   const isStaff = actor.type === "STAFF" && can(actor, "invoices.view");
   const isPortal = actor.type === "CLIENT" && !!actor.clientId;

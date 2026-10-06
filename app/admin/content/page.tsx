@@ -125,7 +125,7 @@ export default async function ContentPage({
           </CardBody>
         </Card>
       ) : params.view === "board" ? (
-        <div className="mt-4 flex gap-3 overflow-x-auto pb-3">
+        <div className="mt-4 flex gap-3 relative overflow-x-auto pb-3">
           {CONTENT_STAGES.map((stage) => {
             const column = items.filter((item) => item.stage === stage);
             return (
@@ -165,7 +165,7 @@ export default async function ContentPage({
         </div>
       ) : (
         <>
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-4 relative overflow-x-auto">
             <div className="grid min-w-3xl grid-cols-7 gap-px rounded-lg border border-line bg-line">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                 <div

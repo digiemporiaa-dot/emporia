@@ -80,7 +80,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Mark it shown now rather than waiting for the client to confirm: a client
   // that never reports back must not be able to replay the same popup.
   const now = Date.now();
-  const secure = new URL(request.url).protocol === "https:";
+  // Behind the TLS proxy the request arrives as plain HTTP; production is HTTPS.
+  const secure = process.env.NODE_ENV === "production";
   const base = { httpOnly: true, sameSite: "lax", path: "/", secure } as const;
 
   response.cookies.set(COOKIE.popupState, encodePopupState({ ...seen, [popup.id]: now }), {

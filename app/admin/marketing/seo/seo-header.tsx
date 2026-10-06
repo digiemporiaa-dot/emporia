@@ -74,7 +74,7 @@ export function SeoHeader({
       </nav>
       <h1 className="mt-1.5 text-2xl text-navy-800">{title}</h1>
       {description ? <p className="mt-1.5 max-w-3xl text-xs text-ink-subtle">{description}</p> : null}
-      <nav aria-label="SEO Intelligence sections" className="mt-4 flex gap-1 overflow-x-auto border-b border-line">
+      <nav aria-label="SEO Intelligence sections" className="mt-4 flex gap-1 relative overflow-x-auto border-b border-line">
         {TABS.filter((tab) => !tab.connectOnly || canConnect).map((tab) => (
           <Link
             key={tab.key}

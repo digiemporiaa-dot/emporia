@@ -96,7 +96,7 @@ export default async function PortalLayout({ children }: { children: React.React
                 <p className="truncate text-xs font-medium text-navy-800">{client.name}</p>
                 <p className="truncate text-2xs text-ink-subtle">{actor.name}</p>
               </div>
-              <SignOutButton action={signOutAction} />
+              <SignOutButton action={signOutAction} tone="light" />
             </div>
           </div>
         </header>

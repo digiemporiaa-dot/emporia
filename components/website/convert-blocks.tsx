@@ -411,7 +411,7 @@ export function ComparisonTableBlock({
       <Header eyebrow={content.eyebrow} heading={content.heading} body={content.body} />
       {/* Scrolls inside its own container so a wide table never makes the page
           scroll sideways (CLAUDE.md 12, responsive). */}
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-3xl border-collapse text-left">
           <thead>
             <tr className="border-b border-line-strong">

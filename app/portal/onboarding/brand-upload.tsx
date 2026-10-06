@@ -53,6 +53,7 @@ export function BrandUpload() {
         ref={input}
         id="brand-file"
         type="file"
+        aria-label="Upload a brand file"
         accept="image/jpeg,image/png,image/webp,application/pdf"
         className="sr-only"
         onChange={(event) => {

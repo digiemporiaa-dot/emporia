@@ -1,4 +1,5 @@
 import { isPopupTarget } from "@/lib/popups/button-target";
+import { starterSectionCount } from "@/lib/content/starter";
 import { z } from "zod";
 import { ICON_NAMES } from "@/lib/content/icons";
 import { gridConfig } from "@/lib/content/grid";
@@ -1643,6 +1644,8 @@ export function blockWarnings(type: string, content: unknown): string[] {
   if (!isBlockType(type)) return [];
   const value = (content ?? {}) as Record<string, unknown>;
   const warnings: string[] = [];
+
+  if (starterSectionCount([{ content }]) > 0) warnings.push("Starter text to replace before publishing");
 
   if (type === "video") {
     const provider = value["provider"] === "vimeo" ? "vimeo" : "youtube";

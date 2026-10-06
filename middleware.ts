@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse, type NextRequest } from "next/server";
 import { buildAuthConfig } from "@/lib/auth/config";
+import { publicOrigin } from "@/lib/http/public-origin";
 import {
   COOKIE,
   COOKIE_MAX_AGE,
@@ -55,7 +56,10 @@ function isProtected(pathname: string): boolean {
 function applyAttribution(request: NextRequest, response: NextResponse): void {
   const { pathname, searchParams } = request.nextUrl;
 
-  const secure = request.nextUrl.protocol === "https:";
+  // Production is always served over HTTPS (docs/DEPLOYMENT.md), but the TLS
+  // proxy in front talks plain HTTP to the app, so the request's own protocol
+  // cannot be trusted to decide this.
+  const secure = process.env.NODE_ENV === "production";
   const base = { httpOnly: true, sameSite: "lax", path: "/", secure } as const;
 
   if (!request.cookies.get(COOKIE.visitorId)) {
@@ -99,7 +103,7 @@ export default auth((request) => {
 
   if (isProtected(pathname)) {
     if (!request.auth?.user?.id) {
-      const url = new URL("/auth/login", request.nextUrl.origin);
+      const url = new URL("/auth/login", publicOrigin(request));
       url.searchParams.set("redirectTo", pathname);
       return NextResponse.redirect(url);
     }
