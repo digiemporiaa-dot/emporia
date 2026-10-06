@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/auth/rbac";
 import { record } from "@/lib/services/audit.service";
 import { CACHE_TAGS } from "@/lib/content/queries";
+import { internalPath } from "@/lib/content/starter";
 import {
   navItemSchema,
   socialLinkSchema,
@@ -181,10 +182,43 @@ async function loadNavigation(): Promise<SiteNavigation> {
  * key/value rows and returns plain JSON, so nothing here has to cross the cache
  * boundary as anything but a string, a boolean or an array of them.
  */
-export const siteNavigation = unstable_cache(loadNavigation, ["site-navigation"], {
+export const siteNavigation = unstable_cache(publicNavigation, ["site-navigation"], {
   revalidate: 3600,
-  tags: [NAVIGATION_TAG],
+  // Pages too: publishing or unpublishing a page changes which links show.
+  tags: [NAVIGATION_TAG, CACHE_TAGS.pages],
 });
+
+/**
+ * The navigation as visitors see it: a link to a CMS page that is not
+ * published (a starter draft, an archived page, a deleted one) is left out
+ * rather than sending people to a 404. Links to built-in routes and to other
+ * sites are untouched.
+ */
+export async function publicNavigation(): Promise<SiteNavigation> {
+  const nav = await loadNavigation();
+  const links = [...nav.headerLinks, ...nav.footerCompanyLinks, ...nav.footerLegalLinks].map((link) => link.href);
+  if (nav.cta.enabled) links.push(nav.cta.href);
+  const slugs = [...new Set(links.map(internalPath).filter((path): path is string => path !== null && path !== "/").map((path) => path.slice(1)))];
+  if (!slugs.length) return nav;
+  const hidden = await db.page.findMany({
+    where: { slug: { in: slugs }, OR: [{ status: { not: "PUBLISHED" } }, { deletedAt: { not: null } }] },
+    select: { slug: true },
+  });
+  return withoutPaths(nav, new Set(hidden.map((page) => `/${page.slug}`)));
+}
+
+/** Drop links whose path is in `hidden`. Pure, exported for tests. */
+export function withoutPaths(nav: SiteNavigation, hidden: ReadonlySet<string>): SiteNavigation {
+  if (!hidden.size) return nav;
+  const keep = (link: { href: string }) => !hidden.has(internalPath(link.href) ?? "");
+  return {
+    ...nav,
+    headerLinks: nav.headerLinks.filter(keep),
+    footerCompanyLinks: nav.footerCompanyLinks.filter(keep),
+    footerLegalLinks: nav.footerLegalLinks.filter(keep),
+    cta: keep(nav.cta) ? nav.cta : { ...nav.cta, enabled: false },
+  };
+}
 
 export async function getNavigationSettings(actor: Actor): Promise<SiteNavigation> {
   requirePermission(actor, "settings.view");

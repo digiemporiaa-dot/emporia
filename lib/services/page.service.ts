@@ -10,6 +10,7 @@ import { isReservedSlug, slugify, uniqueSlug } from "@/lib/utils/slug";
 import { BLOCK_SCHEMAS, blockDefinition, isBlockType, type BlockType } from "@/lib/content/blocks";
 import { allowedBlocksOf, startingSections, templatePermits } from "@/lib/content/templates";
 import { stampVersion } from "@/lib/content/migrations";
+import { STARTER_MARKER, starterSectionCount } from "@/lib/content/starter";
 import { snapshot } from "@/lib/services/page-version.service";
 import type { Actor } from "@/lib/actor/types";
 import type { SectionAudienceInput } from "@/lib/validation/audience";
@@ -306,6 +307,17 @@ export async function setPageStatus(
   requirePermission(actor, status === "PUBLISHED" ? "pages.publish" : "pages.edit");
 
   const before = await getPage(actor, id);
+
+  // Starter text from a fresh install never goes live (lib/content/starter).
+  if (status === "PUBLISHED") {
+    const sections = await db.pageSection.findMany({ where: { pageId: id }, select: { content: true } });
+    const marked = starterSectionCount(sections);
+    if (marked > 0) {
+      throw new ValidationError(
+        `${marked} ${marked === 1 ? "section still has" : "sections still have"} starter text marked “${STARTER_MARKER}”. Replace it before publishing.`,
+      );
+    }
+  }
 
   const page = await withAudit(
     {
