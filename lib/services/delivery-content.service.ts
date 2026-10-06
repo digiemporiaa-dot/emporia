@@ -41,6 +41,19 @@ function contentScope(actor: Actor): Prisma.ContentCalendarItemWhereInput {
   return { project: visibilityFilter(actor) };
 }
 
+
+/**
+ * Approvals the actor may see: through the approval's project, or through its
+ * content item's project. The explicit `is` matters: written as
+ * `{ contentItem: { project: {} } }` beside `{ project: {} }`, Prisma's OR
+ * matched nothing for an approval with no content item, so anyone who sees
+ * every project (super admin, projects.view.team) saw no approvals at all.
+ */
+function approvalVisibility(actor: Actor): Prisma.ApprovalWhereInput {
+  const project = visibilityFilter(actor);
+  return { OR: [{ project: { is: project } }, { contentItem: { is: { project: { is: project } } } }] };
+}
+
 export type ContentListParams = {
   from?: Date | null;
   to?: Date | null;
@@ -268,10 +281,7 @@ export async function listApprovals(actor: Actor, status?: ApprovalStatus | null
   return db.approval.findMany({
     where: {
       ...(status ? { status } : {}),
-      OR: [
-        { project: visibilityFilter(actor) },
-        { contentItem: { project: visibilityFilter(actor) } },
-      ],
+      ...approvalVisibility(actor),
     },
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -299,10 +309,7 @@ export async function getApproval(actor: Actor, id: string) {
       AND: [
         { id },
         {
-          OR: [
-            { project: visibilityFilter(actor) },
-            { contentItem: { project: visibilityFilter(actor) } },
-          ],
+          ...approvalVisibility(actor),
         },
       ],
     },
@@ -425,10 +432,7 @@ export async function addApprovalVersion(
       AND: [
         { id: approvalId },
         {
-          OR: [
-            { project: visibilityFilter(actor) },
-            { contentItem: { project: visibilityFilter(actor) } },
-          ],
+          ...approvalVisibility(actor),
         },
       ],
     },
@@ -504,10 +508,7 @@ export async function decideApproval(
       AND: [
         { id: approvalId },
         {
-          OR: [
-            { project: visibilityFilter(actor) },
-            { contentItem: { project: visibilityFilter(actor) } },
-          ],
+          ...approvalVisibility(actor),
         },
       ],
     },

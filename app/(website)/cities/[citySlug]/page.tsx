@@ -119,7 +119,7 @@ export default async function CityPage({ params }: { params: Promise<{ citySlug:
                 { name: city.name, path: `/cities/${city.slug}` },
               ]}
             />
-            <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
+            <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-navy-300">
               {city.state}
             </p>
             <h1 className="mt-4 max-w-3xl text-4xl">Digital marketing in {city.name}</h1>

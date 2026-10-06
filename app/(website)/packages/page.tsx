@@ -124,7 +124,13 @@ export default async function PackagesPage() {
           <Eyebrow>Compare</Eyebrow>
           <h2 className="mt-4 text-2xl text-navy-800">What each package includes</h2>
 
-          <div className="relative mt-8 overflow-x-auto">
+          <div
+            className="relative mt-8 overflow-x-auto"
+            // Reachable by keyboard: the table has no links to give it focus (WCAG 2.1.1).
+            role="region"
+            aria-label="Package comparison"
+            tabIndex={0}
+          >
             <table className="w-full min-w-[42rem] border-collapse text-sm">
               <caption className="sr-only">
                 Features included in each package

@@ -83,7 +83,7 @@ export default async function CaseStudyPage({ params }: { params: Promise<{ slug
               ]}
             />
 
-            <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-brand-red-text">
+            <p className="mt-8 text-2xs font-semibold uppercase tracking-widest text-navy-300">
               {study.clientName}
               {study.service ? ` · ${study.service.name}` : ""}
               {study.city ? ` · ${study.city.name}` : ""}
