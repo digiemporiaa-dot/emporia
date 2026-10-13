@@ -12,6 +12,7 @@ const TABS = [
   { href: "/portal/social/published", label: "Published" },
   { href: "/portal/social/analytics", label: "Analytics" },
   { href: "/portal/social/reports", label: "Reports" },
+  { href: "/portal/social/accounts", label: "Accounts" },
 ] as const;
 
 export function PortalSocialTabs() {

@@ -2,6 +2,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { derivedSecret, issueSignedState, readSignedState, type SignedStateFailure } from "@/lib/security/signed-state";
 import { env } from "@/lib/config/env";
+import { can } from "@/lib/auth/rbac";
+import type { Actor } from "@/lib/actor/types";
 import type { SocialProvider } from "@/generated/prisma/enums";
 
 /**
@@ -37,6 +39,9 @@ const MAX_AGE_MS = 10 * 60 * 1000;
 
 export const OAUTH_STATE_COOKIE = "emporia.social.oauth";
 
+/** Where a client manages their accounts in the portal, and where portal flows return. */
+export const PORTAL_ACCOUNTS_PATH = "/portal/social/accounts";
+
 export type OAuthState = {
   clientId: string;
   provider: SocialProvider;
@@ -44,15 +49,49 @@ export type OAuthState = {
   issuedAt: number;
   /** Where to send the operator once the flow finishes. */
   returnTo: string;
+  /**
+   * Set when a client started the flow from the portal. The callback then
+   * finishes it only for a portal user of that same client, and a staff flow
+   * only for staff — neither can complete the other's.
+   */
+  via?: "portal";
 };
 
 const PURPOSE = "social-oauth";
+
+/**
+ * Who may begin a flow, and for which client.
+ *
+ * Staff with `social.accounts.manage` name the client. A portal user's client
+ * is their session's, and whatever they asked for is ignored — never refused
+ * and never used. Null means this person may not connect accounts at all.
+ */
+export function flowClient(
+  actor: Actor,
+  requestedClientId: string | null,
+): { clientId: string | null; portal: boolean } | null {
+  if (actor.type === "CLIENT") return actor.clientId ? { clientId: actor.clientId, portal: true } : null;
+  if (!can(actor, "social.accounts.manage")) return null;
+  return { clientId: requestedClientId, portal: false };
+}
+
+/**
+ * Whether this person may finish this flow. Each kind is finished only by its
+ * own kind of person: a portal flow by a portal user of the very client it
+ * names, a staff flow by staff who still manage accounts.
+ */
+export function mayFinish(actor: Actor, state: Pick<OAuthState, "clientId" | "via">): boolean {
+  return state.via === "portal"
+    ? actor.type === "CLIENT" && actor.clientId === state.clientId
+    : actor.type !== "CLIENT" && can(actor, "social.accounts.manage");
+}
 
 /** Build the state to send, plus the nonce to store in the cookie. */
 export function issueState(input: {
   clientId: string;
   provider: SocialProvider;
   returnTo: string;
+  via?: "portal";
 }): { state: string; nonce: string } {
   return issueSignedState(PURPOSE, input);
 }

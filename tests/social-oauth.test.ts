@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   OAUTH_STATE_COOKIE,
   callbackUrl,
+  flowClient,
   issueState,
+  mayFinish,
   readState,
 } from "@/lib/social/oauth-state";
+import type { Actor } from "@/lib/actor/types";
 
 /**
  * The OAuth `state`.
@@ -100,5 +103,62 @@ describe("oauth state", () => {
 
   it("names the cookie it sets", () => {
     expect(OAUTH_STATE_COOKIE).toBe("emporia.social.oauth");
+  });
+});
+
+function person(type: "STAFF" | "CLIENT", permissions: string[], clientId: string | null = null): Actor {
+  return {
+    userId: "u-1",
+    name: "Someone",
+    email: null,
+    type,
+    roleName: null,
+    roleId: null,
+    clientId,
+    permissions: new Set(permissions),
+    ip: null,
+    userAgent: null,
+  };
+}
+
+describe("who may start and finish a flow", () => {
+  const manager = person("STAFF", ["social.accounts.manage"]);
+  const viewer = person("STAFF", ["social.view"]);
+  const clientA = person("CLIENT", [], "client-a");
+  const clientB = person("CLIENT", [], "client-b");
+
+  it("takes a portal user's client from the session, ignoring the one asked for", () => {
+    expect(flowClient(clientA, "client-b")).toEqual({ clientId: "client-a", portal: true });
+    expect(flowClient(clientA, null)).toEqual({ clientId: "client-a", portal: true });
+    expect(flowClient(person("CLIENT", [], null), "client-a")).toBeNull();
+  });
+
+  it("lets staff name the client only with the permission to manage accounts", () => {
+    expect(flowClient(manager, "client-a")).toEqual({ clientId: "client-a", portal: false });
+    expect(flowClient(viewer, "client-a")).toBeNull();
+  });
+
+  it("finishes a portal flow only for a portal user of that same client", () => {
+    const state = { clientId: "client-a", via: "portal" as const };
+    expect(mayFinish(clientA, state)).toBe(true);
+    expect(mayFinish(clientB, state)).toBe(false);
+    expect(mayFinish(manager, state)).toBe(false);
+  });
+
+  it("finishes a staff flow only for staff who manage accounts, never a portal user", () => {
+    const state = { clientId: "client-a" };
+    expect(mayFinish(manager, state)).toBe(true);
+    expect(mayFinish(viewer, state)).toBe(false);
+    // Even the client the flow is for: a staff flow is the agency's.
+    expect(mayFinish(clientA, state)).toBe(false);
+  });
+
+  it("carries the portal marker through the signed state", () => {
+    const { state, nonce } = issueState({ ...ISSUE, via: "portal" });
+    const read = readState(state, nonce);
+    expect(read.ok && read.value.via).toBe("portal");
+    const staffFlow = issueState(ISSUE);
+    const plain = readState(staffFlow.state, staffFlow.nonce);
+    expect(plain.ok && plain.value.via).toBeUndefined();
   });
 });
