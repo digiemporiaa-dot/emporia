@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { currentActor } from "@/lib/actor";
-import { can } from "@/lib/auth/rbac";
 import { socialProvider } from "@/lib/social";
-import { OAUTH_STATE_COOKIE, callbackUrl, pkceVerifier, readState } from "@/lib/social/oauth-state";
+import {
+  OAUTH_STATE_COOKIE,
+  PORTAL_ACCOUNTS_PATH,
+  callbackUrl,
+  mayFinish,
+  pkceVerifier,
+  readState,
+} from "@/lib/social/oauth-state";
 import { assertConnectable, connectAccount } from "@/lib/services/social-account.service";
 import { startPendingConnection } from "@/lib/services/social-pending.service";
 import { isAppError } from "@/lib/errors";
@@ -18,7 +24,10 @@ import type { SocialProvider } from "@/generated/prisma/enums";
  * URL, so it re-establishes everything rather than assuming the flow that
  * started is the flow that finished:
  *
- * - the operator is signed in, and may still manage social accounts;
+ * - the operator is signed in, and may still manage social accounts — or, for
+ *   a flow the portal started (`via: "portal"`), is a portal user of the very
+ *   client the state names. Each kind of flow is finished only by its own
+ *   kind of person;
  * - the `state` carries our own signature, has not expired, and matches the
  *   nonce in the httpOnly cookie set when the flow began;
  * - the client comes from that signed state, never from the query string;
@@ -71,9 +80,6 @@ export async function GET(
 ): Promise<NextResponse> {
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
-  if (!can(actor, "social.accounts.manage")) {
-    return NextResponse.json({ error: "You cannot manage social accounts." }, { status: 403 });
-  }
 
   const { provider: slug } = await params;
   const provider = PROVIDERS[slug];
@@ -98,6 +104,12 @@ export async function GET(
   if (state.value.provider !== provider) {
     routeLog.warn({ provider, stated: state.value.provider }, "oauth callback provider mismatch");
     return NextResponse.json({ error: "That connection could not be verified." }, { status: 400 });
+  }
+
+  const portal = state.value.via === "portal";
+  if (!mayFinish(actor, state.value)) {
+    routeLog.warn({ provider, portal, actorType: actor.type }, "oauth callback from the wrong person");
+    return NextResponse.json({ error: "You cannot manage social accounts." }, { status: 403 });
   }
 
   // The operator declined, or the provider refused. Not an error worth a stack
@@ -137,7 +149,9 @@ export async function GET(
         });
         const response = NextResponse.redirect(
           new URL(
-            `/admin/clients/${state.value.clientId}/social/accounts/choose/${pendingId}`,
+            portal
+              ? `${PORTAL_ACCOUNTS_PATH}/choose/${pendingId}`
+              : `/admin/clients/${state.value.clientId}/social/accounts/choose/${pendingId}`,
             siteOrigin(),
           ),
         );

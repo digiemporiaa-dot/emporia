@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireActorPage } from "@/lib/actor";
 import { can } from "@/lib/auth/rbac";
-import { accountHealth, accountWarnings, listAccounts, nextSyncAt } from "@/lib/services/social-account.service";
+import { accountHealth, accountWarnings, listAccounts, moveTargets, nextSyncAt } from "@/lib/services/social-account.service";
 import { providerStatuses } from "@/lib/social";
 import { AccountsPanel, type AccountRow, type ProviderRow } from "./accounts-panel";
 
@@ -25,9 +25,11 @@ export default async function SocialAccountsPage({
   const { clientId } = await params;
   const actor = await requireActorPage(`/admin/clients/${clientId}/social/accounts`);
 
-  const [accounts, providers] = await Promise.all([
+  const canMove = can(actor, "social.accounts.move");
+  const [accounts, providers, targets] = await Promise.all([
     listAccounts(actor, clientId),
     providerStatuses(),
+    canMove ? moveTargets(actor, clientId) : Promise.resolve([]),
   ]);
 
   const configured = new Map(providers.map((provider) => [provider.provider, provider.configured]));
@@ -78,6 +80,7 @@ export default async function SocialAccountsPage({
       accounts={rows}
       providers={available}
       canManage={can(actor, "social.accounts.manage")}
+      moveTargets={canMove ? targets.map((t) => ({ id: t.id, name: t.isInternal ? `${t.name} (our own)` : t.name })) : null}
     />
   );
 }

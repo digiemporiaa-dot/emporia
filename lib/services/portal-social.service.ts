@@ -4,6 +4,7 @@ import { periodSummary } from "@/lib/services/social-summary.service";
 import { CALENDAR_TIME_ZONE, startOfZonedDay, zonedDay } from "@/lib/social/calendar";
 import { SNAPSHOT_SELECT, engagementOf, isMeasured, toReportRow } from "@/lib/social/report";
 import { engagementRate } from "@/lib/social/insights";
+import { providerStatuses } from "@/lib/social";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PortalActor } from "@/lib/actor/types";
 
@@ -234,3 +235,51 @@ export async function portalDirectPosts(actor: PortalActor, page: number) {
 }
 
 export type PortalDirectPost = Awaited<ReturnType<typeof portalDirectPosts>>["posts"][number];
+
+/** A client-facing word for an account's state — nothing about tokens or errors. */
+export type ClientAccountState = "CONNECTED" | "NEEDS_RECONNECT" | "NOT_CONNECTED";
+
+/**
+ * The client's own connected accounts, and the platforms they can still
+ * connect themselves.
+ *
+ * Only what a client needs to act: name, handle, profile link and one of three
+ * states. No account id beyond what the page needs to key a list, no token, no
+ * platform error — a refusal is the agency's to read. Platforms the agency has
+ * not set up are left out entirely: a client cannot fix them.
+ */
+export async function portalSocialAccounts(actor: PortalActor) {
+  const [accounts, providers] = await Promise.all([
+    db.socialAccount.findMany({
+      where: { clientId: actor.clientId },
+      orderBy: [{ provider: "asc" }, { name: "asc" }],
+      select: { id: true, provider: true, name: true, username: true, profileUrl: true, status: true },
+    }),
+    providerStatuses(),
+  ]);
+
+  const offered = providers.filter((p) => p.implemented && p.configured);
+  const offeredSet = new Set(offered.map((p) => p.provider));
+
+  const rows = accounts.map((account) => ({
+    id: account.id,
+    provider: account.provider,
+    name: account.name,
+    username: account.username,
+    profileUrl: account.profileUrl,
+    state: (account.status === "CONNECTED"
+      ? "CONNECTED"
+      : account.status === "NEEDS_RECONNECT"
+        ? "NEEDS_RECONNECT"
+        : "NOT_CONNECTED") as ClientAccountState,
+    // Reconnecting runs through the platform's sign-in, so it is only offered
+    // where the agency has that platform set up.
+    canReconnect: offeredSet.has(account.provider),
+  }));
+
+  const live = new Set(rows.filter((r) => r.state !== "NOT_CONNECTED").map((r) => r.provider));
+  return {
+    accounts: rows,
+    available: offered.map((p) => ({ provider: p.provider, label: p.label, connected: live.has(p.provider) })),
+  };
+}

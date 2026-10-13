@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
+import Link from "next/link";
 import { requirePortalActorPage } from "@/lib/actor/portal";
 import { isAppError } from "@/lib/errors";
 import { listCountries } from "@/lib/geo/countries";
@@ -208,14 +209,20 @@ export default async function PortalOnboardingPage({ searchParams }: { searchPar
 
         {state("SOCIAL") !== "not-applicable" ? (
           <StepCard id="SOCIAL" title="Social accounts" state={state("SOCIAL")}>
-            <p className="text-sm text-ink-muted">Tell us where you are. Our team connects each account for you; this step completes when every profile you list is connected.</p>
+            <p className="text-sm text-ink-muted">
+              Tell us where you are, then{" "}
+              <Link href={"/portal/social/accounts" as Route} className="text-navy-800 underline underline-offset-2">
+                connect each account yourself
+              </Link>{" "}
+              — or leave it to our team. This step completes when every profile you list is connected.
+            </p>
             {view.socialProfiles.length ? (
               <ul className="space-y-1 text-sm">
                 {view.socialProfiles.map((profile) => (
                   <li key={`${profile.platform}-${profile.handle}`} className="flex flex-wrap items-center gap-2">
                     <span className="text-navy-800">{SOCIAL_PLATFORM_LABEL[profile.platform as SocialPlatform]}</span>
                     <span className="break-all text-ink-muted">{profile.handle}</span>
-                    {connectedPlatforms.has(profile.platform) ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Waiting for us</Badge>}
+                    {connectedPlatforms.has(profile.platform) ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected yet</Badge>}
                   </li>
                 ))}
               </ul>

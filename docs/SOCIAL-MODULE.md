@@ -3648,3 +3648,88 @@ ID, no platform ID and no read timestamp.
   - The rerun was fully green at 111s.
   - This is load, not the code. It's worth raising those tests' timeouts if
     it recurs in CI.
+
+---
+
+## 36. Moving an account between clients, and clients connecting their own
+
+Two changes to who an account belongs to and who may connect it.
+
+### Moving an account to another client
+
+One platform account belongs to one client (`@@unique([provider,
+externalId])`), and **Disconnect keeps the row**, so before this an account
+connected to the wrong client could never be connected to the right one:
+every attempt answered *"already connected to another client"*.
+
+**Move** (admin accounts screen, on a connected or previously connected
+account) hands the account to another client. It needs the new permission
+`social.accounts.move`, held by ADMIN only (SUPER_ADMIN bypasses). What moves
+is the account alone (`moveAccount` in `social-account.service.ts`):
+
+| Thing | What happens | Why |
+|---|---|---|
+| The old client's posts | Kept, with their published history, and unlinked from the account (`accountId` null) | They are the old client's record; the new client never sees them |
+| Imported posts, Business Profile reviews and listing | Deleted | Read on the old client's behalf; the new client's connection reads them again |
+| Credentials, scopes, sync state | Wiped; the account arrives **disconnected** | They were granted for the old client |
+| Posts scheduled or publishing through it | **Move refused** until they are cancelled or rescheduled | Otherwise they would go out under a client they do not belong to |
+
+The new client then connects it as usual. Connecting the same platform
+account updates the same row, so it has one history. Audited as `ASSIGN`
+with both client ids and no token. The account picker now also counts a
+**disconnected** row elsewhere as taken, because connecting it would be
+refused.
+
+### Clients connect their own accounts
+
+The client onboarding plan had decided against this ("staff connect; the
+client lists their profiles"). That decision is reversed: every client's
+portal users get **Social → Accounts** (`/portal/social/accounts`).
+
+- **Connect and Reconnect only.** Disconnecting, moving and **Sync now** stay
+  with staff.
+- Only platforms the agency has set up (implemented and configured) are
+  offered. The page shows a name, a handle, a profile link and one of three
+  states. It never shows a token or the platform's error text.
+- The same sign-in route serves both. For a portal user, the client is the
+  session's and any `clientId` in the URL is ignored (`flowClient`). The
+  signed state carries `via: "portal"`, and the callback finishes it only
+  for a portal user of the client it names (`mayFinish`). A staff flow is
+  finished only by staff. Neither can complete the other's.
+- Facebook Pages and Business Profile locations: the portal has its own
+  picker. A pending grant is bound to the person *and their kind* (staff or
+  client), so a staff grant cannot be finished in the portal or the reverse.
+- `connectScope` replaces the permission check in `connectAccount` and the
+  pending service: staff need `social.accounts.manage`, and a portal user
+  reaches their own client only.
+- *Connected by* still names staff only. A client reconnecting leaves the
+  staff member who connected it in place. The client's owner gets an in-app
+  notification: *"<Client> connected Instagram"*.
+- The onboarding checklist's social step links to the page.
+
+**Until Meta App Review, Google verification and the other platforms'
+approvals are done, a client's own account cannot connect.** Only accounts
+with a role on the app (testers) can. The feature is ready; the approvals are
+the operator's (docs/DEPLOYMENT.md §6).
+
+### Verified
+
+- `tests/social-account-move.db.test.ts`, 14 cases:
+  - only ADMIN holds the permission, and staff without it and portal users
+    are refused;
+  - a scheduled post blocks the move and nothing changes;
+  - after a move, the old client's posts keep their history, imported posts
+    are gone, the credentials are gone, and the audit row carries both
+    clients and no token;
+  - the new client can connect the account and the old client can't;
+  - a portal user connects for their own client only, and the owner is
+    notified;
+  - a reconnect keeps the staff connector;
+  - a portal grant is invisible to colleagues, to other clients and to
+    staff;
+  - the portal view leaks no token, no platform error and nothing of
+    another client's.
+- `tests/social-oauth.test.ts`: `flowClient` and `mayFinish` in both
+  directions, and the portal marker surviving the signed state.
+- `tests/social-facebook.db.test.ts`: the "staff only" case now asserts a
+  staff grant reads as missing to a portal user.

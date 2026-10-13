@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
-import { requirePermission } from "@/lib/auth/rbac";
+import { requirePermission, requireStaff } from "@/lib/auth/rbac";
 import { record, withAudit } from "@/lib/services/audit.service";
 import { systemActor } from "@/lib/actor/types";
 import { decryptSecret, encryptSecret } from "@/lib/security/secret";
@@ -11,7 +11,11 @@ import { CredentialsRejectedError } from "@/lib/social/errors";
 import { importRecentPosts } from "@/lib/services/social-external.service";
 import { resolveClientScope } from "@/lib/social/scope";
 import { log } from "@/lib/logger";
-import { announceAccountNeedsReconnect, announceAccountExpiring } from "@/lib/services/social-notify.service";
+import {
+  announceAccountConnectedByClient,
+  announceAccountExpiring,
+  announceAccountNeedsReconnect,
+} from "@/lib/services/social-notify.service";
 import type { SocialAccountStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
 import type {
@@ -132,6 +136,21 @@ export async function getAccount(actor: Actor, id: string) {
 }
 
 /**
+ * Who may connect (or reconnect) accounts for a client, and which client that
+ * is.
+ *
+ * Staff need `social.accounts.manage`. A portal user needs no permission —
+ * the portal holds none — but only ever reaches their own client:
+ * `resolveClientScope` returns the session's client and refuses any other.
+ * Connecting is all a portal user gets; disconnecting, moving and checking
+ * stay with staff.
+ */
+export async function connectScope(actor: Actor, clientId: string): Promise<string> {
+  if (actor.type !== "CLIENT") requirePermission(actor, "social.accounts.manage");
+  return resolveClientScope(actor, clientId);
+}
+
+/**
  * Store the result of a completed OAuth exchange.
  *
  * Called only by the callback route, never by a form: the arguments are what
@@ -148,8 +167,7 @@ export async function connectAccount(
     credentials: ProviderCredentials;
   },
 ) {
-  requirePermission(actor, "social.accounts.manage");
-  const scope = await resolveClientScope(actor, input.clientId);
+  const scope = await connectScope(actor, input.clientId);
 
   // The same platform account cannot serve two clients: "whose post is this"
   // has to have one answer.
@@ -187,7 +205,11 @@ export async function connectAccount(
     lastSyncedAt: new Date(),
     lastSyncError: null,
     failureCount: 0,
-    connectedById: actor.type === "STAFF" ? actor.userId : null,
+    // "Connected by" names staff, who are told when the account needs them. A
+    // client reconnecting from the portal leaves whoever that was in place.
+    ...(actor.type === "CLIENT" ? (existing ? {} : { connectedById: null }) : {
+      connectedById: actor.type === "STAFF" ? actor.userId : null,
+    }),
     ...credentials,
   };
 
@@ -215,9 +237,10 @@ export async function connectAccount(
   );
 
   accountLog.info(
-    { provider: input.provider, clientId: scope, reconnected: Boolean(existing) },
+    { provider: input.provider, clientId: scope, reconnected: Boolean(existing), via: actor.type },
     "social account connected",
   );
+  if (actor.type === "CLIENT") await announceAccountConnectedByClient(account.id, Boolean(existing));
   return account;
 }
 
@@ -263,6 +286,122 @@ export async function disconnectAccount(actor: Actor, id: string) {
   );
 
   accountLog.info({ accountId: id, provider: before.provider }, "social account disconnected");
+  return account;
+}
+
+/** The clients an account on `fromClientId`'s screen could be moved to, our own included. */
+export async function moveTargets(actor: Actor, fromClientId: string) {
+  requireStaff(actor);
+  requirePermission(actor, "social.accounts.move");
+  return db.client.findMany({
+    where: { deletedAt: null, id: { not: fromClientId } },
+    orderBy: [{ isInternal: "desc" }, { name: "asc" }],
+    select: { id: true, name: true, isInternal: true },
+    take: 1000,
+  });
+}
+
+/** Post states that would go out through the account if it changed hands now. */
+const IN_FLIGHT_POST_STATUSES = ["SCHEDULED", "PUBLISHING"] as const;
+
+/**
+ * Hand an account to another client.
+ *
+ * One platform account belongs to one client (`@@unique([provider,
+ * externalId])`), and disconnecting keeps the row — so without this, an
+ * account connected to the wrong client could never be connected to the right
+ * one. What moves is the account alone; nothing of the old client's goes with
+ * it:
+ *
+ * - **Its posts stay its record.** Every post of the old client loses its link
+ *   to the account (the post keeps its provider, content and published
+ *   history), so the new client never sees the old client's work.
+ * - **What was read from the platform is dropped** — imported posts, Business
+ *   Profile reviews and listing. It was read on the old client's behalf; the
+ *   new client's own connection reads it again.
+ * - **The credentials are wiped.** They were granted for the old client, so the
+ *   account arrives disconnected and the new client connects it themselves.
+ *
+ * Refused while the old client has posts scheduled or publishing through it:
+ * moving would send them out under a client they do not belong to, or strand
+ * them. Those are dealt with first, by a person.
+ */
+export async function moveAccount(actor: Actor, id: string, targetClientId: string) {
+  requireStaff(actor);
+  requirePermission(actor, "social.accounts.move");
+
+  const before = await db.socialAccount.findUnique({
+    where: { id },
+    select: { id: true, clientId: true, provider: true, name: true, status: true },
+  });
+  if (!before) throw new NotFoundError("That account does not exist.");
+  await resolveClientScope(actor, before.clientId);
+
+  const target = await resolveClientScope(actor, targetClientId);
+  if (target === before.clientId) {
+    throw new ValidationError("The account already belongs to that client.");
+  }
+
+  const inFlight = await db.socialPost.count({
+    where: { accountId: id, status: { in: [...IN_FLIGHT_POST_STATUSES] } },
+  });
+  if (inFlight > 0) {
+    throw new ConflictError(
+      `${inFlight} ${inFlight === 1 ? "post is" : "posts are"} scheduled to go out through this account. ` +
+        "Cancel or reschedule them before moving it.",
+    );
+  }
+
+  const account = await withAudit(
+    {
+      actor,
+      action: "ASSIGN",
+      entityType: "SocialAccount",
+      entityId: id,
+      before: { clientId: before.clientId, provider: before.provider, name: before.name, status: before.status },
+      after: { clientId: target, status: "DISCONNECTED" },
+    },
+    async (tx) => {
+      // Re-checked inside the transaction: a post scheduled between the count
+      // above and here must not slip through on the old client's behalf.
+      const late = await tx.socialPost.count({
+        where: { accountId: id, status: { in: [...IN_FLIGHT_POST_STATUSES] } },
+      });
+      if (late > 0) {
+        throw new ConflictError("A post was just scheduled through this account. Try again once it is dealt with.");
+      }
+
+      await tx.socialPost.updateMany({ where: { accountId: id }, data: { accountId: null } });
+      await tx.socialExternalPost.deleteMany({ where: { accountId: id } });
+      await tx.gbpReview.deleteMany({ where: { socialAccountId: id } });
+      await tx.gbpListing.deleteMany({ where: { socialAccountId: id } });
+
+      return tx.socialAccount.update({
+        where: { id },
+        data: {
+          clientId: target,
+          status: "DISCONNECTED",
+          accessToken: null,
+          refreshToken: null,
+          tokenExpiresAt: null,
+          expiryWarnedFor: null,
+          scopes: [],
+          scopesReportedAt: null,
+          lastSyncedAt: null,
+          lastCheckAttemptAt: null,
+          lastSyncError: null,
+          failureCount: 0,
+          connectedById: null,
+        },
+        select: accountSelect,
+      });
+    },
+  );
+
+  accountLog.info(
+    { accountId: id, provider: before.provider, from: before.clientId, to: target },
+    "social account moved to another client",
+  );
   return account;
 }
 

@@ -2,11 +2,9 @@ import "server-only";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
-import { requirePermission } from "@/lib/auth/rbac";
 import { decryptSecret, encryptSecret } from "@/lib/security/secret";
-import { resolveClientScope } from "@/lib/social/scope";
 import { socialProvider } from "@/lib/social";
-import { assertConnectable, connectAccount } from "@/lib/services/social-account.service";
+import { assertConnectable, connectAccount, connectScope } from "@/lib/services/social-account.service";
 import type { SocialProvider } from "@/generated/prisma/enums";
 import type { Actor } from "@/lib/actor/types";
 import type {
@@ -33,9 +31,10 @@ import type {
  * - the **options** as shown — name, handle, profile link. Never a token.
  *
  * Every read re-checks the whole chain, because the picker URL is just a URL:
- * the operator must be the one who signed in, must still hold
- * `social.accounts.manage`, must still reach the client, and the grant must
- * not have expired. A colleague who opens the link sees nothing.
+ * the person must be the one who signed in, must still be allowed to connect
+ * for the client (`connectScope`: staff with `social.accounts.manage`, or that
+ * client's own portal user), and the grant must not have expired. A colleague
+ * — or another of the client's portal users — who opens the link sees nothing.
  */
 
 const TTL_MS = 15 * 60 * 1000;
@@ -53,8 +52,9 @@ export type PendingOption = z.infer<typeof optionSchema>;
 
 type Resolve = (provider: SocialProvider) => Promise<SocialProviderAdapter>;
 
-function staffId(actor: Actor): string {
-  if (actor.type !== "STAFF") throw new ForbiddenError("Only staff can connect social accounts.");
+/** The person a grant belongs to. Automation never signs in to a platform. */
+function personId(actor: Actor): string {
+  if (actor.type === "SYSTEM") throw new ForbiddenError("Only a person can connect social accounts.");
   return actor.userId;
 }
 
@@ -69,9 +69,8 @@ export async function startPendingConnection(
   },
   now = new Date(),
 ): Promise<string> {
-  requirePermission(actor, "social.accounts.manage");
-  const startedById = staffId(actor);
-  const clientId = await resolveClientScope(actor, input.clientId);
+  const startedById = personId(actor);
+  const clientId = await connectScope(actor, input.clientId);
 
   if (input.accounts.length === 0) {
     throw new ValidationError("That sign-in manages no accounts that can be connected.");
@@ -114,8 +113,7 @@ export async function startPendingConnection(
 
 /** Load a grant and prove this actor may act on it. */
 async function authorised(actor: Actor, id: string, now: Date) {
-  requirePermission(actor, "social.accounts.manage");
-  const userId = staffId(actor);
+  const userId = personId(actor);
 
   const row = await db.socialPendingConnection.findUnique({
     where: { id },
@@ -124,6 +122,7 @@ async function authorised(actor: Actor, id: string, now: Date) {
       clientId: true,
       provider: true,
       startedById: true,
+      startedBy: { select: { type: true } },
       credentials: true,
       options: true,
       returnTo: true,
@@ -132,16 +131,19 @@ async function authorised(actor: Actor, id: string, now: Date) {
   });
   // Someone else's grant reads as missing, not forbidden: its existence is
   // nobody else's business.
-  if (!row || row.startedById !== userId) {
+  // The kind of person is checked as well as the person: a grant started in
+  // the admin is finished in the admin, and a portal one in the portal.
+  if (!row || row.startedById !== userId || row.startedBy.type !== actor.type) {
     throw new NotFoundError("That connection has expired. Start it again.");
   }
   if (row.expiresAt.getTime() <= now.getTime()) {
     await db.socialPendingConnection.deleteMany({ where: { id } });
     throw new NotFoundError("That connection has expired. Start it again.");
   }
-  await resolveClientScope(actor, row.clientId);
+  await connectScope(actor, row.clientId);
 
-  return { ...row, options: optionsSchema.parse(row.options) };
+  const { startedBy: _startedBy, ...grant } = row;
+  return { ...grant, options: optionsSchema.parse(row.options) };
 }
 
 export type PendingConnectionView = {
@@ -161,15 +163,16 @@ export async function getPendingConnection(
 ): Promise<PendingConnectionView> {
   const row = await authorised(actor, id, now);
 
+  // Every row counts, disconnected ones too: an account belongs to its client
+  // until staff move it, so one disconnected elsewhere cannot be connected here.
   const taken = await db.socialAccount.findMany({
     where: {
       provider: row.provider,
       externalId: { in: row.options.map((o) => o.externalId) },
-      status: { not: "DISCONNECTED" },
     },
-    select: { externalId: true, clientId: true },
+    select: { externalId: true, clientId: true, status: true },
   });
-  const owner = new Map(taken.map((t) => [t.externalId, t.clientId]));
+  const owner = new Map(taken.map((t) => [t.externalId, t]));
 
   return {
     id: row.id,
@@ -178,12 +181,12 @@ export async function getPendingConnection(
     expiresAt: row.expiresAt,
     returnTo: row.returnTo,
     options: row.options.map((option) => {
-      const clientId = owner.get(option.externalId);
+      const existing = owner.get(option.externalId);
       return {
         ...option,
-        connectedHere: clientId === row.clientId,
+        connectedHere: existing?.clientId === row.clientId && existing.status !== "DISCONNECTED",
         // Which client is not said — only that the Page is spoken for.
-        connectedElsewhere: clientId !== undefined && clientId !== row.clientId,
+        connectedElsewhere: existing !== undefined && existing.clientId !== row.clientId,
       };
     }),
   };

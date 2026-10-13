@@ -483,6 +483,31 @@ export async function announceAccountNeedsReconnect(accountId: string, reason: s
   }
 }
 
+/**
+ * A client connected (or reconnected) one of their own accounts from the
+ * portal. Their owner hears about it: an account appearing without anybody at
+ * the agency pressing Connect is worth knowing, and it is the moment to plan
+ * for it.
+ */
+export async function announceAccountConnectedByClient(accountId: string, reconnected: boolean) {
+  try {
+    const { account, userIds } = await accountContext(accountId);
+    await Promise.all(
+      userIds.map((userId) =>
+        notify({
+          userId,
+          title: `${account.client.name} ${reconnected ? "reconnected" : "connected"} ${PROVIDER_LABEL[account.provider]}`,
+          body: `${account.name} was ${reconnected ? "reconnected" : "connected"} from the client portal.`,
+          href: `/admin/clients/${account.clientId}/social/accounts`,
+          entity: { type: "SocialAccount", id: account.id },
+        }),
+      ),
+    );
+  } catch (error) {
+    notifyLog.error({ err: error, accountId }, "announcing a client-connected account failed");
+  }
+}
+
 /** New social content was created — a trigger only; creating is routine. */
 export async function announceContentCreated(contentItemId: string, actorUserId: string) {
   try {

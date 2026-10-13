@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActor } from "@/lib/actor";
-import { disconnectAccount, syncAccount } from "@/lib/services/social-account.service";
+import { disconnectAccount, moveAccount, syncAccount } from "@/lib/services/social-account.service";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -11,8 +11,7 @@ import { log } from "@/lib/logger";
  * The buttons on the accounts screen.
  *
  * Connecting is not here: it is a redirect to the provider and therefore a
- * route handler. These are the two things that act on an account we already
- * hold.
+ * route handler. These are the things that act on an account we already hold.
  */
 
 const actionLog = log("social");
@@ -44,6 +43,30 @@ export async function syncAccountAction(
     };
   } catch (error) {
     actionLog.error({ err: error }, "social account sync failed");
+    return toActionFailure(error);
+  }
+}
+
+const moveSchema = idSchema.extend({
+  targetClientId: z.string().min(1).max(40),
+});
+
+export async function moveAccountAction(
+  input: unknown,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = moveSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: "Choose the client to move the account to." };
+    }
+
+    const account = await moveAccount(actor, parsed.data.accountId, parsed.data.targetClientId);
+    revalidatePath(`/admin/clients/${parsed.data.clientId}/social/accounts`);
+    revalidatePath(`/admin/clients/${parsed.data.targetClientId}/social/accounts`);
+    return { ok: true, data: { id: account.id } };
+  } catch (error) {
+    actionLog.error({ err: error }, "social account move failed");
     return toActionFailure(error);
   }
 }

@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { currentActor } from "@/lib/actor";
-import { can } from "@/lib/auth/rbac";
 import { db } from "@/lib/db";
 import { socialProvider } from "@/lib/social";
-import { OAUTH_STATE_COOKIE, callbackUrl, issueState, pkceVerifier } from "@/lib/social/oauth-state";
+import {
+  OAUTH_STATE_COOKIE,
+  PORTAL_ACCOUNTS_PATH,
+  callbackUrl,
+  flowClient,
+  issueState,
+  pkceVerifier,
+} from "@/lib/social/oauth-state";
+import { siteOrigin } from "@/lib/seo/urls";
 import { isAppError } from "@/lib/errors";
 import { log } from "@/lib/logger";
 import type { SocialProvider } from "@/generated/prisma/enums";
@@ -21,6 +28,11 @@ import type { SocialProvider } from "@/generated/prisma/enums";
  * signed into the OAuth `state` — so when the browser comes back, the callback
  * reads which client this was for from a value it signed itself rather than
  * from a query parameter (CLAUDE.md 2 rule 3).
+ *
+ * A client's portal user may start it too, for their own client only: the
+ * client comes from the session and any `clientId` in the query is ignored.
+ * Their state is marked `via: "portal"`, so it comes back to the portal and
+ * can only be finished by a portal user of the same client.
  */
 
 export const runtime = "nodejs";
@@ -43,9 +55,11 @@ export async function GET(
 ): Promise<NextResponse> {
   const actor = await currentActor();
   if (!actor) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
-  if (!can(actor, "social.accounts.manage")) {
+  const flow = flowClient(actor, new URL(request.url).searchParams.get("clientId"));
+  if (!flow) {
     return NextResponse.json({ error: "You cannot manage social accounts." }, { status: 403 });
   }
+  const { portal } = flow;
 
   const { provider: slug } = await params;
   const provider = PROVIDERS[slug];
@@ -53,7 +67,8 @@ export async function GET(
     return NextResponse.json({ error: "There is no such provider." }, { status: 404 });
   }
 
-  const clientId = new URL(request.url).searchParams.get("clientId");
+  // A portal user's client is their session's, whatever the URL says.
+  const { clientId } = flow;
   if (!clientId) {
     return NextResponse.json({ error: "No client was named." }, { status: 400 });
   }
@@ -68,6 +83,9 @@ export async function GET(
 
   const adapter = await socialProvider(provider);
   if (!adapter.configured) {
+    // A client cannot fix the agency's settings: back to their page, where
+    // the platform is simply not offered.
+    if (portal) return portalBack("unconfigured");
     // Honest, and actionable: the operator is told what to do rather than
     // being bounced to a provider that will reject the request.
     return NextResponse.json(
@@ -76,8 +94,13 @@ export async function GET(
     );
   }
 
-  const returnTo = `/admin/clients/${client.id}/social/accounts`;
-  const { state, nonce } = issueState({ clientId: client.id, provider, returnTo });
+  const returnTo = portal ? PORTAL_ACCOUNTS_PATH : `/admin/clients/${client.id}/social/accounts`;
+  const { state, nonce } = issueState({
+    clientId: client.id,
+    provider,
+    returnTo,
+    ...(portal ? { via: "portal" as const } : {}),
+  });
 
   let authorizeUrl: string;
   try {
@@ -85,6 +108,10 @@ export async function GET(
       verifier: pkceVerifier(nonce),
     });
   } catch (error) {
+    if (portal) {
+      routeLog.error({ err: error, provider }, "could not build a portal authorization url");
+      return portalBack("failed");
+    }
     if (isAppError(error)) {
       return NextResponse.json({ error: error.publicMessage }, { status: error.status });
     }
@@ -103,6 +130,13 @@ export async function GET(
     maxAge: 600,
   });
 
-  routeLog.info({ provider, clientId: client.id, actorId: actor.userId }, "oauth flow started");
+  routeLog.info({ provider, clientId: client.id, actorId: actor.userId, portal }, "oauth flow started");
   return response;
+}
+
+/** A client never lands on a JSON error: back to their accounts page with the outcome. */
+function portalBack(outcome: string): NextResponse {
+  const target = new URL(PORTAL_ACCOUNTS_PATH, siteOrigin());
+  target.searchParams.set("connection", outcome);
+  return NextResponse.redirect(target);
 }

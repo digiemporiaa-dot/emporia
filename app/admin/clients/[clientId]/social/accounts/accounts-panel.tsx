@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, CheckCircle2, Link2, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
+import { AlertCircle, ArrowRightLeft, CheckCircle2, Link2, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
 import {
   Badge,
   Button,
@@ -11,12 +11,14 @@ import {
   CardHeader,
   CardTitle,
   Dialog,
+  Field,
+  Select,
   useToast,
 } from "@/components/ui";
 import { useHydrated } from "@/lib/utils/hydrated";
 import type { SocialAccountStatus, SocialProvider } from "@/generated/prisma/enums";
 import type { AccountHealth } from "@/lib/services/social-account.service";
-import { disconnectAccountAction, syncAccountAction } from "./actions";
+import { disconnectAccountAction, moveAccountAction, syncAccountAction } from "./actions";
 
 export type AccountRow = {
   id: string;
@@ -95,11 +97,14 @@ export function AccountsPanel({
   accounts,
   providers,
   canManage,
+  moveTargets,
 }: {
   clientId: string;
   accounts: readonly AccountRow[];
   providers: readonly ProviderRow[];
   canManage: boolean;
+  /** Clients an account can be moved to; null when the viewer may not move accounts. */
+  moveTargets: readonly { id: string; name: string }[] | null;
 }) {
   const ready = useHydrated();
   const router = useRouter();
@@ -108,6 +113,9 @@ export function AccountsPanel({
   const [pending, start] = React.useTransition();
   const [busy, setBusy] = React.useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState<AccountRow | null>(null);
+  const [moving, setMoving] = React.useState<AccountRow | null>(null);
+  const [moveTo, setMoveTo] = React.useState("");
+  const [moveError, setMoveError] = React.useState<string | null>(null);
 
   const outcome = OUTCOME[search.get("connection") ?? ""];
 
@@ -144,6 +152,45 @@ export function AccountsPanel({
       }
     });
   };
+
+  const openMove = (account: AccountRow) => {
+    setMoveTo("");
+    setMoveError(null);
+    setMoving(account);
+  };
+
+  const move = (account: AccountRow) => {
+    if (!moveTo) {
+      setMoveError("Choose the client to move it to.");
+      return;
+    }
+    const target = moveTargets?.find((t) => t.id === moveTo)?.name ?? "the other client";
+    setBusy(account.id);
+    start(async () => {
+      const result = await moveAccountAction({ accountId: account.id, clientId, targetClientId: moveTo });
+      setBusy(null);
+      if (result.ok) {
+        setMoving(null);
+        push({
+          tone: "success",
+          title: `${account.name} moved to ${target}.`,
+          description: "Connect it from that client's accounts page to start using it.",
+        });
+        router.refresh();
+      } else {
+        // Shown in the dialog: a refusal (scheduled posts) needs reading, not a toast.
+        setMoveError(result.message);
+      }
+    });
+  };
+
+  const moveButton = (account: AccountRow) =>
+    moveTargets && moveTargets.length > 0 ? (
+      <Button size="sm" variant="secondary" disabled={!ready || pending} onClick={() => openMove(account)}>
+        <ArrowRightLeft size={13} aria-hidden="true" />
+        Move
+      </Button>
+    ) : null;
 
   const live = accounts.filter((a) => a.status !== "DISCONNECTED");
   const past = accounts.filter((a) => a.status === "DISCONNECTED");
@@ -255,6 +302,7 @@ export function AccountsPanel({
                         <Link2 size={13} aria-hidden="true" />
                         Reconnect
                       </a>
+                      {moveButton(account)}
                       <Button
                         size="sm"
                         variant="danger"
@@ -318,21 +366,69 @@ export function AccountsPanel({
           <CardHeader>
             <CardTitle>Previously connected</CardTitle>
             <p className="text-xs text-ink-subtle">
-              Kept because the posts that went out through them are still this client&rsquo;s
-              record.
+              Not in use. Kept because the posts that went out through them are this
+              client&rsquo;s record; reconnect one to use it again.
             </p>
           </CardHeader>
           <CardBody>
             <ul className="divide-y divide-line">
               {past.map((account) => (
-                <li key={account.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="text-sm text-ink-muted">{account.name}</span>
-                  <Badge tone="neutral">Disconnected</Badge>
+                <li key={account.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm text-ink-muted">{account.name}</span>
+                    <Badge tone="neutral">Disconnected</Badge>
+                  </span>
+                  {canManage || moveTargets ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      {canManage ? (
+                        <a
+                          href={`/api/social/oauth/${account.provider.toLowerCase()}?clientId=${clientId}`}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-white px-3 text-xs text-navy-800 hover:border-navy-300 hover:bg-surface-muted"
+                        >
+                          <Link2 size={13} aria-hidden="true" />
+                          Reconnect
+                        </a>
+                      ) : null}
+                      {moveButton(account)}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>
           </CardBody>
         </Card>
+      ) : null}
+
+      {moving && moveTargets ? (
+        <Dialog
+          open
+          onClose={() => setMoving(null)}
+          title={`Move ${moving.name} to another client?`}
+          description="The account arrives disconnected, and that client connects it again. This client's posts stay in its own history; nothing of this client's goes with the account."
+        >
+          <div className="space-y-4">
+            <Field id="move-target" label="Move to" required error={moveError}>
+              {(aria) => (
+                <Select {...aria} value={moveTo} onChange={(event) => setMoveTo(event.target.value)}>
+                  <option value="">Choose a client</option>
+                  {moveTargets.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      {target.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setMoving(null)}>
+                Keep it here
+              </Button>
+              <Button disabled={pending} onClick={() => move(moving)}>
+                {busy === moving.id && pending ? "Moving…" : "Move account"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       ) : null}
 
       {confirmDisconnect ? (

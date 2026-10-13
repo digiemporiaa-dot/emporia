@@ -84,6 +84,12 @@ export const PERMISSIONS = [
   "social.approve",
   "social.publish",
   "social.accounts.manage",
+  /**
+   * Hand a connected account from one client to another. Narrower than
+   * `social.accounts.manage`: it decides which client a platform account
+   * belongs to, so it is held by admins only and no other seeded role.
+   */
+  "social.accounts.move",
   "social.analytics.view",
   "social.reports.view",
   /**

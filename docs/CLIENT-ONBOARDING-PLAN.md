@@ -29,7 +29,7 @@ Account setup: 70%
 | - | - |
 | Website access | **No passwords.** The client adds the agency's access email as a user on their site and confirms the platform and login URL. Nothing secret is stored. |
 | Google | **The client connects Search Console from the portal** (Google sign-in, the Phase 2 connection, same domain and verification checks). **GA4**: the client gives the property ID and confirms access; data arrives in SEO Phase 9. |
-| Social | **Staff connect; the client lists their profiles** and sees which are connected. |
+| Social | **The client lists their profiles and connects them from Social → Accounts** (originally staff-only; see the note at the end), and sees which are connected. |
 | Brand assets | **Portal upload** through the existing verified upload path: JPEG, PNG, WebP, PDF only (no SVG from clients — untrusted XML), plus brand colours. |
 
 ## Model (additive)
@@ -101,5 +101,8 @@ state cannot complete a staff flow or another client's.
   `completedAt` is stamped, audited, and the account owner gets an in-app
   notification — once.
 
-Not done here, deliberately: GA4 data (SEO Phase 9), connecting social
-accounts from the portal (decided against), and storing any password.
+Not done here, deliberately: GA4 data (SEO Phase 9) and storing any
+password. Connecting social accounts from the portal was decided against
+here; that was reversed later. Clients now connect their own from
+**Social → Accounts**, and the social step links there
+(docs/SOCIAL-MODULE.md §36).

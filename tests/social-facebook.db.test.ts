@@ -157,13 +157,15 @@ describeDb("Facebook: choosing a Page, and publishing to it", () => {
     );
   });
 
-  it("needs the permission to manage accounts, and a staff member", async () => {
+  it("needs the permission to manage accounts, and is finished only where it was started", async () => {
     const id = await start();
     await expect(getPendingConnection(staff(operator.userId, ["social.view"]), id)).rejects.toBeInstanceOf(
       ForbiddenError,
     );
+    // A staff member's grant is not a portal user's to finish, even for that
+    // same client: it reads as missing.
     const portal: Actor = { ...operator, type: "CLIENT", clientId: clientA };
-    await expect(getPendingConnection(portal, id)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getPendingConnection(portal, id)).rejects.toBeInstanceOf(NotFoundError);
   });
 
   // -------------------------------------------------------------------------
