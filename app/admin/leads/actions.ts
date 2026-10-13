@@ -10,6 +10,8 @@ import {
   prioritySetSchema,
   taskSchema,
 } from "@/lib/validation/crm";
+import { deleteLeads } from "@/lib/services/recycle-bin.service";
+import { deleteLeadsSchema } from "@/lib/validation/recycle-bin";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -178,4 +180,26 @@ export async function rescoreAction(leadId: string): Promise<void> {
   const actor = await requireActor();
   await crm.rescoreLead(actor, leadId);
   refresh(leadId);
+}
+
+/**
+ * Move one or more leads to the recycle bin. Admin-only through
+ * `leads.delete`, checked in the service.
+ */
+export async function deleteLeadsAction(input: unknown): Promise<ActionResult<{ deleted: number }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = deleteLeadsSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, code: "VALIDATION", message: parsed.error.issues[0]?.message ?? "Choose the leads to delete." };
+    }
+    const result = await deleteLeads(actor, parsed.data.ids);
+    revalidatePath("/admin/leads");
+    revalidatePath("/admin/leads/pipeline");
+    revalidatePath("/admin/recycle-bin");
+    return { ok: true, data: result };
+  } catch (error) {
+    actionLog.error({ err: error }, "deleting leads failed");
+    return toActionFailure(error);
+  }
 }

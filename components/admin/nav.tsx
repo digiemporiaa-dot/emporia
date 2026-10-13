@@ -19,6 +19,7 @@ import {
   Megaphone,
   Receipt,
   Settings,
+  Trash2,
   Sparkles,
   Users,
   Workflow,
@@ -81,6 +82,7 @@ const ICONS = {
   social: Send,
   ai: Sparkles,
   settings: Settings,
+  trash: Trash2,
 } as const;
 
 /** Is this path the current page, or an ancestor of it? */

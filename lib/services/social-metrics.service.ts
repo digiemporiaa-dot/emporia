@@ -98,6 +98,7 @@ export async function collectMetrics(
       publishedAt: { gte: since },
       externalPostId: { not: null },
       accountId: { not: null },
+      client: { deletedAt: null },
     },
     orderBy: { publishedAt: "desc" },
     take: 200,

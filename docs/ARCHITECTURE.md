@@ -134,6 +134,47 @@ requires an explicit `{ includeDeleted: true }` option to see the rest.
 Trade-off: it relies on nobody calling Prisma directly from a route — which is
 already forbidden by CLAUDE.md §4 layer discipline and is checkable in review.
 
+**The recycle bin (leads and clients).** `lib/services/recycle-bin.service.ts`
+is the only writer of `deletedAt` for leads and clients. **Delete** moves a
+record to the bin (Admin → Recycle bin), **Restore** brings it back, and
+**Delete permanently** works only from the bin. `leads.delete` and
+`clients.delete` gate all of it; ADMIN is the only seeded role that holds them.
+Leads can be deleted in bulk, up to 200 at a time, from the leads list.
+
+Deleting a client stops its work in the same transaction, and the stop is
+audited:
+
+- scheduled social posts → `CANCELLED`;
+- active retainers → `PAUSED`;
+- pending account connections are dropped.
+
+The rest is enforced by filters, so it holds even for work the transaction did
+not touch:
+
+- **Portal access:** the client's portal users cannot sign in, and an open
+  session ends on its next request (`lib/auth`, `lib/actor`).
+- **Scheduled jobs:** the publisher (retries included), metrics, token
+  renewal, account checks, expiry warnings, retainer billing and payment
+  reminders all skip the client. SEO Intelligence already did.
+- **Agency-wide lists:** `resolveScopeFilter` returns live clients only.
+- **Projects:** the project `visibilityFilter` hides the client's projects,
+  and with them the content and approvals reached through them, plus the
+  dashboard counts.
+- **Proposals:** accepting one for a binned lead or client is refused.
+
+Restoring brings the client back but restarts none of this on its own:
+posts are rescheduled and retainers resumed by a person.
+
+Financial records outlive the client. Invoices, payments and contracts stay
+in Finance and Sales. A client that has any of them — soft-deleted invoices
+included — **cannot be deleted permanently**; the bin shows why (GST record
+keeping, about six years). Otherwise a permanent delete removes everything
+that is only theirs: projects, retainers, SEO websites, and by cascade social,
+onboarding and messages. Its portal users are detached, suspended and
+anonymised rather than deleted, because media and messages may name them as
+author. A lead's permanent delete takes its notes, tasks and timeline;
+opportunities and proposals raised from it stay, unlinked.
+
 ### 4.3 Indexes
 
 Index every foreign key, every column filtered or sorted in a list view, and

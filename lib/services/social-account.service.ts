@@ -694,6 +694,7 @@ export async function syncDueAccounts(
     where: {
       ...(only.clientId ? { clientId: only.clientId } : {}),
       status: "CONNECTED",
+      client: { deletedAt: null },
       OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: staleBefore } }],
       AND: [{ OR: [{ lastCheckAttemptAt: null }, { lastCheckAttemptAt: { lt: retryBefore } }] }],
     },
@@ -986,6 +987,7 @@ export async function renewIdleCredentials(
       accessToken: { not: null },
       refreshToken: null,
       tokenExpiresAt: { not: null, lt: new Date(now.getTime() + KEEP_ALIVE_WINDOW_MS) },
+      client: { deletedAt: null },
     },
     select: { id: true, provider: true },
     take: 200,
@@ -1023,6 +1025,7 @@ export async function warnExpiringAccounts(now = new Date()): Promise<{ warned: 
       accessToken: { not: null },
       refreshToken: null,
       tokenExpiresAt: { not: null, gt: now, lt: new Date(now.getTime() + EXPIRY_WARNING_MS) },
+      client: { deletedAt: null },
     },
     select: { id: true, tokenExpiresAt: true },
     take: 200,

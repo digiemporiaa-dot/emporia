@@ -152,13 +152,18 @@ export async function overview(actor: Actor, range: DateRange): Promise<Overview
       _sum: { budget: true },
     }),
     db.client.count({ where: { deletedAt: null, status: "ACTIVE", isInternal: false } }),
-    db.project.count({ where: { status: { in: ["PLANNING", "ACTIVE"] } } }),
-    // Cancelled tasks are not outstanding work, so they are not "due" either.
+    db.project.count({ where: { status: { in: ["PLANNING", "ACTIVE"] }, client: { deletedAt: null } } }),
+    // Cancelled tasks are not outstanding work, so they are not "due" either;
+    // neither is the work of a client in the recycle bin.
     db.projectTask.count({
-      where: { status: { notIn: ["DONE", "CANCELLED"] }, dueAt: { gte: now, lt: addDays(now, 7) } },
+      where: {
+        status: { notIn: ["DONE", "CANCELLED"] },
+        dueAt: { gte: now, lt: addDays(now, 7) },
+        project: { client: { deletedAt: null } },
+      },
     }),
     db.projectTask.count({
-      where: { status: { notIn: ["DONE", "CANCELLED"] }, dueAt: { lt: now } },
+      where: { status: { notIn: ["DONE", "CANCELLED"] }, dueAt: { lt: now }, project: { client: { deletedAt: null } } },
     }),
     seesMoney
       ? Promise.all([

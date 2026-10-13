@@ -124,6 +124,8 @@ export async function dueRetainers(actor: Actor, now = new Date()) {
       status: "ACTIVE",
       nextBillingAt: { lte: now },
       OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      // Paused when the client was deleted; checked here as well.
+      client: { deletedAt: null },
     },
     orderBy: { nextBillingAt: "asc" },
     select: {
@@ -155,6 +157,8 @@ export async function billDueRetainers(actor: Actor, now = new Date()) {
       status: "ACTIVE",
       nextBillingAt: { lte: now },
       OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      // Paused when the client was deleted; checked here as well.
+      client: { deletedAt: null },
     },
     select: {
       id: true,
@@ -273,6 +277,8 @@ export async function sendPaymentReminders(actor: Actor, withinDays = 3, now = n
       status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
       dueAt: { lte: horizon },
       id: { notIn: reminded },
+      // Nobody is chased for payment on behalf of a client in the recycle bin.
+      client: { deletedAt: null },
     },
     select: { id: true, number: true },
     take: 200,

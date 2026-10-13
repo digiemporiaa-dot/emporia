@@ -42,7 +42,7 @@ const PANELS: readonly Panel[] = [
   {
     label: "Live projects",
     permission: "projects.view",
-    load: () => db.project.count({ where: { status: { in: ["PLANNING", "ACTIVE"] } } }),
+    load: () => db.project.count({ where: { status: { in: ["PLANNING", "ACTIVE"] }, client: { deletedAt: null } } }),
   },
   {
     label: "Unpaid invoices",

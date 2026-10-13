@@ -153,6 +153,10 @@ export const NAV: readonly NavSpec[] = [
     permission: "ai.use",
   },
   {
+    item: { kind: "link", href: "/admin/recycle-bin", label: "Recycle bin", icon: "trash" },
+    permission: "leads.delete",
+  },
+  {
     item: { kind: "link", href: "/admin/settings", label: "Settings", icon: "settings" },
     permission: "emails.view",
     children: [

@@ -42,12 +42,17 @@ async function authorize(
       status: true,
       passwordHash: true,
       clientId: true,
+      client: { select: { deletedAt: true } },
       roleId: true,
       role: { select: { name: true } },
     },
   });
 
-  if (!user || !user.passwordHash || user.status !== "ACTIVE") {
+  // A portal user whose client is in the recycle bin cannot sign in: the
+  // client's work is stopped, and so is their access to it.
+  const clientBinned = user?.type === "CLIENT" && (!user.client || user.client.deletedAt !== null);
+
+  if (!user || !user.passwordHash || user.status !== "ACTIVE" || clientBinned) {
     // Spend the same time an existing account would, so the response time does
     // not reveal whether the address is registered (CLAUDE.md 11).
     await burnPasswordComparison(credentials.password);
