@@ -1,7 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { ensureStarterPages } from "@/prisma/ensure-starter-pages";
-import { ensureLegalPages, LEGAL_PAGES, LEGAL_UPDATED } from "@/prisma/legal-pages";
+import { readFileSync } from "node:fs";
+import { DEMO_LEGAL, ensureLegalPages, LEGAL_PAGES, LEGAL_UPDATED } from "@/prisma/legal-pages";
 import { STARTER_MARKER, starterSectionCount } from "@/lib/content/starter";
 import { BLOCK_SCHEMAS, isBlockType } from "@/lib/content/blocks";
 import type { PrismaClient } from "@/generated/prisma/client";
@@ -38,6 +39,13 @@ describe("legal page content, pure", () => {
       expect(all).toContain(fact);
     }
     expect(all).not.toContain("[date of publishing]");
+  });
+
+  it("recognises the demo seed's legal pages by what prisma/seed-demo.ts actually writes", () => {
+    const seed = readFileSync("prisma/seed-demo.ts", "utf8");
+    for (const demo of Object.values(DEMO_LEGAL)) {
+      for (const fact of [demo.intro, demo.metaDescription, `updatedAt: "${demo.updatedAt}"`]) expect(seed).toContain(fact);
+    }
   });
 });
 
@@ -96,6 +104,61 @@ describeDb("legal pages on boot", () => {
     const after = await read("terms-and-conditions");
     expect(after.status).toBe("DRAFT");
     expect(after.sections.map((s) => s.id)).toEqual(terms.sections.map((s) => s.id));
+  });
+
+  it("replaces the demo seed's published sample policy, keeping what it replaced in the audit row", async () => {
+    // What `npm run db:seed:demo` leaves behind: published, one legal block, the demo's SEO text.
+    for (const slug of SLUGS) {
+      const demo = DEMO_LEGAL[slug]!;
+      const page = await read(slug);
+      await db.pageSection.deleteMany({ where: { pageId: page.id } });
+      await db.page.update({
+        where: { id: page.id },
+        data: {
+          status: "PUBLISHED",
+          publishedAt: new Date("2026-01-15T00:00:00Z"),
+          seo: { create: { metaTitle: "Sample", metaDescription: demo.metaDescription } },
+          sections: { create: { type: "legal", order: 1, content: { updatedAt: demo.updatedAt, intro: demo.intro, clauses: [{ heading: "Sample", text: "Sample text." }] } } },
+        },
+      });
+    }
+    // An editor's own description on one of them stays.
+    const terms = await db.page.findUniqueOrThrow({ where: { slug: "terms-and-conditions" }, select: { seoId: true } });
+    await db.seo.update({ where: { id: terms.seoId! }, data: { metaDescription: "Our own description." } });
+
+    expect(await ensureLegalPages(prisma)).toBe("legal pages: published privacy-policy, terms-and-conditions.");
+
+    const privacy = await read("privacy-policy");
+    expect(privacy.status).toBe("PUBLISHED");
+    expect(privacy.publishedAt).toEqual(new Date("2026-01-15T00:00:00Z"));
+    expect(privacy.sections.map((s) => s.type)).toEqual(LEGAL_PAGES[0]!.sections.map((s) => s.type));
+    expect(privacy.seo?.metaDescription).toBe(LEGAL_PAGES[0]!.metaDescription);
+    expect((await read("terms-and-conditions")).seo?.metaDescription).toBe("Our own description.");
+
+    const audit = await db.auditLog.findFirstOrThrow({ where: { entityType: "Page", entityId: privacy.id, action: "PUBLISH" }, orderBy: { createdAt: "desc" } });
+    expect(audit.before).toMatchObject({ status: "PUBLISHED", replaced: "demo", sections: [{ type: "legal", content: { intro: DEMO_LEGAL["privacy-policy"]!.intro } }] });
+
+    expect(await ensureLegalPages(prisma)).toBe("legal pages: nothing to publish.");
+  });
+
+  it("leaves a demo page someone has rewritten, or a legal block of their own", async () => {
+    const privacy = await read("privacy-policy");
+    await db.pageSection.deleteMany({ where: { pageId: privacy.id } });
+    const demo = DEMO_LEGAL["privacy-policy"]!;
+    await db.page.update({
+      where: { id: privacy.id },
+      data: { status: "PUBLISHED", sections: { create: { type: "legal", order: 1, content: { updatedAt: "2026-03-01", intro: demo.intro, clauses: [] } } } },
+    });
+    const terms = await read("terms-and-conditions");
+    await db.pageSection.deleteMany({ where: { pageId: terms.id } });
+    await db.page.update({
+      where: { id: terms.id },
+      data: { status: "PUBLISHED", sections: { create: { type: "legal", order: 1, content: { updatedAt: "2026-01-15", intro: "Our own terms.", clauses: [] } } } },
+    });
+
+    expect(await ensureLegalPages(prisma)).toBe("legal pages: nothing to publish.");
+    expect((await read("privacy-policy")).sections.map((s) => s.type)).toEqual(["legal"]);
+    expect((await read("terms-and-conditions")).sections.map((s) => s.type)).toEqual(["legal"]);
   });
 
   it("never touches a page that was published, archived or deleted by hand", async () => {

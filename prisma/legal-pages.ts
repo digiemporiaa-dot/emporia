@@ -11,12 +11,18 @@ import { STARTER_MARKER, starterSectionCount } from "../lib/content/starter.js";
  * replaces that starter text with the real policy and publishes it, once, on
  * the next boot.
  *
- * **Only ever over starter text.** A page is rewritten only while every one of
- * its sections still carries STARTER_MARKER, i.e. nobody has started editing
- * it. Once the real text is in, the marker is gone and this never touches the
- * page again: from then on Admin → Website → Pages is the only way to change
- * it. A page someone has partly written, unpublished by hand, or deleted is
- * left exactly as it is.
+ * **Only ever over placeholder text.** A page is rewritten only while it is
+ * still one of the two placeholders this codebase lays down:
+ *
+ * - the starter draft, every section still carrying STARTER_MARKER; or
+ * - the sample policy from `npm run db:seed:demo` (one `legal` block with the
+ *   demo's own intro and date), which is published, and which a production
+ *   database that was demo-seeded is serving as if it were real.
+ *
+ * Once the real text is in, neither matches and this never touches the page
+ * again: from then on Admin → Website → Pages is the only way to change it. A
+ * page someone has partly written, archived or deleted is left exactly as it
+ * is. What is replaced is kept in full in the audit row.
  */
 
 export const LEGAL_UPDATED = "14 October 2026";
@@ -332,6 +338,34 @@ function untouchedStarter(sections: readonly { content: unknown }[]): boolean {
   return sections.length > 0 && starterSectionCount(sections) === sections.length;
 }
 
+/**
+ * The sample legal pages prisma/seed-demo.ts publishes, recognised by the
+ * demo's own intro and date. That file runs on import, so the fingerprint is
+ * repeated here rather than imported; tests/legal-pages.db.test.ts checks the
+ * two still agree.
+ */
+export const DEMO_LEGAL: Record<string, { updatedAt: string; intro: string; metaDescription: string }> = {
+  "privacy-policy": {
+    updatedAt: "2026-01-15",
+    intro: "This policy explains what personal data we collect, why we collect it, and what rights you have over it.",
+    metaDescription: "How Emporia collects, uses and protects personal data.",
+  },
+  "terms-and-conditions": {
+    updatedAt: "2026-01-15",
+    intro:
+      "These terms govern your use of this website. Client engagements are governed by a separate signed agreement, which takes precedence over anything here.",
+    metaDescription: "The terms governing use of the Emporia website and services.",
+  },
+};
+
+function demoPlaceholder(slug: string, sections: readonly { type: string; content: unknown }[]): boolean {
+  const demo = DEMO_LEGAL[slug];
+  const [only] = sections;
+  if (!demo || sections.length !== 1 || only?.type !== "legal") return false;
+  const content = only.content as { updatedAt?: unknown; intro?: unknown } | null;
+  return content?.updatedAt === demo.updatedAt && content.intro === demo.intro;
+}
+
 export async function ensureLegalPages(prisma: PrismaClient): Promise<string> {
   const published: string[] = [];
   const left: string[] = [];
@@ -339,12 +373,26 @@ export async function ensureLegalPages(prisma: PrismaClient): Promise<string> {
   for (const legal of LEGAL_PAGES) {
     const page = await prisma.page.findUnique({
       where: { slug: legal.slug },
-      select: { id: true, status: true, deletedAt: true, publishedAt: true, seoId: true, sections: { select: { content: true } } },
+      select: {
+        id: true,
+        status: true,
+        deletedAt: true,
+        publishedAt: true,
+        seo: { select: { id: true, metaDescription: true } },
+        sections: { orderBy: { order: "asc" }, select: { type: true, order: true, content: true } },
+      },
     });
     // ensureStarterPages runs first, so a missing page means someone removed
     // the row by hand; recreating it is not this function's call.
-    if (!page || page.deletedAt || page.status !== "DRAFT" || !untouchedStarter(page.sections)) {
-      if (page && !page.deletedAt && page.status === "DRAFT" && starterSectionCount(page.sections) > 0) left.push(legal.slug);
+    if (!page || page.deletedAt || page.status === "ARCHIVED") continue;
+    const replacing =
+      page.status === "DRAFT" && untouchedStarter(page.sections)
+        ? "starter"
+        : demoPlaceholder(legal.slug, page.sections)
+          ? "demo"
+          : null;
+    if (!replacing) {
+      if (page.status === "DRAFT" && starterSectionCount(page.sections) > 0) left.push(legal.slug);
       continue;
     }
 
@@ -358,9 +406,13 @@ export async function ensureLegalPages(prisma: PrismaClient): Promise<string> {
           content: section.content as InputJsonValue,
         })),
       });
-      const seo = page.seoId
-        ? undefined
-        : { create: { metaDescription: legal.metaDescription } };
+      // An SEO record an editor wrote stays; an empty one or the demo's gets the policy's description.
+      const ownDescription = page.seo?.metaDescription && page.seo.metaDescription !== DEMO_LEGAL[legal.slug]?.metaDescription;
+      const seo = !page.seo
+        ? { create: { metaDescription: legal.metaDescription } }
+        : ownDescription
+          ? undefined
+          : { update: { metaDescription: legal.metaDescription } };
       await tx.page.update({
         where: { id: page.id },
         data: {
@@ -377,7 +429,7 @@ export async function ensureLegalPages(prisma: PrismaClient): Promise<string> {
           action: "PUBLISH",
           entityType: "Page",
           entityId: page.id,
-          before: { status: page.status, starter: true },
+          before: { status: page.status, replaced: replacing, sections: page.sections } as InputJsonValue,
           after: { status: "PUBLISHED", slug: legal.slug, source: "prisma/legal-pages" },
         },
       });

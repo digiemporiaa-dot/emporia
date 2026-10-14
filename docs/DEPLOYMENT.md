@@ -325,11 +325,14 @@ Like the homepage, these are never recreated once deleted.
 
 **DigiEmporia's approved policy text** (14 October 2026) lives in
 `prisma/legal-pages.ts`. On boot the sync puts it into the Privacy Policy and
-Terms pages and publishes them, but only while a page is still an untouched
-starter draft: every section still carries the marker. A page someone has
-partly written, published, archived or deleted is left exactly as it is, and
-the sync log names any partly written page it skipped. Once the text is in, the
-admin is the only place to change it; later deploys never overwrite it.
+Terms pages and publishes them, but only while a page is still a placeholder:
+an untouched starter draft (every section still carries the marker), or the
+sample policy the demo seed publishes (one legal block dated 15 January 2026).
+A page someone has written, archived or deleted is left exactly as it is, the
+sync log names any partly written starter page it skipped, and the audit row
+keeps whatever was replaced. Once the text is in, the admin is the only place to
+change it; later deploys never overwrite it. Re-running `db:seed:demo` would
+overwrite it, which is one more reason never to run that against production.
 
 > **Never run `npm run db:seed:demo` against production.** It inserts sample
 > services, packages, case studies and blog posts. It marks itself with
