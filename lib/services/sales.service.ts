@@ -707,11 +707,19 @@ export async function acceptProposal(
       currency: true,
       clientId: true,
       opportunityId: true,
-      lead: { select: { id: true, name: true, company: true, email: true, phone: true, status: true } },
+      client: { select: { deletedAt: true } },
+      lead: { select: { id: true, name: true, company: true, email: true, phone: true, status: true, deletedAt: true } },
     },
   });
 
   if (!proposal) throw new NotFoundError("That proposal does not exist.");
+  // Work for something in the recycle bin is stopped, and accepting would
+  // convert a deleted lead or bill a deleted client.
+  if (proposal.client?.deletedAt || (!proposal.clientId && proposal.lead?.deletedAt)) {
+    throw new ValidationError(
+      `This proposal's ${proposal.clientId ? "client" : "lead"} is in the recycle bin. Restore it before accepting.`,
+    );
+  }
 
   const error = transitionError(proposal.status, "ACCEPTED");
   if (error) throw new ValidationError(error);
@@ -1104,6 +1112,7 @@ export async function getClient(actor: Actor, id: string) {
       id: true,
       name: true,
       slug: true,
+      isInternal: true,
       industry: true,
       website: true,
       status: true,

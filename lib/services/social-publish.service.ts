@@ -485,6 +485,8 @@ export async function publishDuePosts(
   const due = await db.socialPost.findMany({
     where: {
       scheduledFor: { lte: now },
+      // Never for a client in the recycle bin, retries included.
+      client: { deletedAt: null },
       OR: [
         { status: "SCHEDULED" },
         // A retry, but only while there are attempts left. Without the ceiling

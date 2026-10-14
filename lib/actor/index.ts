@@ -42,14 +42,17 @@ export const currentActor = cache(async (): Promise<Actor | null> => {
       type: true,
       status: true,
       clientId: true,
+      client: { select: { deletedAt: true } },
       roleId: true,
       role: { select: { name: true } },
     },
   });
 
   // Deleted, suspended or still invited: the session is no longer a live
-  // identity, so it is treated exactly as no session at all.
+  // identity, so it is treated exactly as no session at all. The same goes
+  // for a portal user whose client is in the recycle bin.
   if (!user || user.status !== "ACTIVE") return null;
+  if (user.type === "CLIENT" && (!user.client || user.client.deletedAt !== null)) return null;
 
   const h = await headers();
   const permissions = user.roleId ? await resolvePermissions(user.roleId) : new Set<string>();

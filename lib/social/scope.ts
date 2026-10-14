@@ -67,15 +67,17 @@ export function clientFilter(clientId: string): { clientId: string } {
  * branches rather than an optional filter somebody could forget to apply.
  *
  * Returns a `where` fragment rather than an id, because "every client" has no
- * id to return.
+ * id to return. It fits any model with a `client` relation.
  */
 export async function resolveScopeFilter(
   actor: Actor,
   requested: string | null,
-): Promise<{ clientId: string } | Record<string, never>> {
+): Promise<{ clientId: string } | { client: { deletedAt: null } }> {
   if (actor.type === "CLIENT") {
     return clientFilter(await resolveClientScope(actor, requested));
   }
-  if (!requested) return {};
+  // Every live client: one in the recycle bin has its work stopped, so it has
+  // nothing to show on an agency-wide screen.
+  if (!requested) return { client: { deletedAt: null } };
   return clientFilter(await resolveClientScope(actor, requested));
 }

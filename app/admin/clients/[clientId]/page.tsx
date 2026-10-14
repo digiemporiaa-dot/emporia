@@ -14,6 +14,8 @@ import { formatMoney } from "@/lib/money";
 import { STATUS_LABEL } from "@/lib/sales/lifecycle";
 import { Badge, Card, CardBody, CardHeader, CardTitle } from "@/components/ui";
 import { ClientThread, PortalAccessPanel } from "./client-panels";
+import { clientDeletionImpact } from "@/lib/services/recycle-bin.service";
+import { DeleteClientButton } from "./delete-client-button";
 import type { ClientStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = { title: "Client" };
@@ -45,7 +47,8 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
     throw error;
   }
 
-  const [portalUsers, thread, projects, onboarding] = await Promise.all([
+  const canDelete = can(actor, "clients.delete") && !client.isInternal;
+  const [portalUsers, thread, projects, onboarding, impact] = await Promise.all([
     listPortalUsers(actor, client.id),
     listMessages(actor, client.id),
     db.project.findMany({
@@ -54,6 +57,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
       select: { id: true, name: true },
     }),
     getClientOnboarding(actor, client.id).catch(() => null),
+    canDelete ? clientDeletionImpact(actor, client.id) : Promise.resolve(null),
   ]);
 
   return (
@@ -86,6 +90,11 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
               <Share2 size={13} aria-hidden="true" />
               Social media
             </Link>
+          ) : null}
+          {impact ? (
+            <span className="ml-auto">
+              <DeleteClientButton clientId={client.id} name={client.name} impact={impact} />
+            </span>
           ) : null}
         </div>
         <p className="mt-1.5 text-xs text-ink-subtle">

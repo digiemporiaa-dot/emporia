@@ -1,3 +1,4 @@
+import * as React from "react";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
@@ -9,6 +10,8 @@ import { formatMoney } from "@/lib/money";
 import { Badge, Button, Table, TableEmpty, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui";
 import { PriorityBadge, ScoreBadge, StatusBadge } from "@/components/admin/lead-badges";
 import { LeadFilters } from "./lead-filters";
+import { LeadSelection, SelectAllLeads, SelectLead } from "./lead-selection";
+import { can } from "@/lib/auth/rbac";
 import { PIPELINE_STAGES } from "@/lib/crm/pipeline";
 import { TableSkeleton } from "@/components/admin/table-skeleton";
 import type { Actor } from "@/lib/actor/types";
@@ -92,13 +95,21 @@ async function LeadsTable({ actor, params }: { actor: Actor; params: LeadListPar
   const result = await listLeads(actor, params);
   const from = (result.page - 1) * result.perPage + 1;
   const to = Math.min(result.page * result.perPage, result.total);
+  // Selection only for those who may delete; nobody else sees a checkbox.
+  const selectable = can(actor, "leads.delete");
+  const Wrap = selectable ? LeadSelection : React.Fragment;
 
   return (
-    <>
+    <Wrap>
       <TableWrap>
           <Table>
             <THead>
               <TR>
+                {selectable ? (
+                  <TH className="w-8">
+                    <SelectAllLeads ids={result.rows.map((lead) => lead.id)} />
+                  </TH>
+                ) : null}
                 <TH>Lead</TH>
                 <TH>Source</TH>
                 <TH>Interest</TH>
@@ -113,7 +124,7 @@ async function LeadsTable({ actor, params }: { actor: Actor; params: LeadListPar
             <TBody>
               {result.rows.length === 0 ? (
                 <TableEmpty
-                  colSpan={9}
+                  colSpan={selectable ? 10 : 9}
                   title="No leads match"
                   description={
                     result.total === 0 && !params.search
@@ -124,6 +135,11 @@ async function LeadsTable({ actor, params }: { actor: Actor; params: LeadListPar
               ) : (
                 result.rows.map((lead) => (
                   <TR key={lead.id}>
+                    {selectable ? (
+                      <TD>
+                        <SelectLead id={lead.id} name={lead.name} />
+                      </TD>
+                    ) : null}
                     <TD>
                       <Link
                         href={`/admin/leads/${lead.id}`}
@@ -187,7 +203,7 @@ async function LeadsTable({ actor, params }: { actor: Actor; params: LeadListPar
           </div>
         </nav>
       ) : null}
-    </>
+    </Wrap>
   );
 }
 

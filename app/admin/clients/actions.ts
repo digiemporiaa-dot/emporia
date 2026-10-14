@@ -6,6 +6,8 @@ import * as access from "@/lib/services/portal-access.service";
 import * as messages from "@/lib/services/client-messages.service";
 import { invitePortalUserSchema } from "@/lib/validation/portal";
 import { z } from "zod";
+import { deleteClient } from "@/lib/services/recycle-bin.service";
+import { binItemSchema } from "@/lib/validation/recycle-bin";
 import { toActionFailure, type ActionResult } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
@@ -115,6 +117,27 @@ export async function replyToClientAction(
     revalidatePath(`/admin/clients/${parsed.data.clientId}`);
     return { ok: true, data: { id: message.id } };
   } catch (error) {
+    return toActionFailure(error);
+  }
+}
+
+/**
+ * Move a client to the recycle bin, stopping its work. Admin-only through
+ * `clients.delete`, checked in the service.
+ */
+export async function deleteClientAction(
+  input: unknown,
+): Promise<ActionResult<{ scheduledPostsCancelled: number; retainersPaused: number }>> {
+  try {
+    const actor = await requireActor();
+    const parsed = binItemSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, code: "VALIDATION", message: "That client could not be identified." };
+    const result = await deleteClient(actor, parsed.data.id);
+    revalidatePath("/admin/clients");
+    revalidatePath("/admin/recycle-bin");
+    return { ok: true, data: { scheduledPostsCancelled: result.scheduledPostsCancelled, retainersPaused: result.retainersPaused } };
+  } catch (error) {
+    actionLog.error({ err: error }, "deleting a client failed");
     return toActionFailure(error);
   }
 }

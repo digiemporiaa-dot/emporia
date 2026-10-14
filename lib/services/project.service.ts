@@ -42,14 +42,18 @@ import type {
 
 /** The single definition of which projects an actor may see. */
 export function visibilityFilter(actor: Actor): Prisma.ProjectWhereInput {
-  if (actor.roleName === "SUPER_ADMIN" || can(actor, "projects.view.team")) return {};
+  // A client in the recycle bin has its work stopped: its projects, and the
+  // content and approvals reached through them, leave every list until it is
+  // restored.
+  const live: Prisma.ProjectWhereInput = { client: { deletedAt: null } };
+  if (actor.roleName === "SUPER_ADMIN" || can(actor, "projects.view.team")) return live;
   if (!can(actor, "projects.view")) {
     // Callers check first; this makes the failure mode a matching-nothing
     // filter rather than an accidental full table scan.
     return { id: "__none__" };
   }
   return {
-    OR: [{ managerId: actor.userId }, { tasks: { some: { assigneeId: actor.userId } } }],
+    AND: [live, { OR: [{ managerId: actor.userId }, { tasks: { some: { assigneeId: actor.userId } } }] }],
   };
 }
 

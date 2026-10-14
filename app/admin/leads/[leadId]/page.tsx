@@ -11,6 +11,7 @@ import { PriorityBadge, ScoreBadge, StatusBadge } from "@/components/admin/lead-
 import { AIUnavailable } from "@/components/admin/ai-draft";
 import { isAIConfigured } from "@/lib/ai";
 import { LeadAssist } from "./lead-assist";
+import { DeleteLeadButton } from "./delete-lead-button";
 import {
   AssignPanel,
   NotesPanel,
@@ -131,6 +132,11 @@ export default async function LeadDetailPage({
             <ScoreBadge score={lead.score} />
             {canEdit ? <RescoreButton leadId={lead.id} /> : null}
           </span>
+          {can(actor, "leads.delete") ? (
+            <span className="ml-auto">
+              <DeleteLeadButton leadId={lead.id} name={lead.name} />
+            </span>
+          ) : null}
         </div>
         <p className="mt-1.5 text-xs text-ink-subtle">
           Captured {DATETIME.format(lead.createdAt)}
