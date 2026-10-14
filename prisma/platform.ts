@@ -10,6 +10,7 @@ import {
 import { DEFAULT_TEMPLATES } from "../lib/email/templates.js";
 import { ensureHomepage } from "./ensure-homepage.js";
 import { ensureStarterPages } from "./ensure-starter-pages.js";
+import { ensureLegalPages } from "./legal-pages.js";
 import { migrateHomepage } from "./migrate-homepage.js";
 import { linkCityCountries } from "../lib/geo/country-rows.js";
 
@@ -410,6 +411,9 @@ export async function syncPlatform(prisma: PrismaClient): Promise<void> {
   // About, Careers and the legal pages hold reserved slugs, so only this can
   // create them. Drafts with marked starter text; never published from here.
   console.log(`  ${await ensureStarterPages(prisma)}`);
+  // The approved policy text replaces the legal pages' starter drafts and
+  // publishes them, but only while those drafts are untouched (prisma/legal-pages).
+  console.log(`  ${await ensureLegalPages(prisma)}`);
   // Additive and idempotent: it inserts the homepage bands that became section
   // types and touches nothing an editor has arranged (prisma/migrate-homepage).
   console.log(`  ${await migrateHomepage(prisma)}`);
