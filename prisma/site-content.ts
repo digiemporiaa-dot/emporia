@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../generated/prisma/client.js";
 import type { InputJsonValue } from "../generated/prisma/internal/prismaNamespace.js";
 import { CITIES, SERVICES } from "./site-content.data.js";
+import { starterSectionCount } from "../lib/content/starter.js";
 
 /**
  * DigiEmporia's approved website copy, written over placeholders on boot.
@@ -455,6 +456,141 @@ export const DEMO_PUBLIC = {
   serviceCityIntros: ["Almost every Mumbai account we have run has turned out to be a seasonality problem"],
 };
 
+/** The approved About page (15 October 2026), as builder blocks. */
+export const ABOUT_SECTIONS: { type: string; content: Content }[] = [
+  {
+    type: "hero",
+    content: {
+      eyebrow: "About DigiEmporia",
+      heading: "A Delhi team that treats your marketing like its own business.",
+      body: "DigiEmporia is a digital marketing agency based in West Delhi. We help growing businesses get found online, win more enquiries and see exactly what their marketing spend is doing.",
+      layout: "stacked",
+    },
+  },
+  {
+    type: "richText",
+    content: {
+      heading: "Why we exist",
+      body: [
+        "Most small and mid-sized businesses we meet have been burned by marketing before. They paid for posts nobody saw, ads nobody could explain, or a website that looked fine but never brought a single enquiry. The reports were full of likes and impressions, and nobody could say what any of it had done for the business.",
+        "DigiEmporia was set up to work differently. We bring SEO, Google and Meta ads, social media, content and websites under one team, so one set of people owns the result. And we built our own client portal, so you see every post, ad and page before it goes live, and every report comes from your own Google and Meta accounts, not a spreadsheet we made up.",
+        "We are a proprietorship run by Nishita, and the business is registered in Delhi (GSTIN 07CXOPV1073K1ZT). When you work with us, you know exactly who you are dealing with.",
+      ].join("\n\n"),
+    },
+  },
+  {
+    type: "textList",
+    content: {
+      heading: "What you can expect from us",
+      items: [
+        { title: "You approve everything", text: "Every post, ad, page and campaign comes to your client portal first. Nothing goes live without your yes." },
+        {
+          title: "Real numbers, from your own accounts",
+          text: "Reports come straight from your Google Analytics, Search Console, Google Ads and Meta accounts. If a number cannot be traced back to a source you own, it does not go in the report.",
+        },
+        {
+          title: "You own what we build",
+          text: "Your ad accounts, social profiles, website and content stay in your name. Once the related invoices are paid, everything we make for you is yours.",
+        },
+        {
+          title: "No guarantees we cannot keep",
+          text: "Nobody controls Google's rankings or Meta's algorithm. We commit to the work, the plan and honest reporting, and we tell you early when something isn't working.",
+        },
+        {
+          title: "One team, one goal",
+          text: "SEO, ads, social media, content and web work together towards one number: qualified enquiries for your business.",
+        },
+        {
+          title: "Clear proposals",
+          text: "Scope, timeline and price are written down before work starts, so there are no surprises on the invoice.",
+        },
+      ],
+    },
+  },
+  {
+    type: "richText",
+    content: {
+      heading: "Who runs DigiEmporia",
+      body: [
+        "DigiEmporia is led by its proprietor, Nishita, who is personally accountable for every client relationship. You can reach her directly at ceo@digiemporia.com or +91 88160 81808.",
+        "Our office is at S/F, A-73/2, Verma Cottage, Gurudwara Road, West Delhi, Delhi 110059. We work with businesses across Delhi NCR and beyond, and we are happy to meet in person by appointment.",
+      ].join("\n\n"),
+    },
+  },
+  {
+    type: "cta",
+    content: {
+      heading: "Let's talk about what you want to grow.",
+      body: "Tell us about your business and your goals. We will look at where you stand today and tell you honestly what we would do, whether or not you work with us.",
+      ctaLabel: "Get in touch",
+      ctaHref: "/contact",
+    },
+  },
+];
+
+export const ABOUT_SEO = {
+  metaTitle: "About Us: Digital Marketing Agency in Delhi",
+  metaDescription:
+    "DigiEmporia is a West Delhi digital marketing agency run by Nishita. One team for SEO, ads, social and web, with every post approved by you and real reports.",
+};
+
+/**
+ * The About page, published, over the fresh install's starter draft (every
+ * section marked) or the demo's page (recognised by its hero), whether that is
+ * still live or was already taken down as a draft.
+ */
+async function writeAbout(prisma: PrismaClient): Promise<string> {
+  const page = await prisma.page.findFirst({
+    where: { slug: "about", deletedAt: null },
+    select: {
+      id: true,
+      status: true,
+      publishedAt: true,
+      seo: { select: { id: true } },
+      sections: { orderBy: { order: "asc" }, select: { type: true, content: true } },
+    },
+  });
+  if (!page) return "about: none";
+
+  const hero = page.sections.find((section) => section.type === "hero")?.content as Content | undefined;
+  if (hero?.heading === ABOUT_SECTIONS[0]!.content.heading) return "about: already approved copy";
+  const starter = page.sections.length > 0 && starterSectionCount(page.sections) === page.sections.length;
+  const demo = hero?.heading === DEMO_PUBLIC.pages.find((p) => p.slug === "about")!.heroHeading;
+  if (!starter && !demo) return "about: edited by someone, left alone";
+
+  await prisma.$transaction(async (tx) => {
+    await tx.pageSection.deleteMany({ where: { pageId: page.id } });
+    await tx.pageSection.createMany({
+      data: ABOUT_SECTIONS.map((section, index) => ({
+        pageId: page.id,
+        type: section.type,
+        order: (index + 1) * 10,
+        content: section.content as InputJsonValue,
+      })),
+    });
+    await tx.page.update({
+      where: { id: page.id },
+      data: {
+        title: "About",
+        status: "PUBLISHED",
+        workflow: "APPROVED",
+        publishedAt: page.publishedAt ?? new Date(),
+        seo: page.seo ? { update: ABOUT_SEO } : { create: ABOUT_SEO },
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        action: "PUBLISH",
+        entityType: "Page",
+        entityId: page.id,
+        before: { replaced: starter ? "starter" : "demo", status: page.status, sections: page.sections } as InputJsonValue,
+        after: { slug: "about", status: "PUBLISHED", source: "prisma/site-content" },
+      },
+    });
+  });
+  return `about: replaced ${starter ? "starter" : "demo"} copy and published`;
+}
+
 async function withdrawDemo(prisma: PrismaClient): Promise<string[]> {
   const withdrawn: string[] = [];
   const note = async (entityType: string, id: string, label: string) => {
@@ -518,6 +654,8 @@ export async function ensureSiteContent(prisma: PrismaClient): Promise<string> {
   const services = { replaced: [] as string[], left: [] as string[], missing: [] as string[] };
   await writeServices(prisma, services);
   const home = await writeHome(prisma);
+  // Before the demo is withdrawn: the demo About page is replaced, not taken down.
+  const about = await writeAbout(prisma);
   const local = { written: [] as string[], left: [] as string[] };
   await writeServiceCityPages(prisma, local);
   const withdrawn = await withdrawDemo(prisma);
@@ -527,6 +665,7 @@ export async function ensureSiteContent(prisma: PrismaClient): Promise<string> {
     services.replaced.length ? `services replaced: ${services.replaced.join(", ")}` : "services: nothing to replace",
     ...(services.left.length ? [`services edited by someone, left alone: ${services.left.join(", ")}`] : []),
     home,
+    about,
     local.written.length ? `service-city drafts written: ${local.written.join(", ")}` : "service-city pages: nothing to write",
     ...(local.left.length ? [`service-city pages edited by someone, left alone: ${local.left.join(", ")}`] : []),
     ...(withdrawn.length ? [`demo taken off the site (now drafts): ${withdrawn.join(", ")}`] : []),

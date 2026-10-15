@@ -57,10 +57,11 @@ code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 [ "$(code "http://127.0.0.1:${PORT}/api/health")" = 200 ] || fail "/api/health"
 [ "$(code "http://127.0.0.1:${PORT}/")" = 200 ] || fail "/ did not serve"
 [ "$(code "http://127.0.0.1:${PORT}/auth/login")" = 200 ] || fail "/auth/login did not serve"
-[ "$(code "http://127.0.0.1:${PORT}/about")" = 404 ] || fail "a starter draft is publicly visible"
+[ "$(code "http://127.0.0.1:${PORT}/careers")" = 404 ] || fail "a starter draft is publicly visible"
+curl -s "http://127.0.0.1:${PORT}/about" | grep -q "Who runs DigiEmporia" || fail "/about does not serve the approved About page"
 curl -s "http://127.0.0.1:${PORT}/privacy-policy" | grep -q "Grievance Officer" || fail "/privacy-policy does not serve the approved policy"
 [ "$(code "http://127.0.0.1:${PORT}/terms-and-conditions")" = 200 ] || fail "/terms-and-conditions did not serve"
-pass "health, home and sign-in serve; starter drafts stay private; legal pages are live"
+pass "health, home and sign-in serve; starter drafts stay private; legal and About pages are live"
 
 location="$(curl -s -o /dev/null -D - -H 'Host: emporia.example' -H 'X-Forwarded-Proto: https' "http://127.0.0.1:${PORT}/admin" | tr -d '\r' | awk 'tolower($1)=="location:" {print $2}')"
 [ "$location" = "https://emporia.example/auth/login?redirectTo=%2Fadmin" ] || fail "signed-out redirect went to '$location'"
