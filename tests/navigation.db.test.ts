@@ -106,6 +106,8 @@ describeDb("site navigation", () => {
     expect(nav.footerLegalLinks).toEqual(DEFAULT_NAVIGATION.footerLegalLinks);
     expect(nav.cta).toEqual(DEFAULT_NAVIGATION.cta);
     expect(nav.brandName).toBe(DEFAULT_NAVIGATION.brandName);
+    // An unset copyright name credits the site by its own name.
+    expect(nav.copyrightName).toBe(nav.brandName);
     // Nothing was ever saved, so the footer simply has no contact block.
     expect(nav.contactEmail).toBe("");
     expect(nav.socialLinks).toEqual([]);

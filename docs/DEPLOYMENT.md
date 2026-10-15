@@ -334,6 +334,27 @@ keeps whatever was replaced. Once the text is in, the admin is the only place to
 change it; later deploys never overwrite it. Re-running `db:seed:demo` would
 overwrite it, which is one more reason never to run that against production.
 
+### DigiEmporia's approved site copy
+
+`prisma/site-content.ts` (data in `prisma/site-content.data.ts`) runs at the end
+of the boot sync. It writes the approved copy only over placeholders, each
+recognised by the demo's or the fresh install's own words, and logs anything it
+skipped because someone had edited it:
+
+- the six services: name, short description, body, SEO and FAQs;
+- the homepage: hero, positioning, services, process, industries and closing
+  call to action; the stats, case study, testimonial, package, blog and client
+  bands are hidden until there is something real to show;
+- the Delhi and Gurgaon Service × City pages, written as **drafts**. Each needs
+  a real local case study or testimonial before `canPublish` lets it go live;
+- the site name, tagline, contact details and title template, while they still
+  hold the install defaults or the demo's invented ones.
+
+It also takes the demo's invented case studies, testimonials, packages, blog
+posts, About and Careers pages and its Mumbai page off the site by setting them
+to DRAFT. Nothing is deleted, every change has an audit row with what was
+replaced, and once the copy is in, later deploys change nothing.
+
 > **Never run `npm run db:seed:demo` against production.** It inserts sample
 > services, packages, case studies and blog posts. It marks itself with
 > `demo.seededAt` in `SiteSetting` so you can identify it later, but cleaning it
