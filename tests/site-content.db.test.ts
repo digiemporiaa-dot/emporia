@@ -8,6 +8,7 @@ import { CITIES, SERVICES } from "@/prisma/site-content.data";
 import {
   DEMO_HOME,
   DEMO_PUBLIC,
+  ABOUT_SECTIONS,
   DEMO_SERVICE_CITY_INTROS,
   DEMO_SERVICE_SHORT,
   HOME_BANDS,
@@ -56,8 +57,8 @@ describe("approved site content, pure", () => {
     for (const intro of DEMO_PUBLIC.serviceCityIntros) expect(demo).toContain(intro);
   });
 
-  it("builds the homepage from bands that validate", () => {
-    for (const band of HOME_BANDS) {
+  it("builds the homepage and the About page from bands that validate", () => {
+    for (const band of [...HOME_BANDS, ...ABOUT_SECTIONS]) {
       expect(isBlockType(band.type)).toBe(true);
       if (!isBlockType(band.type)) continue;
       expect(BLOCK_SCHEMAS[band.type].safeParse(band.content).error?.issues ?? [], band.type).toEqual([]);
@@ -199,7 +200,7 @@ describeDb("approved site content on boot", () => {
     expect(home.seo?.metaTitle).toBe("Digital Marketing Agency in Delhi");
 
     expect(await ensureSiteContent(prisma)).toBe(
-      "site content: services: nothing to replace; homepage: already approved copy; service-city pages: nothing to write.",
+      "site content: services: nothing to replace; homepage: already approved copy; about: already approved copy; service-city pages: nothing to write.",
     );
   });
 
@@ -242,6 +243,31 @@ describeDb("approved site content on boot", () => {
     } finally {
       await db.caseStudy.deleteMany({ where: { id: fake.id } });
       await db.testimonial.deleteMany({ where: { id: { in: [quote.id, real.id] } } });
+    }
+  });
+
+  it("publishes the approved About page over the demo's, and leaves one someone wrote alone", async () => {
+    const about = await db.page.findFirst({ where: { slug: "about", deletedAt: null }, select: { id: true, status: true, sections: { select: { type: true, order: true, content: true, isVisible: true } } } });
+    if (!about) return;
+    const demoHeading = DEMO_PUBLIC.pages.find((p) => p.slug === "about")!.heroHeading;
+    try {
+      // The demo's About page, already taken down as a draft by an earlier boot.
+      await db.pageSection.deleteMany({ where: { pageId: about.id } });
+      await db.page.update({ where: { id: about.id }, data: { status: "DRAFT", sections: { create: [{ type: "hero", order: 1, content: { heading: demoHeading } }] } } });
+      expect(await ensureSiteContent(prisma)).toContain("about: replaced demo copy and published");
+      const written = await db.page.findUniqueOrThrow({ where: { id: about.id }, select: { status: true, seo: { select: { metaTitle: true } }, sections: { orderBy: { order: "asc" }, select: { type: true } } } });
+      expect(written.status).toBe("PUBLISHED");
+      expect(written.sections.map((s) => s.type)).toEqual(ABOUT_SECTIONS.map((s) => s.type));
+      expect(written.seo?.metaTitle).toBe("About Us: Digital Marketing Agency in Delhi");
+
+      // Someone's own About page is never touched.
+      await db.pageSection.deleteMany({ where: { pageId: about.id } });
+      await db.pageSection.create({ data: { pageId: about.id, type: "hero", order: 1, content: { heading: "Our own About page." } } });
+      expect(await ensureSiteContent(prisma)).toContain("about: edited by someone, left alone");
+      expect((await db.pageSection.findFirstOrThrow({ where: { pageId: about.id } })).content).toEqual({ heading: "Our own About page." });
+    } finally {
+      await db.pageSection.deleteMany({ where: { pageId: about.id } });
+      await db.page.update({ where: { id: about.id }, data: { status: about.status, sections: { create: about.sections.map((s) => ({ type: s.type, order: s.order, content: s.content as object, isVisible: s.isVisible })) } } });
     }
   });
 

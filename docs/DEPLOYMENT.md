@@ -345,13 +345,14 @@ skipped because someone had edited it:
 - the homepage: hero, positioning, services, process, industries and closing
   call to action; the stats, case study, testimonial, package, blog and client
   bands are hidden until there is something real to show;
+- the About page, published over the starter draft or the demo's page;
 - the Delhi and Gurgaon Service × City pages, written as **drafts**. Each needs
   a real local case study or testimonial before `canPublish` lets it go live;
 - the site name, tagline, contact details and title template, while they still
   hold the install defaults or the demo's invented ones.
 
 It also takes the demo's invented case studies, testimonials, packages, blog
-posts, About and Careers pages and its Mumbai page off the site by setting them
+posts, Careers page and Mumbai page off the site by setting them
 to DRAFT. Nothing is deleted, every change has an audit row with what was
 replaced, and once the copy is in, later deploys change nothing.
 
