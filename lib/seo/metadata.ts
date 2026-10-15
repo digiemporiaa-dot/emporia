@@ -1,6 +1,6 @@
 import "server-only";
 import type { Metadata } from "next";
-import { siteDefaults } from "@/lib/seo/defaults";
+import { siteDefaults, type SiteDefaults } from "@/lib/seo/defaults";
 import { absoluteUrl, resolveCanonical } from "@/lib/seo/urls";
 import type { EntitySeo } from "@/lib/seo/select";
 
@@ -48,6 +48,12 @@ function toIso(value: Date | string | null | undefined): string | undefined {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+/** `title` with the site's title template applied, unless it already is the site's name. */
+export function brandedTitle(title: string, defaults: Pick<SiteDefaults, "siteName" | "defaultTitle" | "titleTemplate">): string {
+  if (title === defaults.siteName || title === defaults.defaultTitle || !defaults.titleTemplate.includes("%s")) return title;
+  return defaults.titleTemplate.replace("%s", title);
+}
+
 export async function buildMetadata(input: MetadataInput): Promise<Metadata> {
   const defaults = await siteDefaults();
 
@@ -88,7 +94,10 @@ export async function buildMetadata(input: MetadataInput): Promise<Metadata> {
   const follow = input.seo?.robotsFollow ?? true;
 
   return {
-    title,
+    // The site-wide template ("%s · DigiEmporia") comes from settings, not the
+    // root layout, so renaming the site renames every tab. A page whose title
+    // already is the site's own name is not suffixed with it again.
+    title: { absolute: brandedTitle(title, defaults) },
     description,
     alternates: { canonical },
     robots: {

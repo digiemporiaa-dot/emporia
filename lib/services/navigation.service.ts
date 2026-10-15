@@ -143,8 +143,10 @@ async function loadNavigation(): Promise<SiteNavigation> {
   const byKey = new Map(rows.map((row) => [row.key, row.value as unknown]));
   const items = (raw: unknown) => navItemSchema.array().safeParse(raw);
 
+  const brandName = readText(byKey.get(NAV_KEYS.brandName), DEFAULT_NAVIGATION.brandName);
+
   return {
-    brandName: readText(byKey.get(NAV_KEYS.brandName), DEFAULT_NAVIGATION.brandName),
+    brandName,
     // An empty tagline is a legitimate choice, so this one does not fall back
     // to a default when the row exists and is blank.
     tagline:
@@ -171,7 +173,8 @@ async function loadNavigation(): Promise<SiteNavigation> {
       (raw) => socialLinkSchema.array().safeParse(raw),
       DEFAULT_NAVIGATION.socialLinks,
     ),
-    copyrightName: readText(byKey.get(NAV_KEYS.copyrightName), DEFAULT_NAVIGATION.copyrightName),
+    // Unset, the footer credits the site itself, so renaming the site renames it.
+    copyrightName: readText(byKey.get(NAV_KEYS.copyrightName), brandName),
   };
 }
 
